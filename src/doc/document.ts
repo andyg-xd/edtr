@@ -21,7 +21,7 @@ export class SourceDocument {
     while (stack.length) {
       const n = stack.pop()!;
       if (n.id === id) return n;
-      for (const c of n.children) stack.push(c);
+      for (let i = n.children.length - 1; i >= 0; i--) stack.push(n.children[i]);
     }
     return undefined;
   }

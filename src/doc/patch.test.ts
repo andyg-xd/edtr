@@ -53,6 +53,7 @@ describe('applyPatches — insert and delete', () => {
     const out = applyPatches(doc, [{ kind: 'insertAfter', nodeId: first.id, text: '\n\nINSERTED.' }]);
     expect(out).toContain('INSERTED.');
     expect(out.slice(0, first.range[1])).toBe(md.slice(0, first.range[1])); // node + prefix intact
+    expect(out.slice(first.range[1] + '\n\nINSERTED.'.length)).toBe(md.slice(first.range[1])); // suffix shifts right, bytes identical
   });
 
   it('deletes a node by emptying its range', () => {
@@ -61,6 +62,17 @@ describe('applyPatches — insert and delete', () => {
     const out = applyPatches(doc, [{ kind: 'delete', nodeId: second.id }]);
     expect(out).not.toContain('second paragraph with');
     expect(out.slice(0, second.range[0])).toBe(md.slice(0, second.range[0]));
+    expect(out.slice(second.range[0])).toBe(md.slice(second.range[1])); // suffix shifts left, bytes identical
+  });
+
+  it('inserts before a node without touching the node or the bytes before it', () => {
+    const doc = new SourceDocument(md, 'markdown');
+    const second = paragraphs(doc)[1];
+    const text = 'INSERTED.\n\n';
+    const out = applyPatches(doc, [{ kind: 'insertBefore', nodeId: second.id, text }]);
+    expect(out).toContain('INSERTED.');
+    expect(out.slice(0, second.range[0])).toBe(md.slice(0, second.range[0]));       // before insertion point: identical
+    expect(out.slice(second.range[0] + text.length)).toBe(md.slice(second.range[0])); // node + suffix shift right, identical
   });
 
   it('throws on an unknown node id', () => {
