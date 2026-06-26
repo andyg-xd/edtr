@@ -7,6 +7,7 @@ export function serializeNode(node: SemanticNode, flavor: FlavorProfile): string
       return node.text;
     case 'heading':
       if (flavor.headingStyle === 'setext' && (node.depth === 1 || node.depth === 2)) {
+        // setext underline must be >= 1 char; 3 is a comfortable, CommonMark-safe minimum
         const underline = (node.depth === 1 ? '=' : '-').repeat(Math.max(3, node.text.length));
         return `${node.text}\n${underline}`;
       }

@@ -81,6 +81,29 @@ describe('applyPatches — insert and delete', () => {
   });
 });
 
+describe('applyPatches — multiple non-overlapping patches', () => {
+  it('applies multiple non-overlapping patches in one call, preserving the gap between them', () => {
+    const doc = new SourceDocument(md, 'markdown');
+    const [p0, p1] = paragraphs(doc); // the first two top-level paragraphs (disjoint, blank line between)
+    const t0 = 'FIRST_REPLACED.';
+    const t1 = 'SECOND_REPLACED.';
+    const out = applyPatches(doc, [
+      { kind: 'replace', nodeId: p0.id, text: t0 },
+      { kind: 'replace', nodeId: p1.id, text: t1 },
+    ]);
+    expect(out).toContain(t0);
+    expect(out).toContain(t1);
+    // prefix before the first edit unchanged
+    expect(out.slice(0, p0.range[0])).toBe(md.slice(0, p0.range[0]));
+    // the bytes BETWEEN the two paragraphs are preserved verbatim
+    const gapStart = p0.range[0] + t0.length;
+    const gapLen = p1.range[0] - p0.range[1];
+    expect(out.slice(gapStart, gapStart + gapLen)).toBe(md.slice(p0.range[1], p1.range[0]));
+    // suffix after the second edit unchanged
+    expect(out.slice(gapStart + gapLen + t1.length)).toBe(md.slice(p1.range[1]));
+  });
+});
+
 describe('applyPatches — refuses unlocated nodes', () => {
   it('throws when patching a node with a zero-width (unlocated) range', () => {
     const doc = new SourceDocument(html, 'html');

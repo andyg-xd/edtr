@@ -32,5 +32,6 @@ describe('detectFlavor (markdown)', () => {
     expect(f.headingStyle).toBe('atx');
     expect(f.fence).toBe('`');
     expect(f.orderedDelimiter).toBe('.');
+    expect(f.gfm).toBe(false);
   });
 });
