@@ -14,12 +14,14 @@ describe('serializeNode', () => {
 
   it('serializes an ATX heading at the given depth', () => {
     expect(serializeNode({ type: 'heading', depth: 2, text: 'Title' }, star)).toBe('## Title');
+    expect(serializeNode({ type: 'heading', depth: 1, text: 'Title' }, star)).toBe('# Title');
   });
 
   it('serializes a setext heading when the flavor calls for it', () => {
     const setext: FlavorProfile = { ...star, headingStyle: 'setext' };
     expect(serializeNode({ type: 'heading', depth: 1, text: 'Title' }, setext)).toBe('Title\n=====');
     expect(serializeNode({ type: 'heading', depth: 2, text: 'Sub' }, setext)).toBe('Sub\n---');
+    expect(serializeNode({ type: 'heading', depth: 3, text: 'Deep' }, setext)).toBe('### Deep');
   });
 
   it('honors the strong marker from the flavor', () => {
