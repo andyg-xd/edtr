@@ -39,4 +39,21 @@ describe('spliceSource', () => {
       ]),
     ).toThrow(/overlap/i);
   });
+
+  it('deletes a range (text = "") and leaves surrounding bytes identical', () => {
+    const src = 'abcdef';
+    const out = spliceSource(src, [{ start: 2, end: 4, text: '' }]);
+    expect(out).toBe('abef');
+    expect(out.slice(0, 2)).toBe(src.slice(0, 2)); // prefix untouched
+    expect(out.slice(2)).toBe(src.slice(4));       // suffix untouched
+  });
+
+  it('allows abutting edits (end === next.start) without throwing', () => {
+    const src = 'AAABBB';
+    const out = spliceSource(src, [
+      { start: 0, end: 3, text: 'x' },
+      { start: 3, end: 6, text: 'y' },
+    ]);
+    expect(out).toBe('xy');
+  });
 });
