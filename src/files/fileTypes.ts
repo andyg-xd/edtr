@@ -25,8 +25,9 @@ export function formatForPath(path: string): EditorFormat {
   return 'plaintext';
 }
 
-/** The final path segment (handles both `/` separators). */
+/** Returns the final '/'-delimited path segment (a trailing slash is ignored). */
 export function basename(path: string): string {
-  const slash = path.lastIndexOf('/');
-  return slash === -1 ? path : path.slice(slash + 1);
+  const trimmed = path.endsWith('/') ? path.slice(0, -1) : path;
+  const slash = trimmed.lastIndexOf('/');
+  return slash === -1 ? trimmed : trimmed.slice(slash + 1);
 }

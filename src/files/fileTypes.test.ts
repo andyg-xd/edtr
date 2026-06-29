@@ -22,4 +22,7 @@ describe('basename', () => {
     expect(basename('/Users/x/notes/todo.md')).toBe('todo.md');
     expect(basename('todo.md')).toBe('todo.md');
   });
+  it('ignores a trailing slash', () => {
+    expect(basename('/Users/x/notes/')).toBe('notes');
+  });
 });
