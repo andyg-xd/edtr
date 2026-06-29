@@ -28,13 +28,15 @@ export function EditorWindow() {
     }
   }, []);
 
-  const handleSave = useCallback(async () => {
-    if (!session || !session.isDirty()) return;
+  const handleSave = useCallback(async (): Promise<boolean> => {
+    if (!session || !session.isDirty()) return true;
     try {
       await saveSession(session);
       tick();
+      return true;
     } catch (e) {
       setError(`Could not save — your changes are safe in the editor. ${String(e)}`);
+      return false;
     }
   }, [session]);
 
@@ -82,7 +84,11 @@ export function EditorWindow() {
       {showCloseGuard && (
         <CloseGuard
           onSave={async () => {
-            await handleSave();
+            const saved = await handleSave();
+            if (!saved) {
+              setShowCloseGuard(false);
+              return;
+            }
             setShowCloseGuard(false);
             getCurrentWindow().destroy();
           }}
