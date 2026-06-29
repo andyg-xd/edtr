@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use std::io::Write;
+use std::path::PathBuf;
 
 const UTF8_BOM: [u8; 3] = [0xEF, 0xBB, 0xBF];
 
@@ -74,18 +76,40 @@ pub fn encode(text: &str, meta: FileMeta) -> Vec<u8> {
 }
 
 // ---------------------------------------------------------------------------
-// Placeholder command stubs — kept so lib.rs compiles while Task 3 is pending.
-// Task 3 will replace these with real #[tauri::command] wrappers over decode/encode.
+// Tauri commands — thin wrappers over decode/encode with on-disk atomic write.
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn read_text_file(_path: String) -> Result<(), String> {
-    Err("not implemented — Task 3 pending".into())
+pub fn read_text_file(path: String) -> Result<LoadedFile, String> {
+    let bytes = std::fs::read(&path).map_err(|e| format!("Could not read file: {e}"))?;
+    decode(&bytes).map_err(|e| match e {
+        DecodeError::LooksBinary => {
+            "This looks like a binary file — Edtr edits text files only.".to_string()
+        }
+        DecodeError::NotUtf8 => "Edtr supports UTF-8 text files only.".to_string(),
+    })
 }
 
 #[tauri::command]
-pub fn write_text_file_atomic(_path: String, _text: String) -> Result<(), String> {
-    Err("not implemented — Task 3 pending".into())
+pub fn write_text_file_atomic(path: String, text: String, meta: FileMeta) -> Result<(), String> {
+    let bytes = encode(&text, meta);
+    let target = PathBuf::from(&path);
+    let dir = target
+        .parent()
+        .ok_or_else(|| "Invalid file path (no parent directory)".to_string())?;
+
+    // Write to a temp file in the SAME directory, flush to disk, then rename
+    // over the original — an atomic replace that can't leave a half-written file.
+    let mut tmp = tempfile::NamedTempFile::new_in(dir)
+        .map_err(|e| format!("Could not create temp file: {e}"))?;
+    tmp.write_all(&bytes)
+        .map_err(|e| format!("Could not write file: {e}"))?;
+    tmp.as_file()
+        .sync_all()
+        .map_err(|e| format!("Could not flush file: {e}"))?;
+    tmp.persist(&target)
+        .map_err(|e| format!("Could not save file: {e}"))?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -161,5 +185,49 @@ mod tests {
     #[test]
     fn decode_rejects_invalid_utf8() {
         assert_eq!(decode(&[0xFF, 0xFE]), Err(DecodeError::NotUtf8));
+    }
+
+    // -------------------------------------------------------------------------
+    // Task 3: Integration tests — on-disk round-trip via the real Tauri commands
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn write_atomic_then_disk_bytes_match_original() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sample.md");
+        let original: &[u8] = b"x\r\ny\r\n";
+        std::fs::write(&path, original).unwrap();
+
+        let path_str = path.to_string_lossy().to_string();
+        let loaded = read_text_file(path_str.clone()).expect("read");
+        write_text_file_atomic(path_str, loaded.text, loaded.meta).expect("write");
+
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+    }
+
+    #[test]
+    fn write_atomic_leaves_no_temp_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("note.md");
+        std::fs::write(&path, b"hello\n").unwrap();
+        let path_str = path.to_string_lossy().to_string();
+        let loaded = read_text_file(path_str.clone()).unwrap();
+        write_text_file_atomic(path_str, loaded.text, loaded.meta).unwrap();
+
+        let entries: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name())
+            .collect();
+        assert_eq!(entries, vec![std::ffi::OsString::from("note.md")]);
+    }
+
+    #[test]
+    fn read_text_file_refuses_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("blob.bin");
+        std::fs::write(&path, b"a\0b").unwrap();
+        let err = read_text_file(path.to_string_lossy().to_string()).unwrap_err();
+        assert!(err.contains("binary"));
     }
 }
