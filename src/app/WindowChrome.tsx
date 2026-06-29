@@ -9,7 +9,7 @@ interface WindowChromeProps {
 /** Top bar: filename + dirty dot. Also keeps the OS window title in sync. */
 export function WindowChrome({ name, dirty }: WindowChromeProps) {
   useEffect(() => {
-    const title = name ? `${dirty ? '• ' : ''}${name} — Edtr` : 'Edtr';
+    const title = name ? `${dirty ? '• ' : ''}${name}` : 'Edtr';
     getCurrentWindow().setTitle(title).catch(() => {});
   }, [name, dirty]);
 
