@@ -1,7 +1,8 @@
-import "./App.css";
+import './App.css';
+import { EditorWindow } from './app/EditorWindow';
 
 function App() {
-  return <main className="container">Edtr</main>;
+  return <EditorWindow />;
 }
 
 export default App;
