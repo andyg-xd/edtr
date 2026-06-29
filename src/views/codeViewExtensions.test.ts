@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import { EditorState } from '@codemirror/state';
+import { keymap } from '@codemirror/view';
+import { markdown } from '@codemirror/lang-markdown';
 import { buildCodeViewExtensions } from './codeViewExtensions';
 
 describe('buildCodeViewExtensions', () => {
@@ -21,5 +23,22 @@ describe('buildCodeViewExtensions', () => {
   it('builds for html without throwing', () => {
     const state = EditorState.create({ doc: '<p>x</p>\n', extensions: buildCodeViewExtensions('html') });
     expect(state.doc.toString()).toBe('<p>x</p>\n');
+  });
+
+  it('does not bind Enter to markdown markup-continuation (no format-on-type)', () => {
+    const enterRuns = (exts: any) =>
+      EditorState.create({ extensions: exts })
+        .facet(keymap)
+        .flat()
+        .filter((b: any) => b.key === 'Enter' && b.run)
+        .map((b: any) => b.run);
+
+    const defaultMd = enterRuns([markdown()]);            // default pack: has the continuation command
+    const ours = enterRuns(buildCodeViewExtensions('markdown'));
+
+    expect(defaultMd.length).toBeGreaterThan(0);          // sanity: default DOES bind Enter
+    for (const run of defaultMd) {
+      expect(ours).not.toContain(run);                    // ours must not include the pack's Enter command
+    }
   });
 });
