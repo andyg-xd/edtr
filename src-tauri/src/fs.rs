@@ -16,26 +16,10 @@ pub struct FileMeta {
     pub had_bom: bool,
 }
 
-/// A file loaded into the editor.
-///
-/// `text` is always `\n`-normalized (CRLF files have their `\r\n` collapsed).
-/// `meta` captures the byte conventions needed to reproduce the original.
-///
-/// `bare_lf_offsets` is an internal-only field (not serialized) that records
-/// the byte offsets (in `text`) of `\n` characters that were originally bare
-/// LF (not part of a CRLF pair) in a file whose dominant EOL is CRLF.  This
-/// is needed so that `encode` can re-expand only the `\r\n`-origin newlines
-/// and leave the lone ones alone — achieving exact byte-level round-trip
-/// fidelity even for mixed-EOL files.
 #[derive(Debug, PartialEq, Serialize)]
 pub struct LoadedFile {
     pub text: String,
     pub meta: FileMeta,
-    /// Offsets of bare-LF `\n` characters inside `text` that must stay as
-    /// `\n` (not become `\r\n`) during CRLF-mode encode.
-    /// Always empty when `meta.eol == Eol::Lf`.
-    #[serde(skip)]
-    pub bare_lf_offsets: Vec<usize>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -60,92 +44,32 @@ pub fn decode(bytes: &[u8]) -> Result<LoadedFile, DecodeError> {
     // EOL style is decided by the first CRLF we see; lone CRs are left as
     // content (not treated as line breaks) so they survive the round trip.
     let eol = if raw.contains("\r\n") { Eol::Crlf } else { Eol::Lf };
-
-    if eol == Eol::Lf {
-        // Pure LF file — no CRLF pairs, no bare-LF tracking needed.
-        return Ok(LoadedFile {
-            text: raw.to_string(),
-            meta: FileMeta { eol, had_bom },
-            bare_lf_offsets: Vec::new(),
-        });
-    }
-
-    // CRLF file: collapse \r\n → \n char-by-char, recording which output \n
-    // positions came from bare LF (not from \r\n pairs).
-    let mut text = String::with_capacity(raw.len());
-    let mut bare_lf_offsets: Vec<usize> = Vec::new();
-    let mut chars = raw.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '\r' {
-            if chars.peek() == Some(&'\n') {
-                // CRLF pair: consume the \n and emit a single \n.
-                chars.next();
-                text.push('\n');
-                // This \n is a CRLF-origin newline — NOT recorded in bare_lf_offsets.
-            } else {
-                // Lone CR: emit as content.
-                text.push('\r');
-            }
-        } else if ch == '\n' {
-            // Bare LF in a CRLF file: record its position and emit it.
-            bare_lf_offsets.push(text.len());
-            text.push('\n');
-        } else {
-            text.push(ch);
-        }
-    }
-
+    let text = raw.replace("\r\n", "\n");
     Ok(LoadedFile {
         text,
         meta: FileMeta { eol, had_bom },
-        bare_lf_offsets,
     })
 }
 
 /// Re-serialize editor text (always `\n`-separated) back to the original
 /// byte conventions: re-apply CRLF if that's what the file used, re-prepend
 /// the BOM if it had one.
+///
+/// Consistent files (all-LF or all-CRLF) round-trip byte-for-byte. A *mixed*
+/// file (CRLF classification but containing a bare LF) normalizes to the
+/// dominant ending — CodeMirror stores text as `\n` only, so per-line ending
+/// variation cannot survive an edit. This is a documented limitation, not a
+/// guarantee (see Task 10 carry-forward debt).
 pub fn encode(text: &str, meta: FileMeta) -> Vec<u8> {
-    encode_with_bare_lfs(text, meta, &[])
-}
-
-/// Internal encode used by `LoadedFile`'s own round-trip path (carries
-/// bare-LF position info from decode).
-pub fn encode_loaded(loaded: &LoadedFile) -> Vec<u8> {
-    encode_with_bare_lfs(&loaded.text, loaded.meta, &loaded.bare_lf_offsets)
-}
-
-fn encode_with_bare_lfs(text: &str, meta: FileMeta, bare_lf_offsets: &[usize]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(text.len() + UTF8_BOM.len());
+    let body = match meta.eol {
+        Eol::Lf => text.to_string(),
+        Eol::Crlf => text.replace('\n', "\r\n"),
+    };
+    let mut out = Vec::with_capacity(body.len() + UTF8_BOM.len());
     if meta.had_bom {
         out.extend_from_slice(&UTF8_BOM);
     }
-    match meta.eol {
-        Eol::Lf => {
-            out.extend_from_slice(text.as_bytes());
-        }
-        Eol::Crlf => {
-            // Walk char-by-char; expand \n → \r\n unless it's a bare-LF.
-            let mut byte_pos: usize = 0;
-            for ch in text.chars() {
-                if ch == '\n' {
-                    if bare_lf_offsets.contains(&byte_pos) {
-                        // Bare LF — emit as-is.
-                        out.push(b'\n');
-                    } else {
-                        // CRLF-origin newline — restore the \r.
-                        out.push(b'\r');
-                        out.push(b'\n');
-                    }
-                } else {
-                    let mut buf = [0u8; 4];
-                    let s = ch.encode_utf8(&mut buf);
-                    out.extend_from_slice(s.as_bytes());
-                }
-                byte_pos += ch.len_utf8();
-            }
-        }
-    }
+    out.extend_from_slice(body.as_bytes());
     out
 }
 
@@ -171,7 +95,7 @@ mod tests {
     /// decode → encode must reproduce the original bytes exactly.
     fn roundtrip(original: &[u8]) -> Vec<u8> {
         let loaded = decode(original).expect("should decode");
-        encode_loaded(&loaded)
+        encode(&loaded.text, loaded.meta)
     }
 
     #[test]
@@ -206,7 +130,12 @@ mod tests {
 
     #[test]
     fn lone_cr_is_preserved_as_content() {
-        let original = b"a\rb\r\nc\n";
+        // A consistent-CRLF file containing a lone CR (the `\r` after `a`).
+        // The lone CR is never a line break, so it survives the round trip.
+        // NOTE: a *mixed* file (CRLF + a bare LF, e.g. b"a\rb\r\nc\n") is
+        // intentionally NOT round-tripped byte-for-byte — see the encode()
+        // doc comment and the mixed-EOL carry-forward note in Task 10.
+        let original = b"a\rb\r\nc\r\n";
         assert_eq!(roundtrip(original), original);
     }
 
