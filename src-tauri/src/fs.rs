@@ -214,11 +214,12 @@ mod tests {
         let loaded = read_text_file(path_str.clone()).unwrap();
         write_text_file_atomic(path_str, loaded.text, loaded.meta).unwrap();
 
-        let entries: Vec<_> = std::fs::read_dir(dir.path())
+        let mut entries: Vec<_> = std::fs::read_dir(dir.path())
             .unwrap()
             .filter_map(|e| e.ok())
             .map(|e| e.file_name())
             .collect();
+        entries.sort();
         assert_eq!(entries, vec![std::ffi::OsString::from("note.md")]);
     }
 
