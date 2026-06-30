@@ -1,0 +1,110 @@
+// @vitest-environment jsdom
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { createRoot } from 'react-dom/client';
+import { act } from 'react';
+import type { ReactElement } from 'react';
+import type { RibbonControl } from './RibbonModel';
+import { RibbonView } from './RibbonView';
+
+let container: HTMLDivElement | null = null;
+afterEach(() => { container?.remove(); container = null; });
+
+async function render(node: ReactElement) {
+  container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => root.render(node));
+  return { container: container!, root };
+}
+
+// A minimal fake EditorView: only the bits RibbonView touches.
+function fakeView() {
+  return {
+    state: { selection: { from: 0, to: 0 }, doc: { textBetween: () => 'sel' } },
+    dispatch: vi.fn(),
+    focus: vi.fn(),
+  } as any;
+}
+
+const cmdControl = (id: string, opts: Partial<RibbonControl> = {}): RibbonControl => ({
+  id, label: id[0].toUpperCase(), ariaLabel: id,
+  isActive: () => false, isEnabled: () => true,
+  action: { kind: 'command', run: () => true },
+  ...opts,
+});
+
+const btn = (el: HTMLElement, aria: string) =>
+  Array.from(el.querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === aria)! as HTMLButtonElement;
+
+describe('RibbonView', () => {
+  it('renders a toolbar with one button per control', async () => {
+    const { container } = await render(<RibbonView view={fakeView()} controls={[cmdControl('bold'), cmdControl('italic')]} />);
+    expect(container.querySelector('[role="toolbar"]')).toBeTruthy();
+    expect(container.querySelectorAll('button.ribbon-btn').length).toBe(2);
+  });
+
+  it('reflects active + enabled state', async () => {
+    const controls = [
+      cmdControl('bold', { isActive: () => true }),
+      cmdControl('italic', { isEnabled: () => false }),
+    ];
+    const { container } = await render(<RibbonView view={fakeView()} controls={controls} />);
+    expect(btn(container, 'bold').getAttribute('aria-pressed')).toBe('true');
+    expect(btn(container, 'bold').classList.contains('is-active')).toBe(true);
+    expect(btn(container, 'italic').disabled).toBe(true);
+  });
+
+  it('runs a command control on click and refocuses the editor', async () => {
+    const run = vi.fn(() => true);
+    const view = fakeView();
+    const { container } = await render(<RibbonView view={view} controls={[cmdControl('bold', { action: { kind: 'command', run } })]} />);
+    await act(async () => { btn(container, 'bold').click(); });
+    expect(run).toHaveBeenCalledWith(view.state, view.dispatch);
+    expect(view.focus).toHaveBeenCalled();
+  });
+
+  it('opens the popover for an inactive popover control, then runs buildCommand on confirm', async () => {
+    const built = vi.fn(() => true);
+    const link: RibbonControl = {
+      id: 'link', label: '🔗', ariaLabel: 'Link', isActive: () => false, isEnabled: () => true,
+      action: { kind: 'popover', popover: 'link', buildCommand: () => built },
+    };
+    const view = fakeView();
+    const { container } = await render(<RibbonView view={view} controls={[link]} />);
+    await act(async () => { btn(container, 'Link').click(); });
+    expect(container.querySelector('[role="dialog"]')).toBeTruthy();
+    // fill URL + confirm
+    const urlEl = container.querySelectorAll('input')[1] as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => { setter.call(urlEl, 'http://x.test'); urlEl.dispatchEvent(new Event('input', { bubbles: true })); });
+    const addBtn = Array.from(container.querySelectorAll('button')).find((b) => /add/i.test(b.textContent ?? ''))!;
+    await act(async () => { addBtn.click(); });
+    expect(built).toHaveBeenCalledWith(view.state, view.dispatch);
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it('runs whenActiveRun (not the popover) when a popover control is active', async () => {
+    const remove = vi.fn(() => true);
+    const link: RibbonControl = {
+      id: 'link', label: '🔗', ariaLabel: 'Link', isActive: () => true, isEnabled: () => true,
+      action: { kind: 'popover', popover: 'link', buildCommand: () => () => true, whenActiveRun: remove },
+    };
+    const view = fakeView();
+    const { container } = await render(<RibbonView view={view} controls={[link]} />);
+    await act(async () => { btn(container, 'Link').click(); });
+    expect(remove).toHaveBeenCalledWith(view.state, view.dispatch);
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it('a linkRequest bump opens the link popover', async () => {
+    const link: RibbonControl = {
+      id: 'link', label: '🔗', ariaLabel: 'Link', isActive: () => false, isEnabled: () => true,
+      action: { kind: 'popover', popover: 'link', buildCommand: () => () => true },
+    };
+    const view = fakeView();
+    const { container, root } = await render(<RibbonView view={view} controls={[link]} linkRequest={0} />);
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    await act(async () => { root.render(<RibbonView view={view} controls={[link]} linkRequest={1} />); });
+    expect(container.querySelector('[role="dialog"]')).toBeTruthy();
+  });
+});
