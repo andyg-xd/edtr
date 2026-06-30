@@ -37,7 +37,7 @@ function orderedSymmetric(marks: readonly Mark[]): Mark[] {
 function serializeImage(node: PMNode): string {
   const alt = typeof node.attrs.alt === 'string' ? node.attrs.alt : '';
   const src = node.attrs.src as string;
-  const title = node.attrs.title ? ` "${node.attrs.title}"` : '';
+  const title = node.attrs.title != null ? ` "${node.attrs.title}"` : '';
   return `![${alt}](${src}${title})`;
 }
 
@@ -55,7 +55,7 @@ function serializeTextNode(node: PMNode, flavor: FlavorProfile): string {
   }
   if (link) {
     const href = link.attrs.href as string;
-    const title = link.attrs.title ? ` "${link.attrs.title}"` : '';
+    const title = link.attrs.title != null ? ` "${link.attrs.title}"` : '';
     inner = `[${inner}](${href}${title})`;
   }
   return inner;

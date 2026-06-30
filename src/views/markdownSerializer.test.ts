@@ -61,4 +61,16 @@ describe('serializeInline', () => {
     const p = para(liveSchema.text('snake_case *not bold*'));
     expect(serializeInline(p, star)).toBe('snake\\_case \\*not bold\\*');
   });
+  it('serializes a code span inside a link', () => {
+    const p = para(liveSchema.text('code', [liveSchema.marks.code.create(), liveSchema.marks.link.create({ href: 'http://x.test', title: null })]));
+    expect(serializeInline(p, star)).toBe('[`code`](http://x.test)');
+  });
+  it('serializes a link without a title', () => {
+    const p = para(liveSchema.text('t', [liveSchema.marks.link.create({ href: 'http://x.test', title: null })]));
+    expect(serializeInline(p, star)).toBe('[t](http://x.test)');
+  });
+  it('serializes an image with a title', () => {
+    const p = para(liveSchema.node('image', { src: 'pic.png', alt: 'alt', title: 'the title' }));
+    expect(serializeInline(p, star)).toBe('![alt](pic.png "the title")');
+  });
 });
