@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import type { ReactElement } from 'react';
 import { EditorState } from 'prosemirror-state';
+import type { EditorView } from 'prosemirror-view';
 import { buildLiveDoc } from './liveModel';
 import { liveSchema } from './liveSchema';
 import { LiveView, structureLockPlugin } from './LiveView';
@@ -43,6 +44,39 @@ describe('LiveView', () => {
   it('can be mounted read-only', async () => {
     const el = await render(<LiveView doc={docFor('# Hello\n')} editable={false} />);
     expect(el.querySelector('.ProseMirror')?.getAttribute('contenteditable')).toBe('false');
+  });
+
+  it('reports the EditorView on mount and null on unmount', async () => {
+    const onViewReady = vi.fn();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => root.render(<LiveView doc={docFor('hi\n')} onViewReady={onViewReady} />));
+    expect(onViewReady).toHaveBeenCalledTimes(1);
+    expect(onViewReady.mock.calls[0][0]).not.toBeNull();
+    await act(async () => root.unmount());
+    expect(onViewReady).toHaveBeenLastCalledWith(null);
+  });
+
+  it('fires onStateChange on a selection-only change (no doc change)', async () => {
+    const onStateChange = vi.fn();
+    let captured: EditorView | null = null;
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () =>
+      root.render(<LiveView doc={docFor('hello world\n')} onViewReady={(v) => { captured = v; }} onStateChange={onStateChange} />),
+    );
+    const before = onStateChange.mock.calls.length;
+    await act(async () => {
+      const view = captured!;
+      const sel = view.state.tr.setSelection(
+        // move the cursor; selection-only, no doc change
+        (view.state.selection.constructor as any).near(view.state.doc.resolve(3)),
+      );
+      view.dispatch(sel);
+    });
+    expect(onStateChange.mock.calls.length).toBeGreaterThan(before);
   });
 });
 
