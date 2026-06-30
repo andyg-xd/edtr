@@ -45,8 +45,10 @@ function inlineNode(node: any, source: string, marks: readonly Mark[]): PMNode[]
       return childInline(node, source, addMark(marks, 'em'));
     case 'delete':
       return childInline(node, source, addMark(marks, 'strikethrough'));
-    case 'inlineCode':
-      return [liveSchema.text(String(node.value ?? ''), addMark(marks, 'code'))];
+    case 'inlineCode': {
+      const value = String(node.value ?? '');
+      return value ? [liveSchema.text(value, addMark(marks, 'code'))] : [];
+    }
     case 'link':
       return childInline(
         node,

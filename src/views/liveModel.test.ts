@@ -116,6 +116,37 @@ describe('buildLiveDoc — inline content', () => {
     expect(list.child(0).attrs.checked).toBe(true);
     expect(list.child(1).attrs.checked).toBe(false);
   });
+
+  it('accumulates marks on nested strong+em (same leaf carries both)', () => {
+    // remark parses ***bold-italic*** as emphasis > strong > text
+    // both marks must be accumulated on the single text leaf
+    let leaf: any = null;
+    doc('***bold-italic***\n').descendants((n) => {
+      if (n.isText && n.text === 'bold-italic') leaf = n;
+    });
+    expect(leaf).not.toBeNull();
+    const names = leaf.marks.map((m: any) => m.type.name);
+    expect(names).toContain('strong');
+    expect(names).toContain('em');
+  });
+
+  it('falls back to raw text for unknown inline (inline html)', () => {
+    // remark emits html-typed nodes with value="<abbr>" / value="</abbr>"
+    // the unknown-inline branch emits node.value as raw text
+    let sawText = false;
+    doc('a <abbr>x</abbr> b\n').descendants((n) => {
+      if (n.isText && n.text!.includes('<abbr>')) sawText = true;
+    });
+    expect(sawText).toBe(true);
+  });
+
+  it('maps an image title', () => {
+    let img: any = null;
+    doc('![alt](pic.png "the title")\n').descendants((n) => {
+      if (n.type.name === 'image') img = n;
+    });
+    expect(img.attrs.title).toBe('the title');
+  });
 });
 
 describe('mdastToLiveDoc — degradation', () => {
