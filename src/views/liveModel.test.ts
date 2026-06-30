@@ -149,6 +149,30 @@ describe('buildLiveDoc — inline content', () => {
   });
 });
 
+describe('buildLiveDoc — verbatim fallback', () => {
+  it('renders a GFM table as a verbatim block holding its exact raw markdown', () => {
+    const src = '| a | b |\n| - | - |\n| 1 | 2 |\n';
+    const d = doc(src);
+    const v = d.child(0);
+    expect(v.type.name).toBe('verbatim');
+    // raw must equal the exact source slice at the block's range (no reflow)
+    expect(v.attrs.raw).toBe(src.slice(v.attrs.srcFrom, v.attrs.srcTo));
+    expect(v.attrs.raw).toContain('| a | b |');
+  });
+
+  it('renders a raw HTML block as verbatim', () => {
+    const d = doc('<div class="x">hi</div>\n');
+    expect(d.child(0).type.name).toBe('verbatim');
+    expect(d.child(0).attrs.raw).toContain('<div');
+  });
+
+  it('keeps supported blocks structural even when a table is present (hybrid degradation)', () => {
+    const d = doc('# Heading\n\n| a |\n| - |\n');
+    expect(d.child(0).type.name).toBe('heading');
+    expect(d.child(1).type.name).toBe('verbatim');
+  });
+});
+
 describe('mdastToLiveDoc — degradation', () => {
   it('degrades to Code-only when a top-level block has no position', () => {
     const root = {
