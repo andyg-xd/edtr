@@ -71,8 +71,6 @@ describe('writeBack — no beautify through edits', () => {
     const swapped = liveSchema.node('doc', null, blocks);
     const out = writeBack(swapped, src, new Set([target.attrs.blockId]), flavor);
     expect(out).toBe('# Title\n\nFirst paragraph.\n\nSecond paragraph EDITED.\n');
-    // heading + first paragraph + all whitespace untouched:
-    expect(out.startsWith('# Title\n\nFirst paragraph.\n\n')).toBe(true);
   });
 
   it('serializeDirty returns null for untouched blocks (verbatim)', () => {
