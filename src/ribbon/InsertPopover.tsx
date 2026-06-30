@@ -48,7 +48,17 @@ export function InsertPopover({ kind, initialText = '', onConfirm, onCancel }: I
       </label>
       <label className="insert-popover-field">
         URL
-        <input ref={urlRef} value={url} placeholder="https://" onChange={(e) => setUrl(e.target.value)} />
+        <input
+          ref={urlRef}
+          value={url}
+          placeholder="https://"
+          onChange={(e) => setUrl(e.target.value)}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          autoComplete="off"
+          inputMode="url"
+        />
       </label>
       <div className="insert-popover-actions">
         <button type="button" onClick={onCancel}>Cancel</button>

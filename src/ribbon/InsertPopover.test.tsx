@@ -72,4 +72,11 @@ describe('InsertPopover', () => {
     const el = await render(<InsertPopover kind="link" onConfirm={() => {}} onCancel={() => {}} />);
     expect(document.activeElement).toBe(urlInput(el));
   });
+
+  it('URL input has autocapitalize=none and spellcheck=false', async () => {
+    const el = await render(<InsertPopover kind="link" onConfirm={() => {}} onCancel={() => {}} />);
+    const input = urlInput(el);
+    expect(input.getAttribute('autocapitalize')).toBe('none');
+    expect(input.getAttribute('spellcheck')).toBe('false');
+  });
 });

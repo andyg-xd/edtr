@@ -104,6 +104,20 @@ body,
 .live-view .task-item { list-style: none; }
 .live-view .task-item input { margin-right: 6px; }
 
+/* Code block and inline code styling in Live view */
+.live-view pre {
+  background: #f6f8fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  padding: 12px 16px;
+  overflow-x: auto;
+}
+.live-view code:not(pre code) {
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
 /* Ribbon toolbar (Live view only) */
 .ribbon {
   display: flex;
