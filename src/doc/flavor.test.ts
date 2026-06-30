@@ -34,4 +34,16 @@ describe('detectFlavor (markdown)', () => {
     expect(f.orderedDelimiter).toBe('.');
     expect(f.gfm).toBe(false);
   });
+
+  it('frequency: *-majority doc with one stray underscore emphasis detects *', () => {
+    expect(
+      detectFlavor('Use *a*, *b*, and *c*; flavor-test: _em_ example', 'markdown').emphasis,
+    ).toBe('*');
+  });
+
+  it('frequency: _-majority doc detects _', () => {
+    expect(
+      detectFlavor('_a_ and _b_ and _b_ and _c_, plus *one* star', 'markdown').emphasis,
+    ).toBe('_');
+  });
 });
