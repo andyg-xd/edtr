@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parse } from './parse';
+import { parse, parseMarkdownAst } from './parse';
 import type { SourceNode } from './types';
 
 function flatten(node: SourceNode, acc: SourceNode[] = []): SourceNode[] {
@@ -30,6 +30,17 @@ describe('parse (markdown)', () => {
     expect(heading).toBeDefined();
     expect(heading!.data?.depth).toBe(2);
     expect(heading!.raw).toBe('## Heading');
+  });
+});
+
+describe('parseMarkdownAst', () => {
+  it('returns an mdast root with positioned children and inline values', () => {
+    const root = parseMarkdownAst('# Hi\n\nWord\n');
+    expect(root.type).toBe('root');
+    expect(root.children[0].type).toBe('heading');
+    expect(root.children[0].position.start.offset).toBe(0);
+    // inline text value is available (lossless, unlike SourceNode.raw)
+    expect(root.children[0].children[0].value).toBe('Hi');
   });
 });
 

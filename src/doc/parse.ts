@@ -15,13 +15,14 @@ class IdGen {
 export function parse(source: string, format: DocFormat): SourceNode {
   const ids = new IdGen();
   return format === 'markdown'
-    ? fromMdast(parseMarkdown(source), source, ids)
+    ? fromMdast(parseMarkdownAst(source), source, ids)
     : fromParse5(parseHtml(source), source, ids);
 }
 
 // ---- Markdown (remark / mdast) ----
 
-function parseMarkdown(source: string): any {
+/** The canonical mdast parse (remark + GFM) used across the app. */
+export function parseMarkdownAst(source: string): any {
   return unified().use(remarkParse).use(remarkGfm).parse(source);
 }
 
