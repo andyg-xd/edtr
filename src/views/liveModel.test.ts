@@ -161,15 +161,21 @@ describe('buildLiveDoc — verbatim fallback', () => {
   });
 
   it('renders a raw HTML block as verbatim', () => {
-    const d = doc('<div class="x">hi</div>\n');
-    expect(d.child(0).type.name).toBe('verbatim');
-    expect(d.child(0).attrs.raw).toContain('<div');
+    const src = '<div class="x">hi</div>\n';
+    const d = doc(src);
+    const v = d.child(0);
+    expect(v.type.name).toBe('verbatim');
+    expect(v.attrs.raw).toBe(src.slice(v.attrs.srcFrom, v.attrs.srcTo));
+    expect(v.attrs.raw).toContain('<div');
   });
 
   it('keeps supported blocks structural even when a table is present (hybrid degradation)', () => {
-    const d = doc('# Heading\n\n| a |\n| - |\n');
+    const src = '# Heading\n\n| a |\n| - |\n';
+    const d = doc(src);
     expect(d.child(0).type.name).toBe('heading');
-    expect(d.child(1).type.name).toBe('verbatim');
+    const table = d.child(1);
+    expect(table.type.name).toBe('verbatim');
+    expect(table.attrs.raw).toBe(src.slice(table.attrs.srcFrom, table.attrs.srcTo));
   });
 });
 
