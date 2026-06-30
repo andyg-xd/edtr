@@ -91,9 +91,24 @@ describe('link commands', () => {
   it('applyLink with empty href is a no-op (returns false)', () => {
     expect(applyLink('', 'x')(selectFirstBlock(stateOf('hello\n')))).toBe(false);
   });
-  it('getMarkRange finds the whole link around a collapsed cursor', () => {
+  it('applyLink with empty text falls back to href as visible text', () => {
+    const next = run(selectFirstBlock(stateOf('hello\n')), applyLink('http://x.test', ''))!;
+    expect(next.doc.child(0).textContent).toBe('http://x.test');
+    expect(next.doc.rangeHasMark(1, 1 + next.doc.child(0).content.size, link)).toBe(true);
+  });
+  it('getMarkRange finds the whole link around a collapsed cursor (mid)', () => {
     const s = cursorAt(stateOf('[link](http://x.test)\n'), 3);
     expect(getMarkRange(s.selection.$from, link)).toEqual({ from: 1, to: 5 });
+  });
+  it('getMarkRange finds the whole link at the exact right edge of the mark (pos 5)', () => {
+    // pos 5 is immediately after the "k" — the right boundary of the link node.
+    // childAfter returns {node:null} here; the fix must fall back to childBefore.
+    const s = cursorAt(stateOf('[link](http://x.test)\n'), 5);
+    expect(getMarkRange(s.selection.$from, link)).toEqual({ from: 1, to: 5 });
+  });
+  it('markActive is true for a cursor inside a link', () => {
+    const s = cursorAt(stateOf('[link](http://x.test)\n'), 3);
+    expect(markActive(s, link)).toBe(true);
   });
   it('removeLink clears the link around a collapsed cursor', () => {
     const s = cursorAt(stateOf('[link](http://x.test)\n'), 3);
