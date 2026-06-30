@@ -71,3 +71,73 @@ export function serializeInline(block: PMNode, flavor: FlavorProfile): string {
   });
   return out;
 }
+
+/** Serialize one block (recursing into blockquote/list content) to Markdown. */
+export function serializeBlock(block: PMNode, flavor: FlavorProfile): string {
+  switch (block.type.name) {
+    case 'verbatim':
+      return block.attrs.raw as string;
+
+    case 'paragraph':
+      return serializeInline(block, flavor);
+
+    case 'heading': {
+      const level = block.attrs.level as number;
+      const text = serializeInline(block, flavor);
+      if (flavor.headingStyle === 'setext' && (level === 1 || level === 2)) {
+        const underline = (level === 1 ? '=' : '-').repeat(Math.max(3, text.length));
+        return `${text}\n${underline}`;
+      }
+      return `${'#'.repeat(level)} ${text}`;
+    }
+
+    case 'codeBlock': {
+      const fence = flavor.fence.repeat(3);
+      const lang = block.attrs.lang ?? '';
+      return `${fence}${lang}\n${block.textContent}\n${fence}`;
+    }
+
+    case 'horizontalRule':
+      return '---';
+
+    case 'blockquote': {
+      const inner = serializeBlocks(block, flavor);
+      return inner
+        .split('\n')
+        .map((line) => (line.length ? `> ${line}` : '>'))
+        .join('\n');
+    }
+
+    case 'bulletList':
+      return serializeList(block, flavor, false, 1);
+
+    case 'orderedList':
+      return serializeList(block, flavor, true, block.attrs.start as number);
+
+    default:
+      return block.textContent;
+  }
+}
+
+/** Serialize a sequence of child blocks (blockquote/list-item contents) joined by blank lines. */
+function serializeBlocks(parent: PMNode, flavor: FlavorProfile): string {
+  const parts: string[] = [];
+  parent.forEach((child) => parts.push(serializeBlock(child, flavor)));
+  return parts.join('\n\n');
+}
+
+function serializeList(list: PMNode, flavor: FlavorProfile, ordered: boolean, start: number): string {
+  const lines: string[] = [];
+  let n = start;
+  list.forEach((item) => {
+    const marker = ordered ? `${n++}${flavor.orderedDelimiter}` : flavor.bullet;
+    const check = item.attrs.checked === null ? '' : item.attrs.checked ? '[x] ' : '[ ] ';
+    // Item body: serialize child blocks; indent continuation lines under the marker.
+    const body = serializeBlocks(item, flavor);
+    const indent = ' '.repeat(marker.length + 1 + check.length);
+    const [first, ...rest] = body.split('\n');
+    lines.push(`${marker} ${check}${first}`);
+    for (const line of rest) lines.push(line.length ? `${indent}${line}` : '');
+  });
+  return lines.join('\n');
+}
