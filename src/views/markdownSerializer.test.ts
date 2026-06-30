@@ -112,6 +112,59 @@ describe('serializeInline', () => {
   });
 });
 
+// Round-trip helper: build a paragraph with a single code-marked text node,
+// serialize it, parse the result, and assert the inlineCode value is identical.
+function codeNode(value: string) {
+  return para(liveSchema.text(value, [liveSchema.marks.code.create()]));
+}
+function parseFirstInlineCode(md: string): string {
+  const ast = parseMarkdownAst(md);
+  // ast is root → paragraph → inlineCode
+  const para = ast.children?.[0];
+  const node = para?.children?.[0];
+  if (!node || node.type !== 'inlineCode') throw new Error(`Expected inlineCode, got ${node?.type} in: ${md}`);
+  return node.value;
+}
+
+describe('serializeInline — inline code round-trip (variable-length backtick fence)', () => {
+  // Baseline: no backticks in text → single-backtick fence (existing behavior unchanged)
+  it('x*y (no backticks) → `x*y` and round-trips', () => {
+    const serialized = serializeInline(codeNode('x*y'), star);
+    expect(serialized).toBe('`x*y`');
+    expect(parseFirstInlineCode(serialized)).toBe('x*y');
+  });
+
+  // One backtick inside → needs double-backtick fence
+  it('a`b (one backtick) round-trips', () => {
+    const serialized = serializeInline(codeNode('a`b'), star);
+    expect(parseFirstInlineCode(serialized)).toBe('a`b');
+  });
+
+  // Two consecutive backticks inside → needs triple-backtick fence
+  it('a``b (two consecutive backticks) round-trips', () => {
+    const serialized = serializeInline(codeNode('a``b'), star);
+    expect(parseFirstInlineCode(serialized)).toBe('a``b');
+  });
+
+  // Leading backtick → needs padding so the fence-open isn't consumed as content
+  it('`lead (leading backtick) round-trips', () => {
+    const serialized = serializeInline(codeNode('`lead'), star);
+    expect(parseFirstInlineCode(serialized)).toBe('`lead');
+  });
+
+  // Trailing backtick → same issue on close side
+  it('trail` (trailing backtick) round-trips', () => {
+    const serialized = serializeInline(codeNode('trail`'), star);
+    expect(parseFirstInlineCode(serialized)).toBe('trail`');
+  });
+
+  // Entire text is backticks → longest run = 3, fence must be 4, with padding
+  it('``` (all backticks) round-trips', () => {
+    const serialized = serializeInline(codeNode('```'), star);
+    expect(parseFirstInlineCode(serialized)).toBe('```');
+  });
+});
+
 function tl(type: string, attrs: Record<string, unknown>, content?: any[]) {
   return liveSchema.node(type, { srcFrom: 0, srcTo: 0, blockId: 'b0', ...attrs }, content);
 }

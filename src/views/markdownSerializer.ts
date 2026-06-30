@@ -70,7 +70,20 @@ function serializeTextNode(node: PMNode, flavor: FlavorProfile): string {
   const code = node.marks.find((m) => m.type.name === 'code');
   const link = node.marks.find((m) => m.type.name === 'link');
 
-  let inner = code ? `\`${text}\`` : escapeInline(text);
+  let inner: string;
+  if (code) {
+    // CommonMark variable-length code-span fencing (§6.1):
+    // fence = run of backticks one longer than the longest consecutive run in text.
+    let longest = 0, run = 0;
+    for (const ch of text) { run = ch === '`' ? run + 1 : 0; if (run > longest) longest = run; }
+    const fence = '`'.repeat(longest + 1);
+    // Pad with a space on both sides when text starts or ends with a backtick
+    // so the parser doesn't treat fence + content as a longer run.
+    const pad = (text.startsWith('`') || text.endsWith('`')) ? ' ' : '';
+    inner = `${fence}${pad}${text}${pad}${fence}`;
+  } else {
+    inner = escapeInline(text);
+  }
   for (const m of orderedSymmetric(node.marks)) {
     const d = symDelim(m, flavor);
     inner = `${d}${inner}${d}`;

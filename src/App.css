@@ -140,7 +140,7 @@ body,
   gap: 8px;
   min-width: 240px;
   background: var(--popover-bg, #fff);
-  border: 1px solid var(--chrome-border, #c8c8c8);
+  border: 1px solid var(--chrome-border, #d0d0d0);
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
