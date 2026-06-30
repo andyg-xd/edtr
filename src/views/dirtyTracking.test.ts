@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { EditorState, TextSelection } from 'prosemirror-state';
+import { EditorState } from 'prosemirror-state';
 import { liveSchema } from './liveSchema';
 import { buildLiveDoc } from './liveModel';
 import { dirtyTrackingPlugin, getDirtyBlockIds } from './dirtyTracking';
