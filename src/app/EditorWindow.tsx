@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { Node as PMNode } from 'prosemirror-model';
+import type { EditorView } from 'prosemirror-view';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WindowChrome, type ViewMode } from './WindowChrome';
 import { CloseGuard } from './CloseGuard';
 import { useShortcutsAndCloseGuard } from './MenuBridge';
 import { CodeView } from '../views/CodeView';
 import { LiveView } from '../views/LiveView';
+import { RibbonView } from '../ribbon/RibbonView';
+import { markdownRibbon } from '../ribbon/markdownRibbon';
 import { toLive, writeBack } from '../views/ViewSync';
 import { openViaDialog, saveSession } from '../files/fileController';
 import { DocumentSession } from '../files/documentSession';
@@ -24,6 +27,9 @@ export function EditorWindow() {
   const liveDocRef = useRef<PMNode | null>(null);  // latest live doc
   const liveDirtyRef = useRef<Set<string>>(new Set());
   const [liveHasEdits, setLiveHasEdits] = useState(false);
+  const [liveView, setLiveView] = useState<EditorView | null>(null);
+  const [, bumpRibbon] = useReducer((x: number) => x + 1, 0); // re-render ribbon on selection change
+  const [linkRequest, bumpLinkRequest] = useReducer((x: number) => x + 1, 0); // ⌘K
 
   const handleOpen = useCallback(async () => {
     try {
@@ -36,6 +42,7 @@ export function EditorWindow() {
         setLiveHasEdits(false);
         liveDocRef.current = null;
         liveDirtyRef.current = new Set();
+        setLiveView(null);
       }
     } catch (e) {
       setError(`Could not open file: ${String(e)}`);
@@ -146,7 +153,18 @@ export function EditorWindow() {
       )}
       {session ? (
         showLive && live && live.ok ? (
-          <LiveView key={`live-${openCount}`} doc={live.doc} editable onEdit={handleLiveEdit} />
+          <>
+            {liveView && <RibbonView view={liveView} controls={markdownRibbon} linkRequest={linkRequest} />}
+            <LiveView
+              key={`live-${openCount}`}
+              doc={live.doc}
+              editable
+              onEdit={handleLiveEdit}
+              onViewReady={setLiveView}
+              onStateChange={bumpRibbon}
+              onLinkShortcut={bumpLinkRequest}
+            />
+          </>
         ) : (
           <CodeView
             key={openCount}

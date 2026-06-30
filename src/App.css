@@ -103,3 +103,47 @@ body,
 }
 .live-view .task-item { list-style: none; }
 .live-view .task-item input { margin-right: 6px; }
+
+/* Ribbon toolbar (Live view only) */
+.ribbon {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--chrome-border, #d0d0d0);
+  background: var(--chrome-bg, #f6f6f6);
+  position: relative;
+}
+.ribbon-btn {
+  min-width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  font-size: 13px;
+  cursor: pointer;
+  color: inherit;
+}
+.ribbon-btn:hover:not(:disabled) { background: rgba(0, 0, 0, 0.06); }
+.ribbon-btn.is-active { background: rgba(0, 0, 0, 0.12); border-color: rgba(0, 0, 0, 0.18); }
+.ribbon-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* Insert link/image popover */
+.insert-popover {
+  position: absolute;
+  top: 100%;
+  left: 8px;
+  z-index: 10;
+  margin-top: 4px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 240px;
+  background: var(--popover-bg, #fff);
+  border: 1px solid var(--chrome-border, #c8c8c8);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+.insert-popover-field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.insert-popover-field input { padding: 4px 6px; font-size: 13px; }
+.insert-popover-actions { display: flex; justify-content: flex-end; gap: 6px; }
