@@ -24,6 +24,7 @@ export function EditorWindow() {
       if (s) {
         setSession(s);
         setOpenCount((n) => n + 1);
+        setViewMode('code');
         setError(null);
       }
     } catch (e) {
