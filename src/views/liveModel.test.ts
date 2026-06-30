@@ -190,3 +190,43 @@ describe('mdastToLiveDoc — degradation', () => {
     if (!r.ok) expect(r.reason).toMatch(/position|locate/i);
   });
 });
+
+describe('liveModel — top-level-only ranges + per-build ids', () => {
+  it('does NOT put real source ranges on nested blocks (blockquote inner paragraph)', () => {
+    const r = buildLiveDoc('> quoted text\n');
+    if (!r.ok) throw new Error('degraded');
+    const bq = r.doc.child(0);
+    expect(bq.type.name).toBe('blockquote');
+    expect(bq.attrs.srcFrom).toBeGreaterThanOrEqual(0);
+    expect(bq.attrs.srcTo).toBeGreaterThan(bq.attrs.srcFrom); // top-level has a real range
+    const innerP = bq.child(0);
+    expect(innerP.type.name).toBe('paragraph');
+    // nested paragraph carries schema DEFAULT range (0/0), not a real one
+    expect(innerP.attrs.srcFrom).toBe(0);
+    expect(innerP.attrs.srcTo).toBe(0);
+    expect(innerP.attrs.blockId).toBe('');
+  });
+
+  it('still degrades when a nested block is unlocated', () => {
+    const root = {
+      type: 'root',
+      children: [
+        {
+          type: 'blockquote',
+          position: { start: { offset: 0 }, end: { offset: 5 } },
+          children: [{ type: 'paragraph', children: [{ type: 'text', value: 'x' }] /* no position */ }],
+        },
+      ],
+    };
+    const res = mdastToLiveDoc(root, '> x\n');
+    expect(res.ok).toBe(false);
+  });
+
+  it('assigns deterministic per-build ids starting at b0 (no cross-build leakage)', () => {
+    const a = buildLiveDoc('one\n\ntwo\n');
+    const b = buildLiveDoc('three\n\nfour\n');
+    if (!a.ok || !b.ok) throw new Error('degraded');
+    expect(a.doc.child(0).attrs.blockId).toBe('b0');
+    expect(b.doc.child(0).attrs.blockId).toBe('b0'); // each build restarts at b0
+  });
+});

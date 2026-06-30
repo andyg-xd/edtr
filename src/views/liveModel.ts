@@ -9,19 +9,24 @@ export type LiveResult =
 // Thrown internally when a block can't be safely mapped; caught at the top to degrade.
 class DegradeError extends Error {}
 
-let blockCounter = 0;
-function nextBlockId(): string {
-  return `b${blockCounter++}`;
+interface BuildCtx {
+  nextId: () => string;
 }
 
-/** [from, to) source range of an mdast node, or throw to force degradation. */
-function blockRange(node: any): { srcFrom: number; srcTo: number; blockId: string } {
+/** Throw to degrade if an mdast node lacks a usable source position. */
+function ensureLocated(node: any): { from: number; to: number } {
   const from = node?.position?.start?.offset;
   const to = node?.position?.end?.offset;
   if (typeof from !== 'number' || typeof to !== 'number' || to <= from) {
     throw new DegradeError(`Cannot locate source position for a ${node?.type ?? 'node'} block`);
   }
-  return { srcFrom: from, srcTo: to, blockId: nextBlockId() };
+  return { from, to };
+}
+
+/** Top-level blocks carry a real source range + id; nested blocks get schema defaults. */
+function rangeAttrs(node: any, ctx: BuildCtx, topLevel: boolean) {
+  const { from, to } = ensureLocated(node); // degrade-check applies to every block
+  return topLevel ? { srcFrom: from, srcTo: to, blockId: ctx.nextId() } : {};
 }
 
 // ---- Inline (Task 4: full mark/node mapping) ----
@@ -91,76 +96,73 @@ function addMark(marks: readonly Mark[], name: 'strong' | 'em' | 'strikethrough'
 }
 
 // ---- Verbatim fallback (filled in Task 5; Task 3 stub uses the raw slice) ----
-function buildVerbatim(node: any, source: string): PMNode {
-  const { srcFrom, srcTo, blockId } = blockRange(node);
-  return liveSchema.node('verbatim', { raw: source.slice(srcFrom, srcTo), srcFrom, srcTo, blockId });
+function buildVerbatim(node: any, source: string, ctx: BuildCtx, topLevel: boolean): PMNode {
+  const r = rangeAttrs(node, ctx, topLevel);
+  const { from, to } = ensureLocated(node);
+  return liveSchema.node('verbatim', { raw: source.slice(from, to), ...r });
 }
 
-function buildListItem(node: any, source: string): PMNode {
+function buildListItem(node: any, source: string, ctx: BuildCtx): PMNode {
   const checked = typeof node.checked === 'boolean' ? node.checked : null;
-  const content = (node.children ?? []).map((c: any) => buildBlock(c, source));
+  const content = (node.children ?? []).map((c: any) => buildBlock(c, source, ctx, false));
   return liveSchema.node('listItem', { checked }, content);
 }
 
-function buildBlock(node: any, source: string): PMNode {
+function buildBlock(node: any, source: string, ctx: BuildCtx, topLevel: boolean): PMNode {
   switch (node.type) {
     case 'paragraph': {
-      const r = blockRange(node);
+      const r = rangeAttrs(node, ctx, topLevel);
       return liveSchema.node('paragraph', r, inlineContent(node, source));
     }
     case 'heading': {
-      const r = blockRange(node);
+      const r = rangeAttrs(node, ctx, topLevel);
       return liveSchema.node('heading', { level: node.depth ?? 1, ...r }, inlineContent(node, source));
     }
     case 'blockquote': {
-      const r = blockRange(node);
-      const content = (node.children ?? []).map((c: any) => buildBlock(c, source));
+      const r = rangeAttrs(node, ctx, topLevel);
+      const content = (node.children ?? []).map((c: any) => buildBlock(c, source, ctx, false));
       return liveSchema.node('blockquote', r, content);
     }
     case 'code': {
-      const r = blockRange(node);
+      const r = rangeAttrs(node, ctx, topLevel);
       const value = typeof node.value === 'string' ? node.value : '';
       const text = value.length ? [liveSchema.text(value)] : [];
       return liveSchema.node('codeBlock', { lang: node.lang ?? null, ...r }, text);
     }
     case 'list': {
-      const r = blockRange(node);
-      const items = (node.children ?? []).map((c: any) => buildListItem(c, source));
+      const r = rangeAttrs(node, ctx, topLevel);
+      const items = (node.children ?? []).map((c: any) => buildListItem(c, source, ctx));
       if (node.ordered) {
         return liveSchema.node('orderedList', { start: node.start ?? 1, ...r }, items);
       }
       return liveSchema.node('bulletList', r, items);
     }
     case 'thematicBreak': {
-      const r = blockRange(node);
+      const r = rangeAttrs(node, ctx, topLevel);
       return liveSchema.node('horizontalRule', r);
     }
     default:
       // Unsupported-but-locatable (table, html, footnoteDefinition, …) → verbatim.
-      return buildVerbatim(node, source);
+      return buildVerbatim(node, source, ctx, topLevel);
   }
 }
 
 /** Pure core: map an mdast root + its source into a Live PM doc, or signal degrade. */
 export function mdastToLiveDoc(root: any, source: string): LiveResult {
-  blockCounter = 0;
+  let counter = 0;
+  const ctx: BuildCtx = { nextId: () => `b${counter++}` };
   try {
-    const blocks = (root.children ?? []).map((c: any) => buildBlock(c, source));
+    const blocks = (root.children ?? []).map((c: any) => buildBlock(c, source, ctx, true));
     const doc =
       blocks.length > 0
         ? liveSchema.node('doc', null, blocks)
-        : liveSchema.node('doc', null, [liveSchema.node('paragraph', blockRangeForEmpty())]);
+        : liveSchema.node('doc', null, [liveSchema.node('paragraph')]); // empty doc → empty paragraph (no fake range)
     doc.check();
     return { ok: true, doc };
   } catch (e) {
     if (e instanceof DegradeError) return { ok: false, degrade: true, reason: e.message };
     throw e;
   }
-}
-
-// An empty document still needs one valid (empty) paragraph for the schema.
-function blockRangeForEmpty() {
-  return { srcFrom: 0, srcTo: 0, blockId: nextBlockId() };
 }
 
 /** Parse `source` and build the Live PM doc (or signal degrade). */
