@@ -56,6 +56,16 @@ function orderedSymmetric(marks: readonly Mark[]): Mark[] {
     .sort((a, b) => MARK_ORDER.indexOf(a.type.name) - MARK_ORDER.indexOf(b.type.name));
 }
 
+/** Wrap `content` in the given symmetric marks (in order). */
+function wrapSym(content: string, marks: Mark[], flavor: FlavorProfile): string {
+  let out = content;
+  for (const m of marks) {
+    const d = symDelim(m, flavor);
+    out = `${d}${out}${d}`;
+  }
+  return out;
+}
+
 function serializeImage(node: PMNode): string {
   const alt = typeof node.attrs.alt === 'string' ? node.attrs.alt : '';
   const src = node.attrs.src as string;
@@ -70,6 +80,7 @@ function serializeTextNode(node: PMNode, flavor: FlavorProfile): string {
   const code = node.marks.find((m) => m.type.name === 'code');
   const link = node.marks.find((m) => m.type.name === 'link');
 
+  const symmetricMarks = orderedSymmetric(node.marks);
   let inner: string;
   if (code) {
     // CommonMark variable-length code-span fencing (§6.1):
@@ -80,13 +91,16 @@ function serializeTextNode(node: PMNode, flavor: FlavorProfile): string {
     // Pad with a space on both sides when text starts or ends with a backtick
     // so the parser doesn't treat fence + content as a longer run.
     const pad = (text.startsWith('`') || text.endsWith('`')) ? ' ' : '';
-    inner = `${fence}${pad}${text}${pad}${fence}`;
+    // Code spans: wrap the whole span in symmetric marks (code content is literal, no flanking issue).
+    inner = wrapSym(`${fence}${pad}${text}${pad}${fence}`, symmetricMarks, flavor);
+  } else if (symmetricMarks.length > 0 && text.trim() !== '') {
+    // Non-code symmetric marks: pull leading/trailing whitespace OUTSIDE the delimiters
+    // so the inner delimiter is flanking (CommonMark flanking rule).
+    const [, lead, coreRaw, trail] = text.match(/^(\s*)([\s\S]*?)(\s*)$/)!;
+    inner = `${lead}${wrapSym(escapeInline(coreRaw), symmetricMarks, flavor)}${trail}`;
   } else {
+    // No symmetric marks, OR whitespace-only text with marks: emit no delimiters.
     inner = escapeInline(text);
-  }
-  for (const m of orderedSymmetric(node.marks)) {
-    const d = symDelim(m, flavor);
-    inner = `${d}${inner}${d}`;
   }
   if (link) {
     const href = link.attrs.href as string;

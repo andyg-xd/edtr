@@ -226,3 +226,51 @@ describe('serializeBlock', () => {
     expect(serializeBlock(v, star)).toBe('| a | b |\n| - | - |');
   });
 });
+
+// Helpers for whitespace-around-mark round-trip tests.
+function parseFirstParagraphChildren(md: string): any[] {
+  const ast = parseMarkdownAst(md);
+  const para = ast.children?.[0];
+  return para?.children ?? [];
+}
+
+describe('serializeInline — whitespace outside symmetric marks (round-trip)', () => {
+  it('bold text with trailing space: emits **a** and round-trips', () => {
+    // text "a " with strong mark
+    const p = para(liveSchema.text('a ', [liveSchema.marks.strong.create()]));
+    const serialized = serializeInline(p, star);
+    // trailing space must be outside the delimiters
+    expect(serialized).toBe('**a** ');
+    // round-trip: parse back and recover strong on "a", space literal
+    const children = parseFirstParagraphChildren(serialized);
+    expect(children.some((n: any) => n.type === 'strong')).toBe(true);
+    const strongNode = children.find((n: any) => n.type === 'strong');
+    expect(strongNode?.children?.[0]?.value).toBe('a');
+  });
+
+  it('bold whitespace-only: emits no ** delimiters and round-trips with no strong', () => {
+    const p = para(liveSchema.text(' ', [liveSchema.marks.strong.create()]));
+    const serialized = serializeInline(p, star);
+    // no mark delimiters should wrap a whitespace-only span
+    expect(serialized).not.toContain('**');
+    // round-trip: the output parses without a strong node
+    const ast = parseMarkdownAst(serialized);
+    const paraNode = ast.children?.[0];
+    const hasStrong = (paraNode?.children ?? []).some((n: any) => n.type === 'strong');
+    expect(hasStrong).toBe(false);
+  });
+
+  it('mixed: bold code + bold space + plain text has no stray **', () => {
+    // Simulates: "html" (bold+code) + " " (bold) + "files" (plain)
+    const p = para(
+      liveSchema.text('html', [liveSchema.marks.strong.create(), liveSchema.marks.code.create()]),
+      liveSchema.text(' ', [liveSchema.marks.strong.create()]),
+      liveSchema.text('files'),
+    );
+    const serialized = serializeInline(p, star);
+    // The bold+code span serializes fine; the trailing bold space should NOT emit **
+    expect(serialized).not.toMatch(/\*\* \*\*/);
+    // "files" must be present in output
+    expect(serialized).toContain('files');
+  });
+});
