@@ -103,6 +103,13 @@ describe('serializeBlock', () => {
     ]);
     expect(serializeBlock(bq, star)).toBe('> line one');
   });
+  it('blockquote with two paragraphs prefixes a bare > on the blank line', () => {
+    const bq = tl('blockquote', {}, [
+      liveSchema.node('paragraph', {}, [liveSchema.text('line one')]),
+      liveSchema.node('paragraph', {}, [liveSchema.text('line two')]),
+    ]);
+    expect(serializeBlock(bq, star)).toBe('> line one\n>\n> line two');
+  });
   it('bullet list with flavor bullet', () => {
     const list = tl('bulletList', {}, [
       liveSchema.node('listItem', { checked: null }, [liveSchema.node('paragraph', {}, [liveSchema.text('a')])]),

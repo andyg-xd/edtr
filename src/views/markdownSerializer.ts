@@ -109,7 +109,7 @@ export function serializeBlock(block: PMNode, flavor: FlavorProfile): string {
     }
 
     case 'bulletList':
-      return serializeList(block, flavor, false, 1);
+      return serializeList(block, flavor, false, 1); // start arg unused for bullets
 
     case 'orderedList':
       return serializeList(block, flavor, true, block.attrs.start as number);
