@@ -1,14 +1,16 @@
-import { useCallback, useMemo, useReducer, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import type { Node as PMNode } from 'prosemirror-model';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WindowChrome, type ViewMode } from './WindowChrome';
 import { CloseGuard } from './CloseGuard';
 import { useShortcutsAndCloseGuard } from './MenuBridge';
 import { CodeView } from '../views/CodeView';
 import { LiveView } from '../views/LiveView';
-import { toLive } from '../views/ViewSync';
+import { toLive, writeBack } from '../views/ViewSync';
 import { openViaDialog, saveSession } from '../files/fileController';
 import { DocumentSession } from '../files/documentSession';
 import { basename } from '../files/fileTypes';
+import { detectFlavor } from '../doc/flavor';
 
 export function EditorWindow() {
   const [session, setSession] = useState<DocumentSession | null>(null);
@@ -17,6 +19,11 @@ export function EditorWindow() {
   const [error, setError] = useState<string | null>(null);
   const [showCloseGuard, setShowCloseGuard] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('code');
+
+  const liveBaselineRef = useRef<string>('');      // source when Live was entered
+  const liveDocRef = useRef<PMNode | null>(null);  // latest live doc
+  const liveDirtyRef = useRef<Set<string>>(new Set());
+  const [liveHasEdits, setLiveHasEdits] = useState(false);
 
   const handleOpen = useCallback(async () => {
     try {
@@ -32,18 +39,6 @@ export function EditorWindow() {
     }
   }, []);
 
-  const handleSave = useCallback(async (): Promise<boolean> => {
-    if (!session || !session.isDirty()) return true;
-    try {
-      await saveSession(session);
-      tick();
-      return true;
-    } catch (e) {
-      setError(`Could not save — your changes are safe in the editor. ${String(e)}`);
-      return false;
-    }
-  }, [session]);
-
   const handleChange = useCallback(
     (text: string) => {
       if (!session) return;
@@ -53,22 +48,14 @@ export function EditorWindow() {
     [session],
   );
 
-  const requestClose = useCallback(() => {
-    if (session?.isDirty()) {
-      setShowCloseGuard(true);
-    } else {
-      getCurrentWindow().destroy();
-    }
-  }, [session]);
-
-  useShortcutsAndCloseGuard({ onOpen: handleOpen, onSave: handleSave, onCloseRequest: requestClose });
-
-  const dirty = session?.isDirty() ?? false;
-
-  // Build the read-only Live doc only for a markdown session in Live mode.
+  // Build the Live doc only for a markdown session; guard against parse errors.
   const live = useMemo(() => {
     if (!session || session.format !== 'markdown') return null;
-    return toLive(session.text);
+    try {
+      return toLive(session.text);
+    } catch (e) {
+      return { ok: false as const, degrade: true as const, reason: String(e) };
+    }
     // Re-derive when the file changes (openCount) or the mode flips to live.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openCount, viewMode, session]);
@@ -76,6 +63,56 @@ export function EditorWindow() {
   const liveAvailable = !!session && session.format === 'markdown' && !!live && live.ok;
   const showLive = viewMode === 'live' && liveAvailable;
   const degraded = viewMode === 'live' && !!session && session.format === 'markdown' && !!live && !live.ok;
+
+  // Capture the baseline source whenever we (re)enter Live with a fresh doc.
+  useEffect(() => {
+    if (showLive && live && live.ok) {
+      liveBaselineRef.current = session!.text;
+      liveDocRef.current = live.doc;
+      liveDirtyRef.current = new Set();
+      setLiveHasEdits(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showLive, openCount]);
+
+  const handleLiveEdit = useCallback((doc: PMNode, dirtyIds: Set<string>) => {
+    liveDocRef.current = doc;
+    liveDirtyRef.current = dirtyIds;
+    setLiveHasEdits(dirtyIds.size > 0);
+  }, []);
+
+  const flushLiveToSource = useCallback(() => {
+    if (!session || !liveDocRef.current || liveDirtyRef.current.size === 0) return;
+    const flavor = detectFlavor(liveBaselineRef.current, 'markdown');
+    const newSource = writeBack(liveDocRef.current, liveBaselineRef.current, liveDirtyRef.current, flavor);
+    session.setCurrentText(newSource);
+  }, [session]);
+
+  const dirty = (session?.isDirty() ?? false) || liveHasEdits;
+
+  const handleSave = useCallback(async (): Promise<boolean> => {
+    if (showLive) flushLiveToSource();
+    if (!session || !session.isDirty()) {
+      setLiveHasEdits(false);
+      return true;
+    }
+    try {
+      await saveSession(session);
+      setLiveHasEdits(false);
+      tick();
+      return true;
+    } catch (e) {
+      setError(`Could not save — your changes are safe in the editor. ${String(e)}`);
+      return false;
+    }
+  }, [session, showLive, flushLiveToSource]);
+
+  const requestClose = useCallback(() => {
+    if (dirty) setShowCloseGuard(true);
+    else getCurrentWindow().destroy();
+  }, [dirty]);
+
+  useShortcutsAndCloseGuard({ onOpen: handleOpen, onSave: handleSave, onCloseRequest: requestClose });
 
   return (
     <div className="editor-window">
@@ -86,6 +123,7 @@ export function EditorWindow() {
         liveDisabled={!liveAvailable}
         onSetViewMode={(m) => {
           if (m === 'live' && !liveAvailable) return;
+          if (m === 'code' && showLive) flushLiveToSource(); // fold edits into source before showing Code
           setViewMode(m);
         }}
       />
@@ -101,7 +139,7 @@ export function EditorWindow() {
       )}
       {session ? (
         showLive && live && live.ok ? (
-          <LiveView key={`live-${openCount}`} doc={live.doc} />
+          <LiveView key={`live-${openCount}`} doc={live.doc} editable onEdit={handleLiveEdit} />
         ) : (
           <CodeView
             key={openCount}
