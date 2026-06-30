@@ -227,6 +227,7 @@ describe('liveModel — top-level-only ranges + per-build ids', () => {
     const b = buildLiveDoc('three\n\nfour\n');
     if (!a.ok || !b.ok) throw new Error('degraded');
     expect(a.doc.child(0).attrs.blockId).toBe('b0');
+    expect(a.doc.child(1).attrs.blockId).toBe('b1'); // counter increments within a build
     expect(b.doc.child(0).attrs.blockId).toBe('b0'); // each build restarts at b0
   });
 });

@@ -97,8 +97,8 @@ function addMark(marks: readonly Mark[], name: 'strong' | 'em' | 'strikethrough'
 
 // ---- Verbatim fallback (filled in Task 5; Task 3 stub uses the raw slice) ----
 function buildVerbatim(node: any, source: string, ctx: BuildCtx, topLevel: boolean): PMNode {
-  const r = rangeAttrs(node, ctx, topLevel);
-  const { from, to } = ensureLocated(node);
+  const { from, to } = ensureLocated(node); // single locate: degrade-check + coords
+  const r = topLevel ? { srcFrom: from, srcTo: to, blockId: ctx.nextId() } : {};
   return liveSchema.node('verbatim', { raw: source.slice(from, to), ...r });
 }
 
