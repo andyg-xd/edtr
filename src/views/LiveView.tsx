@@ -10,6 +10,11 @@ import { dirtyTrackingPlugin, getDirtyBlockIds } from './dirtyTracking';
 
 interface LiveViewProps {
   doc: PMNode;
+  /**
+   * Whether the editor is editable. Mount-only — changing this prop after mount
+   * has no effect. To toggle editability, remount via a new React `key`
+   * (same pattern as `doc`).
+   */
   editable?: boolean;
   onEdit?: (doc: PMNode, dirtyIds: Set<string>) => void;
 }

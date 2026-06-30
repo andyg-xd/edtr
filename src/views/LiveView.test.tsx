@@ -3,8 +3,10 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import type { ReactElement } from 'react';
+import { EditorState } from 'prosemirror-state';
 import { buildLiveDoc } from './liveModel';
-import { LiveView } from './LiveView';
+import { liveSchema } from './liveSchema';
+import { LiveView, structureLockPlugin } from './LiveView';
 
 let container: HTMLDivElement | null = null;
 afterEach(() => {
@@ -44,25 +46,22 @@ describe('LiveView', () => {
   });
 });
 
-import { EditorState } from 'prosemirror-state';
-import { liveSchema } from './liveSchema';
-import { structureLockPlugin } from './LiveView';
-
 describe('structureLockPlugin', () => {
   it('rejects a transaction that changes the top-level block count', () => {
-    const doc = docFor('alpha\n\nbeta\n');
+    const doc = docFor('alpha\n\nbeta\n'); // two top-level paragraphs
+    expect(doc.childCount).toBe(2); // sanity
     const state = EditorState.create({ doc, schema: liveSchema, plugins: [structureLockPlugin()] });
-    // try to delete the boundary between the two paragraphs (would merge → fewer blocks)
-    const tr = state.tr.delete(state.doc.child(0).nodeSize - 1, state.doc.child(0).nodeSize + 1);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((state as any).filterTransaction(tr, state)).toBe(false);
+    // delete across the boundary between the two paragraphs (would merge → 1 block)
+    const tr = state.tr.delete(doc.child(0).nodeSize - 1, doc.child(0).nodeSize + 1);
+    const after = state.apply(tr);
+    expect(after.doc.childCount).toBe(2); // lock fired → structure unchanged
   });
 
   it('allows an intra-block text insertion', () => {
     const doc = docFor('alpha\n');
     const state = EditorState.create({ doc, schema: liveSchema, plugins: [structureLockPlugin()] });
-    const tr = state.tr.insertText('X', 1);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((state as any).filterTransaction(tr, state)).toBe(true);
+    const after = state.apply(state.tr.insertText('X', 1));
+    expect(after.doc.childCount).toBe(1);          // structure unchanged
+    expect(after.doc.textContent).toBe('Xalpha');  // but the text WAS applied
   });
 });
