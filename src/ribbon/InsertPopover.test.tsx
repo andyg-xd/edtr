@@ -67,4 +67,9 @@ describe('InsertPopover', () => {
     const el = await render(<InsertPopover kind="image" onConfirm={() => {}} onCancel={() => {}} />);
     expect(el.textContent).toContain('Alt text');
   });
+
+  it('focuses the URL input on mount', async () => {
+    const el = await render(<InsertPopover kind="link" onConfirm={() => {}} onCancel={() => {}} />);
+    expect(document.activeElement).toBe(urlInput(el));
+  });
 });

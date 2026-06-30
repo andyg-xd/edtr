@@ -39,7 +39,7 @@ export function InsertPopover({ kind, initialText = '', onConfirm, onCancel }: I
       aria-label={kind === 'link' ? 'Insert link' : 'Insert image'}
       onKeyDown={(e) => {
         if (e.key === 'Escape') { e.stopPropagation(); onCancel(); }
-        if (e.key === 'Enter') { e.preventDefault(); submit(); }
+        else if (e.key === 'Enter') { e.preventDefault(); submit(); }
       }}
     >
       <label className="insert-popover-field">
