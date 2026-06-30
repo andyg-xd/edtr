@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { liveSchema } from './liveSchema';
 import { escapeInline, serializeInline, serializeBlock } from './markdownSerializer';
 import type { FlavorProfile } from '../doc/types';
+import { parseMarkdownAst } from '../doc/parse';
 
 const star: FlavorProfile = {
   bullet: '-', emphasis: '*', strong: '**', headingStyle: 'atx', fence: '`', orderedDelimiter: '.', gfm: true,
@@ -13,12 +14,48 @@ function para(...inline: ReturnType<typeof liveSchema.text>[] | any[]) {
   return liveSchema.node('paragraph', { srcFrom: 0, srcTo: 0, blockId: 'b0' }, inline);
 }
 
+// helper: concat all literal text from an mdast tree
+function mdastText(node: any): string {
+  if (node.type === 'text' || node.type === 'inlineCode') return node.value;
+  return (node.children ?? []).map(mdastText).join('');
+}
+function hasInlineMarkup(node: any): boolean {
+  const marks = ['emphasis', 'strong', 'delete', 'link', 'linkReference', 'inlineCode', 'image', 'html'];
+  if (marks.includes(node.type)) return true;
+  return (node.children ?? []).some(hasInlineMarkup);
+}
+
 describe('escapeInline', () => {
-  it('escapes markdown-significant characters', () => {
-    expect(escapeInline('a*b_c`d[e]')).toBe('a\\*b\\_c\\`d\\[e\\]');
+  it('escapes always-significant chars but leaves intraword _ and bare < alone', () => {
+    expect(escapeInline('a*b_c`d[e]')).toBe('a\\*b_c\\`d\\[e]');
   });
   it('leaves plain text untouched', () => {
     expect(escapeInline('hello world')).toBe('hello world');
+  });
+
+  // The contract: escapeInline(S) must re-parse to the literal text S with no inline markup.
+  const corpus: Array<[string, string]> = [
+    ['snake_case', 'snake_case'],
+    ['a_b_c', 'a_b_c'],
+    ['_lead', '\\_lead'],
+    ['trail_', 'trail\\_'],
+    ['array[0]', 'array\\[0]'],
+    ['2 * 3', '2 \\* 3'],
+    ['a < b', 'a < b'],
+    ['<3', '<3'],
+    ['<not a tag', '\\<not a tag'],
+    ['C++ & D', 'C++ & D'],
+    ['~~not strike~~', '\\~\\~not strike\\~\\~'],
+    ['~single~', '\\~single\\~'],
+    ['use `code` here', 'use \\`code\\` here'],
+  ];
+  it.each(corpus)('escapes %j to %j (minimal)', (input, expected) => {
+    expect(escapeInline(input)).toBe(expected);
+  });
+  it.each(corpus)('round-trips %j through the real parser', (input) => {
+    const ast = parseMarkdownAst(escapeInline(input));
+    expect(mdastText(ast)).toBe(input);
+    expect(hasInlineMarkup(ast)).toBe(false);
   });
 });
 
@@ -59,7 +96,7 @@ describe('serializeInline', () => {
   });
   it('escapes text that would form spurious markdown', () => {
     const p = para(liveSchema.text('snake_case *not bold*'));
-    expect(serializeInline(p, star)).toBe('snake\\_case \\*not bold\\*');
+    expect(serializeInline(p, star)).toBe('snake_case \\*not bold\\*');
   });
   it('serializes a code span inside a link', () => {
     const p = para(liveSchema.text('code', [liveSchema.marks.code.create(), liveSchema.marks.link.create({ href: 'http://x.test', title: null })]));

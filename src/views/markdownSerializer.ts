@@ -1,13 +1,35 @@
 import type { Node as PMNode, Mark } from 'prosemirror-model';
 import type { FlavorProfile } from '../doc/types';
 
+function isAlnum(c: string): boolean {
+  return /[A-Za-z0-9]/.test(c);
+}
+
 /**
- * Escape characters that could otherwise start markdown inline syntax, so a
- * re-parse of the serialized text yields the same literal content. Conservative
- * (may escape a few characters that wouldn't strictly need it); see PLAN debt.
+ * Escape only the characters that would actually be re-parsed as markup in
+ * their position, so a re-parse of the serialized text yields the same literal
+ * content. Context-aware (minimal): intraword `_` and a bare `<` stay literal.
+ * Correctness (round-trip) is the hard contract; minimality is best-effort.
+ * Frozen against the project's remark-gfm via the markdownSerializer round-trip
+ * corpus. (Untouched blocks are emitted verbatim and never reach this.)
  */
 export function escapeInline(text: string): string {
-  return text.replace(/[\\`*_[\]~<>]/g, (c) => '\\' + c);
+  let out = '';
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    const prev = text[i - 1] ?? '';
+    const next = text[i + 1] ?? '';
+    if (c === '\\' || c === '`' || c === '*' || c === '[' || c === '~') {
+      out += '\\' + c;
+    } else if (c === '_') {
+      out += isAlnum(prev) && isAlnum(next) ? c : '\\' + c;
+    } else if (c === '<') {
+      out += /[A-Za-z/]/.test(next) ? '\\' + c : c;
+    } else {
+      out += c;
+    }
+  }
+  return out;
 }
 
 const SYMMETRIC = new Set(['strong', 'em', 'strikethrough']);
