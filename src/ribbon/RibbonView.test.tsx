@@ -81,6 +81,7 @@ describe('RibbonView', () => {
     await act(async () => { addBtn.click(); });
     expect(built).toHaveBeenCalledWith(view.state, view.dispatch);
     expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(view.focus).toHaveBeenCalled();
   });
 
   it('runs whenActiveRun (not the popover) when a popover control is active', async () => {
@@ -94,6 +95,7 @@ describe('RibbonView', () => {
     await act(async () => { btn(container, 'Link').click(); });
     expect(remove).toHaveBeenCalledWith(view.state, view.dispatch);
     expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(view.focus).toHaveBeenCalled();
   });
 
   it('a linkRequest bump opens the link popover', async () => {
@@ -106,5 +108,63 @@ describe('RibbonView', () => {
     expect(container.querySelector('[role="dialog"]')).toBeNull();
     await act(async () => { root.render(<RibbonView view={view} controls={[link]} linkRequest={1} />); });
     expect(container.querySelector('[role="dialog"]')).toBeTruthy();
+  });
+
+  it('linkRequest nonzero on mount does NOT open the popover; only an increase does', async () => {
+    const link: RibbonControl = {
+      id: 'link', label: '🔗', ariaLabel: 'Link', isActive: () => false, isEnabled: () => true,
+      action: { kind: 'popover', popover: 'link', buildCommand: () => () => true },
+    };
+    const view = fakeView();
+    // Mount with nonzero linkRequest (simulating remount after a prior ⌘K)
+    const { container, root } = await render(<RibbonView view={view} controls={[link]} linkRequest={2} />);
+    // Must NOT open the popover on mount
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    // Increase the value — NOW the popover should open
+    await act(async () => { root.render(<RibbonView view={view} controls={[link]} linkRequest={3} />); });
+    expect(container.querySelector('[role="dialog"]')).toBeTruthy();
+  });
+
+  it('keeps popover open and does not refocus when buildCommand returns false', async () => {
+    const builtFalse = vi.fn(() => false);
+    const link: RibbonControl = {
+      id: 'link', label: '🔗', ariaLabel: 'Link', isActive: () => false, isEnabled: () => true,
+      action: { kind: 'popover', popover: 'link', buildCommand: () => builtFalse },
+    };
+    const view = fakeView();
+    const { container } = await render(<RibbonView view={view} controls={[link]} />);
+    // Open the popover by clicking the link button
+    await act(async () => { btn(container, 'Link').click(); });
+    expect(container.querySelector('[role="dialog"]')).toBeTruthy();
+    // Fill URL
+    const urlEl = container.querySelectorAll('input')[1] as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => { setter.call(urlEl, 'http://x.test'); urlEl.dispatchEvent(new Event('input', { bubbles: true })); });
+    // Confirm
+    const addBtn = Array.from(container.querySelectorAll('button')).find((b) => /add/i.test(b.textContent ?? ''))!;
+    await act(async () => { addBtn.click(); });
+    // Command returned false → dialog must remain open, focus must NOT have been called
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(view.focus).not.toHaveBeenCalled();
+  });
+
+  it('closes popover and refocuses when buildCommand returns true', async () => {
+    const builtTrue = vi.fn(() => true);
+    const link: RibbonControl = {
+      id: 'link', label: '🔗', ariaLabel: 'Link', isActive: () => false, isEnabled: () => true,
+      action: { kind: 'popover', popover: 'link', buildCommand: () => builtTrue },
+    };
+    const view = fakeView();
+    const { container } = await render(<RibbonView view={view} controls={[link]} />);
+    await act(async () => { btn(container, 'Link').click(); });
+    expect(container.querySelector('[role="dialog"]')).toBeTruthy();
+    const urlEl = container.querySelectorAll('input')[1] as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => { setter.call(urlEl, 'http://x.test'); urlEl.dispatchEvent(new Event('input', { bubbles: true })); });
+    const addBtn = Array.from(container.querySelectorAll('button')).find((b) => /add/i.test(b.textContent ?? ''))!;
+    await act(async () => { addBtn.click(); });
+    // Command returned true → dialog must close, focus must have been called
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(view.focus).toHaveBeenCalled();
   });
 });

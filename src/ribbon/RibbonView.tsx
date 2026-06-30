@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { EditorView } from 'prosemirror-view';
 import type { Command } from 'prosemirror-state';
 import type { RibbonControl, PopoverValues } from './RibbonModel';
@@ -28,18 +28,23 @@ export function RibbonView({ view, controls, linkRequest = 0 }: RibbonViewProps)
     setPopover({ control, initialText });
   }
 
-  // ⌘K (a change in linkRequest) → trigger the link control.
+  const prevLinkRequest = useRef(linkRequest);
+
+  // ⌘K (an increase in linkRequest) → trigger the link control.
   useEffect(() => {
-    if (linkRequest > 0) {
+    if (linkRequest > prevLinkRequest.current) {
       const link = controls.find((c) => c.id === 'link');
       if (link && link.isEnabled(view.state)) activate(link);
     }
+    prevLinkRequest.current = linkRequest;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkRequest]);
 
   function confirmPopover(values: PopoverValues) {
     if (popover && popover.control.action.kind === 'popover') {
-      runCommand(popover.control.action.buildCommand(values));
+      const ok = popover.control.action.buildCommand(values)(view.state, view.dispatch);
+      if (ok) { setPopover(null); view.focus(); }
+      return;
     }
     setPopover(null);
   }
