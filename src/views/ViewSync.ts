@@ -1,7 +1,8 @@
 import type { Node as PMNode } from 'prosemirror-model';
 import { spliceSource } from '../doc/splice';
-import type { SpliceEdit } from '../doc/types';
+import type { SpliceEdit, FlavorProfile } from '../doc/types';
 import { buildLiveDoc, type LiveResult } from './liveModel';
+import { serializeBlock } from './markdownSerializer';
 
 /** Build the read-only Live document from source (or signal degrade). */
 export function toLive(source: string): LiveResult {
@@ -29,4 +30,29 @@ export function toSource(
     edits.push({ start: srcFrom, end: srcTo, text: next });
   });
   return spliceSource(originalSource, edits);
+}
+
+/**
+ * A `toSource` callback: returns re-serialized Markdown for blocks in the
+ * dirty set, or `null` for untouched blocks (→ emitted verbatim).
+ */
+export function serializeDirty(
+  dirty: Set<string>,
+  flavor: FlavorProfile,
+): (block: PMNode) => string | null {
+  return (block) => {
+    const id = block.attrs.blockId as string;
+    if (!dirty.has(id)) return null;
+    return serializeBlock(block, flavor);
+  };
+}
+
+/** Re-derive source: splice re-serialized dirty blocks into the baseline. */
+export function writeBack(
+  doc: PMNode,
+  baseline: string,
+  dirty: Set<string>,
+  flavor: FlavorProfile,
+): string {
+  return toSource(doc, baseline, serializeDirty(dirty, flavor));
 }
