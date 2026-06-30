@@ -1,4 +1,4 @@
-import type { Node as PMNode } from 'prosemirror-model';
+import type { Node as PMNode, Mark } from 'prosemirror-model';
 import { liveSchema } from './liveSchema';
 import { parseMarkdownAst } from '../doc/parse';
 
@@ -24,15 +24,68 @@ function blockRange(node: any): { srcFrom: number; srcTo: number; blockId: strin
   return { srcFrom: from, srcTo: to, blockId: nextBlockId() };
 }
 
-// ---- Inline (filled in Task 4; Task 3 stub renders plain text) ----
-function inlineContent(node: any, _source: string): PMNode[] {
+// ---- Inline (Task 4: full mark/node mapping) ----
+
+// Map mdast inline nodes → PM inline nodes, carrying accumulated marks down.
+function inlineContent(node: any, source: string): PMNode[] {
   const out: PMNode[] = [];
   for (const child of node.children ?? []) {
-    if (child.type === 'text' && typeof child.value === 'string') {
-      out.push(liveSchema.text(child.value));
-    }
+    out.push(...inlineNode(child, source, []));
   }
   return out;
+}
+
+function inlineNode(node: any, source: string, marks: readonly Mark[]): PMNode[] {
+  switch (node.type) {
+    case 'text':
+      return typeof node.value === 'string' ? [liveSchema.text(node.value, marks)] : [];
+    case 'strong':
+      return childInline(node, source, addMark(marks, 'strong'));
+    case 'emphasis':
+      return childInline(node, source, addMark(marks, 'em'));
+    case 'delete':
+      return childInline(node, source, addMark(marks, 'strikethrough'));
+    case 'inlineCode':
+      return [liveSchema.text(String(node.value ?? ''), addMark(marks, 'code'))];
+    case 'link':
+      return childInline(
+        node,
+        source,
+        marks.concat(liveSchema.marks.link.create({ href: node.url ?? '', title: node.title ?? null })),
+      );
+    case 'image':
+      return [
+        liveSchema.node('image', {
+          src: node.url ?? '',
+          alt: typeof node.alt === 'string' ? node.alt : null,
+          title: node.title ?? null,
+        }),
+      ];
+    case 'break':
+      return [liveSchema.node('hardBreak')];
+    default: {
+      // Unknown inline (e.g. inline html, footnoteReference): emit its raw text.
+      const from = node?.position?.start?.offset;
+      const to = node?.position?.end?.offset;
+      const raw =
+        typeof node.value === 'string'
+          ? node.value
+          : typeof from === 'number' && typeof to === 'number'
+            ? source.slice(from, to)
+            : '';
+      return raw ? [liveSchema.text(raw, marks)] : [];
+    }
+  }
+}
+
+function childInline(node: any, source: string, marks: readonly Mark[]): PMNode[] {
+  const out: PMNode[] = [];
+  for (const child of node.children ?? []) out.push(...inlineNode(child, source, marks));
+  return out;
+}
+
+function addMark(marks: readonly Mark[], name: 'strong' | 'em' | 'strikethrough' | 'code'): readonly Mark[] {
+  return marks.concat(liveSchema.marks[name].create());
 }
 
 // ---- Verbatim fallback (filled in Task 5; Task 3 stub uses the raw slice) ----

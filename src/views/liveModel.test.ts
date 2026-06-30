@@ -65,6 +65,59 @@ describe('buildLiveDoc — block structure', () => {
   });
 });
 
+describe('buildLiveDoc — inline content', () => {
+  it('applies strong and emphasis marks', () => {
+    const d = doc('**bold** and *italic*\n');
+    const p = d.child(0);
+    const boldText = p.child(0);
+    expect(boldText.text).toBe('bold');
+    expect(boldText.marks.map((m) => m.type.name)).toContain('strong');
+    // find the emphasized run
+    let sawEm = false;
+    p.descendants((n) => {
+      if (n.isText && n.marks.some((m) => m.type.name === 'em')) sawEm = true;
+    });
+    expect(sawEm).toBe(true);
+  });
+
+  it('applies inline code and strikethrough', () => {
+    const code = doc('`x`\n').child(0).child(0);
+    expect(code.text).toBe('x');
+    expect(code.marks.map((m) => m.type.name)).toContain('code');
+
+    let sawStrike = false;
+    doc('~~gone~~\n').descendants((n) => {
+      if (n.isText && n.marks.some((m) => m.type.name === 'strikethrough')) sawStrike = true;
+    });
+    expect(sawStrike).toBe(true);
+  });
+
+  it('maps links with href and title to the link mark', () => {
+    let link: any = null;
+    doc('[t](https://x.test "ti")\n').descendants((n) => {
+      const m = n.marks?.find((mm: any) => mm.type.name === 'link');
+      if (m) link = m;
+    });
+    expect(link.attrs.href).toBe('https://x.test');
+    expect(link.attrs.title).toBe('ti');
+  });
+
+  it('maps an image to an image node', () => {
+    let img: any = null;
+    doc('![alt](pic.png)\n').descendants((n) => {
+      if (n.type.name === 'image') img = n;
+    });
+    expect(img.attrs.src).toBe('pic.png');
+    expect(img.attrs.alt).toBe('alt');
+  });
+
+  it('maps a task list item checked state', () => {
+    const list = doc('- [x] done\n- [ ] todo\n').child(0);
+    expect(list.child(0).attrs.checked).toBe(true);
+    expect(list.child(1).attrs.checked).toBe(false);
+  });
+});
+
 describe('mdastToLiveDoc — degradation', () => {
   it('degrades to Code-only when a top-level block has no position', () => {
     const root = {
