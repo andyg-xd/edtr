@@ -33,6 +33,9 @@ export function EditorWindow() {
         setOpenCount((n) => n + 1);
         setViewMode('code');
         setError(null);
+        setLiveHasEdits(false);
+        liveDocRef.current = null;
+        liveDirtyRef.current = new Set();
       }
     } catch (e) {
       setError(`Could not open file: ${String(e)}`);
@@ -72,6 +75,8 @@ export function EditorWindow() {
       liveDirtyRef.current = new Set();
       setLiveHasEdits(false);
     }
+    // `session` is intentionally excluded: baseline is (re)captured only on
+    // enter-Live (showLive) or file-switch (openCount), never mid-edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showLive, openCount]);
 
@@ -165,6 +170,7 @@ export function EditorWindow() {
             getCurrentWindow().destroy();
           }}
           onDiscard={() => {
+            setLiveHasEdits(false);
             setShowCloseGuard(false);
             getCurrentWindow().destroy();
           }}
