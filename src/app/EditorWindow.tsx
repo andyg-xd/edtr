@@ -91,6 +91,8 @@ export function EditorWindow() {
     const flavor = detectFlavor(liveBaselineRef.current, 'markdown');
     const newSource = writeBack(liveDocRef.current, liveBaselineRef.current, liveDirtyRef.current, flavor);
     session.setCurrentText(newSource);
+    liveDirtyRef.current = new Set();
+    setLiveHasEdits(false);
   }, [session]);
 
   const dirty = (session?.isDirty() ?? false) || liveHasEdits;
