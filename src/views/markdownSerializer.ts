@@ -121,6 +121,27 @@ export function serializeInline(block: PMNode, flavor: FlavorProfile): string {
   return out;
 }
 
+function alignDelim(align: string | null): string {
+  switch (align) {
+    case 'left': return ':--';
+    case 'right': return '--:';
+    case 'center': return ':-:';
+    default: return '---';
+  }
+}
+
+/** Serialize a table cell's inline content to GFM: reuse the inline serializers,
+ *  render a hard break as <br>, then escape every pipe (GFM unescapes \| in cells). */
+function serializeTableCell(cell: PMNode, flavor: FlavorProfile): string {
+  let out = '';
+  cell.forEach((child) => {
+    if (child.type.name === 'image') out += serializeImage(child);
+    else if (child.type.name === 'hardBreak') out += '<br>';
+    else if (child.isText) out += serializeTextNode(child, flavor);
+  });
+  return out.replace(/\|/g, '\\|');
+}
+
 /** Serialize one block (recursing into blockquote/list content) to Markdown. */
 export function serializeBlock(block: PMNode, flavor: FlavorProfile): string {
   switch (block.type.name) {
@@ -162,6 +183,21 @@ export function serializeBlock(block: PMNode, flavor: FlavorProfile): string {
 
     case 'orderedList':
       return serializeList(block, flavor, true, block.attrs.start as number);
+
+    case 'table': {
+      const lines: string[] = [];
+      block.forEach((row, _offset, rowIdx) => {
+        const cells: string[] = [];
+        row.forEach((cell) => cells.push(serializeTableCell(cell, flavor)));
+        lines.push(`| ${cells.join(' | ')} |`);
+        if (rowIdx === 0) {
+          const delims: string[] = [];
+          row.forEach((cell) => delims.push(alignDelim(cell.attrs.align as string | null)));
+          lines.push(`| ${delims.join(' | ')} |`);
+        }
+      });
+      return lines.join('\n');
+    }
 
     // Schema-invariant guard: every liveSchema `group: 'block'` node must have an
     // arm above. If a future schema block node (e.g. an editable table in 3c-v)

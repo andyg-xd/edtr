@@ -306,6 +306,45 @@ describe('serializeBlock — structural-editing coverage', () => {
   });
 });
 
+describe('serializeBlock — GFM table', () => {
+  const flavor = detectFlavor('x\n', 'markdown');
+  const { table, tableRow, tableCell } = liveSchema.nodes;
+  const cell = (text: string, attrs = {}) =>
+    tableCell.create(attrs, text ? [liveSchema.text(text)] : undefined);
+
+  it('serializes header + delimiter (all four alignments) + body', () => {
+    const t = table.create(null, [
+      tableRow.create(null, [
+        cell('A', { header: true, align: null }),
+        cell('B', { header: true, align: 'left' }),
+        cell('C', { header: true, align: 'center' }),
+        cell('D', { header: true, align: 'right' }),
+      ]),
+      tableRow.create(null, [cell('1'), cell('2'), cell('3'), cell('4')]),
+    ]);
+    expect(serializeBlock(t, flavor)).toBe('| A | B | C | D |\n| --- | :-- | :-: | --: |\n| 1 | 2 | 3 | 4 |');
+  });
+
+  it('escapes pipes in cell content', () => {
+    const t = table.create(null, [
+      tableRow.create(null, [cell('a|b', { header: true })]),
+      tableRow.create(null, [cell('c')]),
+    ]);
+    expect(serializeBlock(t, flavor)).toBe('| a\\|b |\n| --- |\n| c |');
+  });
+
+  it('serializes an in-cell hard break as <br>', () => {
+    const c = tableCell.create({ header: false }, [
+      liveSchema.text('a'), liveSchema.node('hardBreak'), liveSchema.text('b'),
+    ]);
+    const t = table.create(null, [
+      tableRow.create(null, [cell('H', { header: true })]),
+      tableRow.create(null, [c]),
+    ]);
+    expect(serializeBlock(t, flavor)).toBe('| H |\n| --- |\n| a<br>b |');
+  });
+});
+
 describe('serializeBlock — multi-child + schema-exhaustiveness', () => {
   const flavor = detectFlavor('x\n', 'markdown');
 

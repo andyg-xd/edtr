@@ -34,3 +34,36 @@ describe('liveSchema', () => {
     expect(v.isAtom).toBe(true);
   });
 });
+
+describe('table schema', () => {
+  const { table, tableRow, tableCell } = liveSchema.nodes;
+  const cell = (text: string, attrs = {}) =>
+    tableCell.create(attrs, text ? liveSchema.text(text) : undefined);
+
+  it('a table > tableRow > tableCell doc is valid', () => {
+    const t = table.create(null, tableRow.create(null, [cell('A', { header: true }), cell('B', { header: true })]));
+    expect(() => t.check()).not.toThrow();
+    expect(t.type.isBlock).toBe(true);
+  });
+
+  it('header cell renders <th>, body cell renders <td>', () => {
+    expect((tableCell.create({ header: true }).type.spec.toDOM!(tableCell.create({ header: true })) as any)[0]).toBe('th');
+    expect((tableCell.create({ header: false }).type.spec.toDOM!(tableCell.create({ header: false })) as any)[0]).toBe('td');
+  });
+
+  it('an aligned cell carries text-align in toDOM', () => {
+    const c = tableCell.create({ align: 'center' });
+    const dom = tableCell.spec.toDOM!(c) as any;
+    expect(dom[1]).toEqual({ style: 'text-align:center' });
+  });
+
+  it('tableCell is isolating', () => {
+    expect(tableCell.spec.isolating).toBe(true);
+  });
+
+  it('table.createAndFill() yields a valid minimal instance', () => {
+    const t = table.createAndFill();
+    expect(t).not.toBeNull();
+    expect(() => t!.check()).not.toThrow();
+  });
+});

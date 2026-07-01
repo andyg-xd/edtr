@@ -88,6 +88,32 @@ const nodes: Record<string, NodeSpec> = {
     toDOM: (node) => ['pre', { class: 'md-verbatim' }, node.attrs.raw as string],
   },
 
+  table: {
+    group: 'block',
+    content: 'tableRow+',
+    attrs: { ...rangeAttrs },
+    toDOM: () => ['table', ['tbody', 0]],
+  },
+
+  tableRow: {
+    content: 'tableCell+',
+    toDOM: () => ['tr', 0],
+  },
+
+  // GFM cell: inline-only, span-free. `header` → the first row's cells (<th>).
+  // `align` mirrors mdast per-column alignment.
+  tableCell: {
+    content: 'inline*',
+    isolating: true,
+    attrs: { header: { default: false }, align: { default: null } },
+    toDOM: (node) => {
+      const tag = node.attrs.header ? 'th' : 'td';
+      const attrs: Record<string, unknown> = {};
+      if (node.attrs.align) attrs.style = `text-align:${node.attrs.align}`;
+      return [tag, attrs, 0];
+    },
+  },
+
   image: {
     group: 'inline',
     inline: true,
