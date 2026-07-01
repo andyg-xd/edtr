@@ -10,7 +10,7 @@ import { dirtyTrackingPlugin, getDirtyBlockIds } from './dirtyTracking';
 import { toggleStrong, toggleEm } from '../commands/markdownInlineCommands';
 import { blockIdentityPlugin } from './blockIdentity';
 import { splitCommand, softBreakCommand } from '../commands/markdownStructureCommands';
-import { goToNextCell } from '../commands/markdownTableCommands';
+import { goToNextCell, arrowVertical } from '../commands/markdownTableCommands';
 
 interface LiveViewProps {
   doc: PMNode;
@@ -47,6 +47,7 @@ export function LiveView({ doc, editable = true, onEdit, onViewReady, onStateCha
           history(),
           keymap({ Enter: splitCommand, 'Shift-Enter': softBreakCommand }),
           keymap({ Tab: goToNextCell(1), 'Shift-Tab': goToNextCell(-1) }),
+          keymap({ ArrowUp: arrowVertical('up'), ArrowDown: arrowVertical('down') }),
           keymap({
             'Mod-b': toggleStrong,
             'Mod-i': toggleEm,

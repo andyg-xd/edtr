@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { EditorState, TextSelection, type Command } from 'prosemirror-state';
 import { liveSchema } from '../views/liveSchema';
 import { buildLiveDoc } from '../views/liveModel';
-import { goToNextCell } from './markdownTableCommands';
+import { goToNextCell, arrowVertical } from './markdownTableCommands';
 
 function setup(src: string) {
   const r = buildLiveDoc(src);
@@ -50,5 +50,47 @@ describe('goToNextCell', () => {
   it('returns false when the cursor is not in a table', () => {
     const s = cursorAtText(setup('hello\n'), 'hello');
     expect(goToNextCell(1)(s)).toBe(false);
+  });
+});
+
+describe('arrowVertical', () => {
+  // 2x2 table: header row (a, b) + body row (c, d)
+  // view is omitted in all tests so the intra-cell endOfTextblock gate is skipped
+
+  it('ArrowDown from a → c (same column, next row)', () => {
+    const s = cursorAtText(setup(SRC), 'a');
+    const { state } = run(s, arrowVertical('down'));
+    expect(state.selection.$from.parent.textContent).toBe('c');
+  });
+
+  it('ArrowDown from b → d (same column, next row)', () => {
+    const s = cursorAtText(setup(SRC), 'b');
+    const { state } = run(s, arrowVertical('down'));
+    expect(state.selection.$from.parent.textContent).toBe('d');
+  });
+
+  it('ArrowUp from c → a (same column, previous row)', () => {
+    const s = cursorAtText(setup(SRC), 'c');
+    const { state } = run(s, arrowVertical('up'));
+    expect(state.selection.$from.parent.textContent).toBe('a');
+  });
+
+  it('ArrowUp from a (top edge) → returns false, cursor unchanged', () => {
+    const s = cursorAtText(setup(SRC), 'a');
+    const { ok, state } = run(s, arrowVertical('up'));
+    expect(ok).toBe(false);
+    expect(state.selection.$from.parent.textContent).toBe('a');
+  });
+
+  it('ArrowDown from d (bottom edge) → returns false, cursor unchanged', () => {
+    const s = cursorAtText(setup(SRC), 'd');
+    const { ok, state } = run(s, arrowVertical('down'));
+    expect(ok).toBe(false);
+    expect(state.selection.$from.parent.textContent).toBe('d');
+  });
+
+  it('returns false when the cursor is not in a table', () => {
+    const s = cursorAtText(setup('hello\n'), 'hello');
+    expect(arrowVertical('down')(s)).toBe(false);
   });
 });
