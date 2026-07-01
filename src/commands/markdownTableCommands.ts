@@ -44,12 +44,15 @@ export function goToNextCell(dir: 1 | -1): Command {
 
 /**
  * Move the cursor to the cell directly above or below in the SAME COLUMN.
- * Returns false when not in a table, at the table edge, or when the cursor
- * is not yet at the end of the text block in that direction (multi-line cell).
- * When `view` is undefined (e.g. in tests), the intra-cell gate is skipped.
+ * Up/Down ALWAYS move to the adjacent row's same-column cell (deterministic grid nav).
+ * Returns false only when not in a table, or at the table's top/bottom edge
+ * (so Up/Down can exit the table via default motion).
+ * Tradeoff (acceptable for GFM): arrows do not move within a multi-line cell before
+ * crossing rows — Up/Down always cross to the adjacent row. Click still places
+ * the cursor anywhere within a cell.
  */
 export function arrowVertical(dir: 'up' | 'down'): Command {
-  return (state, dispatch, view?: EditorView) => {
+  return (state, dispatch, _view?: EditorView) => {
     const sel = state.selection;
     if (!sel.empty) return false;
     const $from = sel.$from;
@@ -58,8 +61,6 @@ export function arrowVertical(dir: 'up' | 'down'): Command {
     if (depth === 0) return false;
     const tableDepth = depth - 2;
     if (tableDepth < 0 || $from.node(tableDepth).type !== liveSchema.nodes.table) return false;
-    // Intra-cell gate: let default move within a multi-line cell first
-    if (view && !view.endOfTextblock(dir)) return false;
     const rowIndex = $from.index(tableDepth);
     const colIndex = $from.index(tableDepth + 1);
     const table = $from.node(tableDepth);

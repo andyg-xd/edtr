@@ -93,4 +93,12 @@ describe('arrowVertical', () => {
     const s = cursorAtText(setup('hello\n'), 'hello');
     expect(arrowVertical('down')(s)).toBe(false);
   });
+
+  it('grid-navigates even when endOfTextblock reports false (no flaky gate)', () => {
+    const s = cursorAtText(setup(SRC), 'a');
+    const fakeView = { endOfTextblock: () => false } as any;
+    let next = s;
+    arrowVertical('down')(s, (tr) => { next = s.apply(tr); }, fakeView);
+    expect(next.selection.$from.parent.textContent).toBe('c');
+  });
 });
