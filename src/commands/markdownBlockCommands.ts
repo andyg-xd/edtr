@@ -3,9 +3,6 @@ import type { NodeType } from 'prosemirror-model';
 import { findWrapping, liftTarget } from 'prosemirror-transform';
 import { liveSchema } from '../views/liveSchema';
 
-/** Meta key marking a transaction as a trusted block-transform (the structure lock permits these). */
-export const BLOCK_TRANSFORM = 'edtrBlockTransform';
-
 const { paragraph, heading, codeBlock } = liveSchema.nodes;
 
 /** The top-level block containing the cursor's `$from`. */
@@ -63,7 +60,6 @@ function setType(target: NodeType, extraAttrs: Record<string, unknown>): Command
         tr.setBlockType(inner, inner, target, { ...extraAttrs, ...rangeAttrs(block) });
         pos += block.nodeSize;
       }
-      tr.setMeta(BLOCK_TRANSFORM, true);
       dispatch(tr.scrollIntoView());
     }
     return true;
@@ -109,7 +105,7 @@ const unwrap: Command = (state, dispatch) => {
   if (!range) return false;
   const target = liftTarget(range);
   if (target == null) return false;
-  if (dispatch) dispatch(state.tr.lift(range, target).setMeta(BLOCK_TRANSFORM, true).scrollIntoView());
+  if (dispatch) dispatch(state.tr.lift(range, target).scrollIntoView());
   return true;
 };
 
@@ -143,7 +139,6 @@ function toggleWrap(
           )
         : wrapping;
       const tr = state.tr.wrap(range, finalWrapping);
-      tr.setMeta(BLOCK_TRANSFORM, true);
       dispatch(tr.scrollIntoView());
     }
     return true;

@@ -1,14 +1,15 @@
 import { useEffect, useRef } from 'react';
 import type { Node as PMNode } from 'prosemirror-model';
-import { EditorState, Plugin, type Command } from 'prosemirror-state';
+import { EditorState, type Command } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { keymap } from 'prosemirror-keymap';
 import { history, undo, redo } from 'prosemirror-history';
-import { baseKeymap, chainCommands, newlineInCode } from 'prosemirror-commands';
+import { baseKeymap } from 'prosemirror-commands';
 import { liveSchema } from './liveSchema';
 import { dirtyTrackingPlugin, getDirtyBlockIds } from './dirtyTracking';
 import { toggleStrong, toggleEm } from '../commands/markdownInlineCommands';
-import { BLOCK_TRANSFORM } from '../commands/markdownBlockCommands';
+import { blockIdentityPlugin } from './blockIdentity';
+import { splitCommand, softBreakCommand } from '../commands/markdownStructureCommands';
 
 interface LiveViewProps {
   doc: PMNode;
@@ -25,38 +26,6 @@ interface LiveViewProps {
   /** Called by ⌘K so the consumer can open the link popover. */
   onLinkShortcut?: () => void;
 }
-
-/**
- * Rejects any transaction that changes the top-level block sequence (count,
- * type, or identity/order). Content edits within a block are allowed.
- * Structural editing arrives with the 3c ribbon.
- */
-export function structureLockPlugin(): Plugin {
-  return new Plugin({
-    filterTransaction(tr, state) {
-      if (tr.getMeta(BLOCK_TRANSFORM)) return true;   // trusted ribbon block-transform command
-      if (!tr.docChanged) return true;
-      const before = state.doc;
-      const after = tr.doc;
-      if (before.childCount !== after.childCount) return false;
-      for (let i = 0; i < before.childCount; i++) {
-        const b = before.child(i);
-        const a = after.child(i);
-        if (b.type !== a.type || b.attrs.blockId !== a.attrs.blockId) return false;
-      }
-      return true;
-    },
-  });
-}
-
-// Enter inserts a within-block hard break (a newline in code blocks); it never
-// splits a block (structure is locked in 3b).
-const insertHardBreak: Command = (state, dispatch) => {
-  const br = liveSchema.nodes.hardBreak.create();
-  if (dispatch) dispatch(state.tr.replaceSelectionWith(br).scrollIntoView());
-  return true;
-};
-const enterCommand = chainCommands(newlineInCode, insertHardBreak);
 
 export function LiveView({ doc, editable = true, onEdit, onViewReady, onStateChange, onLinkShortcut }: LiveViewProps) {
   const host = useRef<HTMLDivElement>(null);
@@ -75,7 +44,7 @@ export function LiveView({ doc, editable = true, onEdit, onViewReady, onStateCha
     const plugins = editable
       ? [
           history(),
-          keymap({ Enter: enterCommand, 'Shift-Enter': enterCommand }),
+          keymap({ Enter: splitCommand, 'Shift-Enter': softBreakCommand }),
           keymap({
             'Mod-b': toggleStrong,
             'Mod-i': toggleEm,
@@ -85,7 +54,7 @@ export function LiveView({ doc, editable = true, onEdit, onViewReady, onStateCha
             'Shift-Mod-z': redo,
           }),
           keymap(baseKeymap),
-          structureLockPlugin(),
+          blockIdentityPlugin(),
           dirtyTrackingPlugin(),
         ]
       : [];

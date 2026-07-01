@@ -3,7 +3,7 @@ import { EditorState, TextSelection, type Command } from 'prosemirror-state';
 import { liveSchema } from '../views/liveSchema';
 import { buildLiveDoc } from '../views/liveModel';
 import {
-  BLOCK_TRANSFORM, currentBlockType, blockActive, canTransform,
+  currentBlockType, blockActive, canTransform,
   setHeading, setParagraph, toggleCodeBlock,
   toggleBlockquote, toggleBulletList, toggleOrderedList, toggleTaskList,
 } from './markdownBlockCommands';
@@ -23,10 +23,10 @@ function cursorInBlock(s: EditorState, index: number): EditorState {
 function selectAll(s: EditorState): EditorState {
   return s.apply(s.tr.setSelection(TextSelection.create(s.doc, 1, s.doc.content.size - 1)));
 }
-function run(s: EditorState, cmd: Command): { ok: boolean; state: EditorState; meta: unknown } {
-  let next = s; let meta: unknown;
-  const ok = cmd(s, (tr) => { meta = tr.getMeta(BLOCK_TRANSFORM); next = s.apply(tr); });
-  return { ok, state: next, meta };
+function run(s: EditorState, cmd: Command): { ok: boolean; state: EditorState } {
+  let next = s;
+  const ok = cmd(s, (tr) => { next = s.apply(tr); });
+  return { ok, state: next };
 }
 
 describe('currentBlockType / blockActive / canTransform', () => {
@@ -48,12 +48,11 @@ describe('currentBlockType / blockActive / canTransform', () => {
 });
 
 describe('type-change commands', () => {
-  it('setHeading(2) turns a paragraph into an H2, preserving range attrs + tagging the tx', () => {
+  it('setHeading(2) turns a paragraph into an H2, preserving range attrs', () => {
     const s = cursorInBlock(stateOf('# T\n\nhello\n'), 1);
     const orig = s.doc.child(1);
-    const { ok, state, meta } = run(s, setHeading(2));
+    const { ok, state } = run(s, setHeading(2));
     expect(ok).toBe(true);
-    expect(meta).toBe(true);
     const b = state.doc.child(1);
     expect(b.type).toBe(heading);
     expect(b.attrs.level).toBe(2);
@@ -159,12 +158,4 @@ describe('wrap / unwrap commands', () => {
     expect(back.attrs.blockId).toBe(orig.attrs.blockId);
   });
 
-  it.each([
-    ['toggleBlockquote', toggleBlockquote],
-    ['toggleBulletList', toggleBulletList],
-    ['toggleOrderedList', toggleOrderedList],
-    ['toggleTaskList', toggleTaskList],
-  ] as const)('%s tags the transaction with BLOCK_TRANSFORM', (_name, cmd) => {
-    expect(run(cursorInBlock(stateOf('x\n'), 0), cmd).meta).toBe(true);
-  });
 });

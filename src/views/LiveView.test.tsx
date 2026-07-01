@@ -5,10 +5,13 @@ import { act } from 'react';
 import type { ReactElement } from 'react';
 import { EditorState, TextSelection } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
+import { joinBackward } from 'prosemirror-commands';
 import { buildLiveDoc } from './liveModel';
 import { liveSchema } from './liveSchema';
-import { LiveView, structureLockPlugin } from './LiveView';
-import { setHeading } from '../commands/markdownBlockCommands';
+import { dirtyTrackingPlugin } from './dirtyTracking';
+import { blockIdentityPlugin } from './blockIdentity';
+import { LiveView } from './LiveView';
+import { splitCommand, softBreakCommand } from '../commands/markdownStructureCommands';
 
 let container: HTMLDivElement | null = null;
 afterEach(() => {
@@ -81,38 +84,37 @@ describe('LiveView', () => {
   });
 });
 
-describe('structureLockPlugin', () => {
-  it('rejects a transaction that changes the top-level block count', () => {
-    const doc = docFor('alpha\n\nbeta\n'); // two top-level paragraphs
-    expect(doc.childCount).toBe(2); // sanity
-    const state = EditorState.create({ doc, schema: liveSchema, plugins: [structureLockPlugin()] });
-    // delete across the boundary between the two paragraphs (would merge → 1 block)
-    const tr = state.tr.delete(doc.child(0).nodeSize - 1, doc.child(0).nodeSize + 1);
-    const after = state.apply(tr);
-    expect(after.doc.childCount).toBe(2); // lock fired → structure unchanged
-  });
+function editState(src: string) {
+  const r = buildLiveDoc(src);
+  if (!r.ok) throw new Error('degraded');
+  return EditorState.create({ doc: r.doc, schema: liveSchema, plugins: [blockIdentityPlugin(), dirtyTrackingPlugin()] });
+}
+function cursor(s: EditorState, index: number, offset = 1) {
+  let pos = 0; for (let i = 0; i < index; i++) pos += s.doc.child(i).nodeSize;
+  return s.apply(s.tr.setSelection(TextSelection.create(s.doc, pos + offset)));
+}
+function run(s: EditorState, cmd: (st: EditorState, d?: (tr: any) => void) => boolean) {
+  let next = s; cmd(s, (tr) => { next = s.apply(tr); }); return next;
+}
 
-  it('allows an intra-block text insertion', () => {
-    const doc = docFor('alpha\n');
-    const state = EditorState.create({ doc, schema: liveSchema, plugins: [structureLockPlugin()] });
-    const after = state.apply(state.tr.insertText('X', 1));
-    expect(after.doc.childCount).toBe(1);          // structure unchanged
-    expect(after.doc.textContent).toBe('Xalpha');  // but the text WAS applied
+describe('LiveView structural editing (lock removed)', () => {
+  it('Enter splits a top-level paragraph into two', () => {
+    let s = cursor(editState('onetwo\n'), 0, 4);
+    s = run(s, splitCommand);
+    expect(s.doc.childCount).toBe(2);
   });
-
-  it('structureLockPlugin permits a BLOCK_TRANSFORM-tagged structural tx and rejects an untagged one', () => {
-    const state = EditorState.create({ doc: docFor('hello\n\nworld\n'), schema: liveSchema, plugins: [structureLockPlugin()] });
-    const inFirst = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, 1)));
-    // tagged: setHeading sets the meta → should apply and change block 0 to a heading
-    let tagged = inFirst;
-    setHeading(2)(inFirst, (tr) => { tagged = inFirst.apply(tr); });
-    expect(tagged.doc.child(0).type.name).toBe('heading');
-    // untagged structural tx (same markup change, no meta) → filtered out (doc unchanged)
-    const pos = inFirst.selection.$from.before(1);
-    const b = inFirst.doc.child(0);
-    const untagged = inFirst.apply(
-      inFirst.tr.setNodeMarkup(pos, liveSchema.nodes.heading, { level: 2, srcFrom: b.attrs.srcFrom, srcTo: b.attrs.srcTo, blockId: b.attrs.blockId }),
-    );
-    expect(untagged.doc.child(0).type.name).toBe('paragraph'); // rejected by filterTransaction
+  it('Shift-Enter inserts a hard break without splitting', () => {
+    let s = cursor(editState('onetwo\n'), 0, 4);
+    s = run(s, softBreakCommand);
+    expect(s.doc.childCount).toBe(1);
+  });
+  it('Backspace at block start merges into the previous block', () => {
+    let s = editState('one\n\ntwo\n');
+    // cursor at start of the second block
+    const start = s.doc.child(0).nodeSize + 1;
+    s = s.apply(s.tr.setSelection(TextSelection.create(s.doc, start)));
+    s = run(s, joinBackward);
+    expect(s.doc.childCount).toBe(1);
+    expect(s.doc.child(0).textContent).toBe('onetwo');
   });
 });
