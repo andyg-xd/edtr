@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { EditorState, TextSelection, type Command } from 'prosemirror-state';
 import { liveSchema } from '../views/liveSchema';
 import { buildLiveDoc } from '../views/liveModel';
-import { goToNextCell, arrowVertical, addRow, canAddRowAbove, deleteRow, canDeleteRow, addColumn, deleteColumn, canDeleteColumn, setColumnAlign, getColumnAlign } from './markdownTableCommands';
+import { goToNextCell, arrowVertical, addRow, canAddRowAbove, deleteRow, canDeleteRow, addColumn, deleteColumn, canDeleteColumn, setColumnAlign, getColumnAlign, insertTable, canInsertTable, buildEmptyTable } from './markdownTableCommands';
 
 function setup(src: string) {
   const r = buildLiveDoc(src);
@@ -243,5 +243,33 @@ describe('deleteRow', () => {
     const s = cursorAtText(setup(oneRow), 'a');
     expect(canDeleteRow(s)).toBe(false);
     expect(deleteRow(s)).toBe(false);
+  });
+});
+
+describe('insertTable', () => {
+  it('buildEmptyTable makes a header row + (rows-1) body rows of empty cells', () => {
+    const t = buildEmptyTable(3, 2);
+    expect(t.type.name).toBe('table');
+    expect(t.childCount).toBe(3);
+    expect(t.child(0).childCount).toBe(2);
+    expect(t.child(0).child(0).attrs.header).toBe(true);
+    expect(t.child(1).child(0).attrs.header).toBe(false);
+    expect(t.child(0).child(0).attrs.align).toBe(null);
+  });
+  it('inserts a table after the current top-level block, cursor in the first header cell', () => {
+    const s = cursorAtText(setup('hello\n'), 'hello');
+    const { ok, state } = run(s, insertTable(2, 2));
+    expect(ok).toBe(true);
+    // doc: paragraph "hello" + the new table
+    const t = state.doc.child(state.doc.childCount - 1);
+    expect(t.type.name).toBe('table');
+    expect(t.childCount).toBe(2);
+    expect(state.selection.$from.parent.type.name).toBe('tableCell');
+    expect(state.selection.$from.parent.attrs.header).toBe(true);
+  });
+  it('canInsertTable is false when the cursor is inside a table cell (no nesting)', () => {
+    const s = cursorAtText(setup(SRC), 'a');
+    expect(canInsertTable(s)).toBe(false);
+    expect(insertTable(2, 2)(s)).toBe(false);
   });
 });

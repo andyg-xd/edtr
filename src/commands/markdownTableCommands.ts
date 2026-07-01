@@ -250,3 +250,38 @@ export function getColumnAlign(state: EditorState): Align {
   if (!ctx) return null;
   return ctx.table.child(0).child(ctx.colIndex).attrs.align as Align;
 }
+
+// ---------------------------------------------------------------------------
+// Insert new table
+// ---------------------------------------------------------------------------
+
+export function buildEmptyTable(rows: number, cols: number): PMNode {
+  const rowNodes: PMNode[] = [];
+  for (let r = 0; r < rows; r++) {
+    const cells: PMNode[] = [];
+    for (let c = 0; c < cols; c++) cells.push(tableCell.create({ header: r === 0, align: null }));
+    rowNodes.push(tableRow.create(null, cells));
+  }
+  return table.create(undefined, rowNodes); // default attrs → blockId '' → blockIdentityPlugin assigns new-N
+}
+
+/** Insert a new empty table as a new top-level block after the current block. */
+export function insertTable(rows: number, cols: number): Command {
+  return (state, dispatch) => {
+    if (findTable(state.selection.$from)) return false; // no nested tables
+    const index = state.selection.$to.index(0);
+    let end = 0;
+    for (let i = 0; i <= index; i++) end += state.doc.child(i).nodeSize;
+    if (dispatch) {
+      const built = buildEmptyTable(rows, cols);
+      const tr = state.tr.insert(end, built);
+      tr.setSelection(TextSelection.create(tr.doc, cellContentPos(built, end, 0, 0)));
+      dispatch(tr.scrollIntoView());
+    }
+    return true;
+  };
+}
+
+export function canInsertTable(state: EditorState): boolean {
+  return !findTable(state.selection.$from);
+}
