@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { EditorState, TextSelection, type Command } from 'prosemirror-state';
 import { liveSchema } from '../views/liveSchema';
 import { buildLiveDoc } from '../views/liveModel';
-import { goToNextCell, arrowVertical } from './markdownTableCommands';
+import { goToNextCell, arrowVertical, addRow, canAddRowAbove, deleteRow, canDeleteRow } from './markdownTableCommands';
 
 function setup(src: string) {
   const r = buildLiveDoc(src);
@@ -127,5 +127,57 @@ describe('findTable / nav on a 3x3 table after a heading', () => {
   it('ArrowUp from a top edge → false; ArrowDown from i bottom edge → false', () => {
     expect(arrowVertical('up')(cursorAtText(setup(SRC3), 'a'))).toBe(false);
     expect(arrowVertical('down')(cursorAtText(setup(SRC3), 'i'))).toBe(false);
+  });
+});
+
+function tableOf(s: EditorState) { return s.doc.child(s.doc.childCount - 1); } // last block is the table in these fixtures
+
+describe('addRow', () => {
+  it('addRow("below") inserts an empty body row after the current row, cursor in its first cell', () => {
+    const s = cursorAtText(setup(SRC), 'a');      // header row
+    const { ok, state } = run(s, addRow('below'));
+    expect(ok).toBe(true);
+    expect(tableOf(state).childCount).toBe(3);     // header + new + old body
+    expect(state.selection.$from.parent.textContent).toBe(''); // in the new empty cell
+    const newRow = tableOf(state).child(1);
+    expect(newRow.childCount).toBe(2);
+    expect(newRow.child(0).attrs.header).toBe(false);
+  });
+  it('addRow("above") is disabled on the header row', () => {
+    const s = cursorAtText(setup(SRC), 'a');
+    expect(addRow('above')(s)).toBe(false);
+    expect(canAddRowAbove(s)).toBe(false);
+  });
+  it('addRow("above") inserts before a body row', () => {
+    const s = cursorAtText(setup(SRC), 'c');       // body row
+    expect(canAddRowAbove(s)).toBe(true);
+    const { state } = run(s, addRow('above'));
+    expect(tableOf(state).childCount).toBe(3);
+    // new row sits between header and old body: index 1 is the new empty row
+    expect(tableOf(state).child(1).child(0).textContent).toBe('');
+    expect(tableOf(state).child(2).child(0).textContent).toBe('c');
+  });
+});
+
+describe('deleteRow', () => {
+  it('deletes a body row', () => {
+    const s = cursorAtText(setup(SRC), 'c');
+    const { ok, state } = run(s, deleteRow);
+    expect(ok).toBe(true);
+    expect(tableOf(state).childCount).toBe(1);     // header only
+  });
+  it('on the header row, promotes the next row to header then removes row 0', () => {
+    const s = cursorAtText(setup(SRC), 'a');        // header
+    const { state } = run(s, deleteRow);
+    expect(tableOf(state).childCount).toBe(1);
+    const hdr = tableOf(state).child(0);
+    expect(hdr.child(0).textContent).toBe('c');     // old body row promoted
+    expect(hdr.child(0).attrs.header).toBe(true);
+  });
+  it('is disabled when only the header row remains', () => {
+    const oneRow = '| a | b |\n| --- | --- |\n';
+    const s = cursorAtText(setup(oneRow), 'a');
+    expect(canDeleteRow(s)).toBe(false);
+    expect(deleteRow(s)).toBe(false);
   });
 });

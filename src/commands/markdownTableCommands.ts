@@ -2,7 +2,7 @@ import { TextSelection, type Command, type EditorState } from 'prosemirror-state
 import type { Node as PMNode, ResolvedPos } from 'prosemirror-model';
 import { liveSchema } from '../views/liveSchema';
 
-const { table, tableCell } = liveSchema.nodes;
+const { table, tableRow, tableCell } = liveSchema.nodes;
 
 export interface TableContext {
   table: PMNode;
@@ -96,4 +96,97 @@ export function arrowVertical(dir: 'up' | 'down'): Command {
     if (dispatch) dispatch(state.tr.setSelection(TextSelection.create(state.doc, pos)).scrollIntoView());
     return true;
   };
+}
+
+// ---------------------------------------------------------------------------
+// Shared table-mutation helpers (module-private)
+// ---------------------------------------------------------------------------
+
+type Align = 'left' | 'center' | 'right' | null;
+
+function rowsOf(t: PMNode): PMNode[] {
+  const rows: PMNode[] = [];
+  for (let i = 0; i < t.childCount; i++) rows.push(t.child(i));
+  return rows;
+}
+function cellsOf(row: PMNode): PMNode[] {
+  const cells: PMNode[] = [];
+  for (let i = 0; i < row.childCount; i++) cells.push(row.child(i));
+  return cells;
+}
+function headerAligns(t: PMNode): Align[] {
+  return cellsOf(t.child(0)).map((c) => c.attrs.align as Align);
+}
+function withHeader(cell: PMNode, header: boolean): PMNode {
+  return tableCell.create({ ...cell.attrs, header }, cell.content);
+}
+// exported so Tasks 3-6 can import it; used for column alignment ops
+export function withAlign(cell: PMNode, align: Align): PMNode {
+  return tableCell.create({ ...cell.attrs, align }, cell.content);
+}
+
+/** Content-start position of cell (rowIndex,colIndex) in `t`, whose OWN open token sits at `tableFrom`. */
+function cellContentPos(t: PMNode, tableFrom: number, rowIndex: number, colIndex: number): number {
+  let pos = tableFrom + 1; // first row's open token
+  for (let r = 0; r < rowIndex; r++) pos += t.child(r).nodeSize;
+  pos += 1; // into the row
+  const row = t.child(rowIndex);
+  for (let c = 0; c < colIndex; c++) pos += row.child(c).nodeSize;
+  return pos + 1; // into the cell content
+}
+
+/**
+ * Replace the whole table (same top-level span) with `newTable`, preserving its
+ * attrs (blockId/range) so dirtyTracking marks the SAME block dirty and the
+ * reconciler re-serializes it in place. Cursor → cell (row,col) of newTable.
+ */
+function replaceTableTr(state: EditorState, ctx: TableContext, newTable: PMNode, row: number, col: number) {
+  const from = ctx.tableStart - 1; // the table node's own open token
+  const to = from + ctx.table.nodeSize;
+  const tr = state.tr.replaceWith(from, to, newTable);
+  tr.setSelection(TextSelection.create(tr.doc, cellContentPos(newTable, from, row, col)));
+  return tr.scrollIntoView();
+}
+
+// ---------------------------------------------------------------------------
+// Row commands
+// ---------------------------------------------------------------------------
+
+export function addRow(dir: 'above' | 'below'): Command {
+  return (state, dispatch) => {
+    const ctx = findTable(state.selection.$from);
+    if (!ctx) return false;
+    if (dir === 'above' && ctx.rowIndex === 0) return false; // nothing above the header
+    const at = dir === 'above' ? ctx.rowIndex : ctx.rowIndex + 1;
+    const newRow = tableRow.create(null, headerAligns(ctx.table).map((a) => tableCell.create({ header: false, align: a })));
+    const rows = rowsOf(ctx.table);
+    rows.splice(at, 0, newRow);
+    if (dispatch) dispatch(replaceTableTr(state, ctx, table.create(ctx.table.attrs, rows), at, 0));
+    return true;
+  };
+}
+export function canAddRowAbove(state: EditorState): boolean {
+  const ctx = findTable(state.selection.$from);
+  return !!ctx && ctx.rowIndex > 0;
+}
+
+export const deleteRow: Command = (state, dispatch) => {
+  const ctx = findTable(state.selection.$from);
+  if (!ctx || ctx.table.childCount <= 1) return false;
+  const rows = rowsOf(ctx.table);
+  if (ctx.rowIndex === 0) {
+    rows[1] = tableRow.create(rows[1].attrs, cellsOf(rows[1]).map((c) => withHeader(c, true)));
+    rows.splice(0, 1);
+  } else {
+    rows.splice(ctx.rowIndex, 1);
+  }
+  const newTable = table.create(ctx.table.attrs, rows);
+  const row = Math.min(ctx.rowIndex, newTable.childCount - 1);
+  const col = Math.min(ctx.colIndex, ctx.colCount - 1);
+  if (dispatch) dispatch(replaceTableTr(state, ctx, newTable, row, col));
+  return true;
+};
+export function canDeleteRow(state: EditorState): boolean {
+  const ctx = findTable(state.selection.$from);
+  return !!ctx && ctx.table.childCount > 1;
 }
