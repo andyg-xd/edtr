@@ -10,6 +10,7 @@ import {
   setHeading, setParagraph, toggleCodeBlock,
   toggleBlockquote, toggleBulletList, toggleOrderedList, toggleTaskList,
 } from '../commands/markdownBlockCommands';
+import { insertHorizontalRule } from '../commands/markdownStructureCommands';
 
 const { strong, em, strikethrough, code, link } = liveSchema.marks;
 const { image } = liveSchema.nodes;
@@ -89,4 +90,7 @@ export const markdownRibbon: RibbonControl[] = [
   { id: 'taskList', label: '☑', ariaLabel: 'Task list',
     isActive: (s) => currentBlockType(s) === 'taskList', isEnabled: (s) => canTransform(s),
     action: { kind: 'command', run: toggleTaskList } },
+  { id: 'horizontalRule', label: '―', ariaLabel: 'Horizontal rule',
+    isActive: () => false, isEnabled: (s) => insertHorizontalRule(s),
+    action: { kind: 'command', run: insertHorizontalRule } },
 ];

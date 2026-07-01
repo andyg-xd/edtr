@@ -69,10 +69,10 @@ describe('markdownRibbon', () => {
 });
 
 describe('markdownRibbon — block controls', () => {
-  it('has 12 controls in order (6 inline + 6 block)', () => {
+  it('has 13 controls in order (6 inline + 7 block)', () => {
     expect(markdownRibbon.map((c) => c.id)).toEqual([
       'bold', 'italic', 'strike', 'code', 'link', 'image',
-      'heading', 'codeBlock', 'blockquote', 'bulletList', 'orderedList', 'taskList',
+      'heading', 'codeBlock', 'blockquote', 'bulletList', 'orderedList', 'taskList', 'horizontalRule',
     ]);
   });
   it('heading is a dropdown with Paragraph + H1–H6 and reports the current level', () => {
@@ -93,5 +93,11 @@ describe('markdownRibbon — block controls', () => {
     const s = stateOf('| a | b |\n| - | - |\n| 1 | 2 |\n');
     const sel = s.apply(s.tr.setSelection(TextSelection.create(s.doc, 0, 0)));
     expect(byId('codeBlock').isEnabled(sel)).toBe(false);
+  });
+  it('includes a horizontal-rule command control', () => {
+    const hr = markdownRibbon.find((c) => c.id === 'horizontalRule');
+    expect(hr).toBeDefined();
+    expect(hr!.action.kind).toBe('command');
+    expect(hr!.ariaLabel).toBe('Horizontal rule');
   });
 });
