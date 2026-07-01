@@ -47,12 +47,66 @@ export function serializeDirty(
   };
 }
 
-/** Re-derive source: splice re-serialized dirty blocks into the baseline. */
+type BaselineRef = { id: string; from: number; to: number; index: number };
+
+/**
+ * Re-derive source from the current Live doc by RECONSTRUCTION (not per-block
+ * splice), so split/merge/insert are handled while untouched blocks + untouched
+ * inter-block gaps stay byte-identical. A block is "new" iff its id is not in
+ * the baseline. `baselineDoc` (the doc built when Live was entered) supplies the
+ * baseline block ranges/order; when omitted, the baseline string is re-parsed
+ * (deterministic ids → matches). This strictly generalizes the count-stable
+ * splice model: the no-op case reconstructs the baseline byte-for-byte.
+ */
 export function writeBack(
   doc: PMNode,
   baseline: string,
   dirty: Set<string>,
   flavor: FlavorProfile,
+  baselineDoc?: PMNode,
 ): string {
-  return toSource(doc, baseline, serializeDirty(dirty, flavor));
+  let base = baselineDoc;
+  if (!base) {
+    const r = buildLiveDoc(baseline);
+    if (!r.ok) throw new Error(`writeBack: baseline no longer parses (${r.reason})`);
+    base = r.doc;
+  }
+
+  const refs: BaselineRef[] = [];
+  base.forEach((b, _off, index) => {
+    refs.push({
+      id: b.attrs.blockId as string,
+      from: b.attrs.srcFrom as number,
+      to: b.attrs.srcTo as number,
+      index,
+    });
+  });
+  const byId = new Map<string, BaselineRef>();
+  for (const r of refs) byId.set(r.id, r);
+
+  // Doc-leading whitespace + trailing newline (empty baseline → whole string is prefix).
+  const prefix = refs.length ? baseline.slice(0, refs[0].from) : baseline;
+  const suffix = refs.length ? baseline.slice(refs[refs.length - 1].to) : '';
+
+  const parts: string[] = [];
+  let prev: BaselineRef | null = null; // previous emitted block's baseline ref (null if it was new)
+  let first = true;
+  doc.forEach((block) => {
+    const id = block.attrs.blockId as string;
+    const ref = byId.get(id) ?? null;
+    const isDirty = dirty.has(id);
+    const text = ref && !isDirty ? baseline.slice(ref.from, ref.to) : serializeBlock(block, flavor);
+    if (!first) {
+      if (prev && ref && ref.index === prev.index + 1) {
+        parts.push(baseline.slice(prev.to, ref.from)); // reuse exact baseline gap (no beautify)
+      } else {
+        parts.push('\n\n'); // adjacency changed → synthesized separator
+      }
+    }
+    parts.push(text);
+    prev = ref;
+    first = false;
+  });
+
+  return prefix + parts.join('') + suffix;
 }

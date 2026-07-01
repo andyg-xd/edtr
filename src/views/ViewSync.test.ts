@@ -108,3 +108,72 @@ describe('writeBack — no beautify through edits', () => {
     expect(out).toContain('__bold__');
   });
 });
+
+describe('writeBack reconciler — structural edits (no beautify)', () => {
+  const flavorFor = (s: string) => detectFlavor(s, 'markdown');
+
+  it('no-op: a rich multi-block doc reconstructs byte-for-byte', () => {
+    const src =
+      '# Title\n\nA paragraph.\n\n- one\n- two\n\n> quote\n\n```js\nx\n```\n\n---\n\nEnd.\n';
+    expect(writeBack(docFor(src), src, new Set(), flavorFor(src))).toBe(src);
+  });
+
+  it('multi-block edit changes exactly the two edited blocks', () => {
+    const src = '# Title\n\nfirst\n\nsecond\n\nthird\n';
+    const base = docFor(src);
+    const b0 = base.child(0), b1 = base.child(1), b2 = base.child(2), b3 = base.child(3);
+    const e1 = liveSchema.node('paragraph', b1.attrs, [liveSchema.text('FIRST')]);
+    const e3 = liveSchema.node('paragraph', b3.attrs, [liveSchema.text('THIRD')]);
+    const after = liveSchema.node('doc', null, [b0, e1, b2, e3]);
+    const dirty = new Set([b1.attrs.blockId as string, b3.attrs.blockId as string]);
+    expect(writeBack(after, src, dirty, flavorFor(src))).toBe('# Title\n\nFIRST\n\nsecond\n\nTHIRD\n');
+  });
+
+  it('split: one paragraph becomes two; other blocks byte-identical', () => {
+    const src = '# Title\n\nonetwo\n\nlast\n';
+    const base = docFor(src);
+    const b0 = base.child(0), b1 = base.child(1), b2 = base.child(2);
+    const paraOne = liveSchema.node('paragraph', b1.attrs, [liveSchema.text('one')]);
+    const paraTwo = liveSchema.node('paragraph', { blockId: 'new-0', srcFrom: 0, srcTo: 0 }, [liveSchema.text('two')]);
+    const after = liveSchema.node('doc', null, [b0, paraOne, paraTwo, b2]);
+    const dirty = new Set([b1.attrs.blockId as string, 'new-0']);
+    const out = writeBack(after, src, dirty, flavorFor(src));
+    expect(out).toBe('# Title\n\none\n\ntwo\n\nlast\n');
+    expect(out.startsWith('# Title\n\n')).toBe(true); // heading byte-identical
+    expect(out.endsWith('\n\nlast\n')).toBe(true);    // last block byte-identical
+  });
+
+  it('merge: two paragraphs collapse into one; the between-gap vanishes', () => {
+    const src = '# Title\n\none\n\ntwo\n\nlast\n';
+    const base = docFor(src);
+    const b0 = base.child(0), b1 = base.child(1), b3 = base.child(3);
+    const merged = liveSchema.node('paragraph', b1.attrs, [liveSchema.text('onetwo')]);
+    const after = liveSchema.node('doc', null, [b0, merged, b3]);
+    const dirty = new Set([b1.attrs.blockId as string]);
+    expect(writeBack(after, src, dirty, flavorFor(src))).toBe('# Title\n\nonetwo\n\nlast\n');
+  });
+
+  it('insert HR + trailing empty paragraph at end of doc', () => {
+    const src = 'body\n';
+    const base = docFor(src);
+    const b0 = base.child(0);
+    const hr = liveSchema.node('horizontalRule', { blockId: 'new-0', srcFrom: 0, srcTo: 0 });
+    const emptyPara = liveSchema.node('paragraph', { blockId: 'new-1', srcFrom: 0, srcTo: 0 });
+    const after = liveSchema.node('doc', null, [b0, hr, emptyPara]);
+    const dirty = new Set(['new-0', 'new-1']);
+    // The trailing empty paragraph is intentional (holds the cursor) and
+    // serializes to a trailing blank line — accepted per spec §6.1/§10.
+    expect(writeBack(after, src, dirty, flavorFor(src))).toBe('body\n\n---\n\n\n');
+  });
+
+  it('delete a middle block; neighbors byte-identical, gap synthesized', () => {
+    const src = 'a\n\nb\n\nc\n';
+    const base = docFor(src);
+    const after = liveSchema.node('doc', null, [base.child(0), base.child(2)]);
+    expect(writeBack(after, src, new Set(), flavorFor(src))).toBe('a\n\nc\n');
+  });
+
+  it('empty document round-trips to empty', () => {
+    expect(writeBack(docFor(''), '', new Set(), flavorFor(''))).toBe('');
+  });
+});
