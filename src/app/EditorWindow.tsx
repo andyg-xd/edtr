@@ -96,10 +96,16 @@ export function EditorWindow() {
   const flushLiveToSource = useCallback(() => {
     if (!session || !liveDocRef.current || liveDirtyRef.current.size === 0) return;
     const flavor = detectFlavor(liveBaselineRef.current, 'markdown');
-    const newSource = writeBack(liveDocRef.current, liveBaselineRef.current, liveDirtyRef.current, flavor);
-    session.setCurrentText(newSource);
-    liveDirtyRef.current = new Set();
-    setLiveHasEdits(false);
+    try {
+      const newSource = writeBack(liveDocRef.current, liveBaselineRef.current, liveDirtyRef.current, flavor);
+      session.setCurrentText(newSource);
+      liveDirtyRef.current = new Set();
+      setLiveHasEdits(false);
+    } catch (e) {
+      // A serializer throw must never corrupt or lose work: keep the live edits,
+      // surface a non-destructive error, and stay editable.
+      setError(`Edtr couldn't safely serialize an edit — your changes are still here. ${String(e)}`);
+    }
   }, [session]);
 
   const dirty = (session?.isDirty() ?? false) || liveHasEdits;

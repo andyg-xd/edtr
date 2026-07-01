@@ -151,6 +151,18 @@ body,
 .ribbon-btn:hover:not(:disabled) { background: rgba(0, 0, 0, 0.06); }
 .ribbon-btn.is-active { background: rgba(0, 0, 0, 0.12); border-color: rgba(0, 0, 0, 0.18); }
 .ribbon-btn:disabled { opacity: 0.4; cursor: default; }
+.ribbon-select {
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  font-size: 13px;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.ribbon-select:hover:not(:disabled) { background: rgba(0, 0, 0, 0.06); }
+.ribbon-select:disabled { opacity: 0.4; cursor: default; }
 
 /* Insert link/image popover */
 .insert-popover {
