@@ -1,6 +1,7 @@
-import type { Command, EditorState } from 'prosemirror-state';
+import { TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
 import type { NodeType } from 'prosemirror-model';
 import { findWrapping, liftTarget } from 'prosemirror-transform';
+import { wrapInList, liftListItem } from 'prosemirror-schema-list';
 import { liveSchema } from '../views/liveSchema';
 
 const { paragraph, heading, codeBlock } = liveSchema.nodes;
@@ -76,84 +77,81 @@ export const toggleCodeBlock: Command = (state, dispatch) => {
   return setType(codeBlock, { lang: null })(state, dispatch);
 };
 
-// ─── Wrap / unwrap commands ──────────────────────────────────────────────────
+// ─── Wrap / unwrap (multi-block grouping) commands ───────────────────────────
 
-const { blockquote, bulletList, orderedList } = liveSchema.nodes;
+const { blockquote, bulletList, orderedList, listItem } = liveSchema.nodes;
 
-/** Lift the cursor's block out of its wrapper back to the top level.
- *  We walk down to the first leaf textblock inside the top-level wrapper so
- *  blockRange captures the inner content. This works for both blockquote
- *  (one level: wrapper > paragraph) and lists (two levels: list > listItem > paragraph). */
-const unwrap: Command = (state, dispatch) => {
-  const { node: wrapperNode, index } = topBlock(state);
-  // Compute absolute start position of the top-level wrapper.
-  let wrapperStart = 0;
-  for (let i = 0; i < index; i++) wrapperStart += state.doc.child(i).nodeSize;
-  // Walk down the wrapper's first-child chain to find the first textblock,
-  // accumulating the offset from wrapperStart.
-  let offset = 1; // skip the wrapper's own open token
-  let cur = wrapperNode;
-  while (cur.firstChild && !cur.isTextblock) {
-    offset += 1; // skip cur's first child's open token
-    cur = cur.firstChild;
-  }
-  // offset now points just inside the first textblock. Resolve that position.
-  const innerPos = wrapperStart + offset;
-  if (innerPos >= state.doc.content.size) return false;
-  const $inner = state.doc.resolve(innerPos);
-  const range = $inner.blockRange($inner);
+/** Dissolve the cursor's top-level blockquote: lift ALL its children back to top level. */
+function unwrapBlockquote(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+  const { node: bq, index } = topBlock(state);
+  let bqStart = 0;
+  for (let i = 0; i < index; i++) bqStart += state.doc.child(i).nodeSize;
+  const $start = state.doc.resolve(bqStart + 2);              // inside the first child
+  const $end = state.doc.resolve(bqStart + bq.nodeSize - 2);  // inside the last child
+  const range = $start.blockRange($end);
   if (!range) return false;
   const target = liftTarget(range);
   if (target == null) return false;
   if (dispatch) dispatch(state.tr.lift(range, target).scrollIntoView());
   return true;
+}
+
+/** Dissolve the cursor's top-level list: select across all items, then liftListItem. */
+function unwrapList(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+  const { node: list, index } = topBlock(state);
+  let start = 0;
+  for (let i = 0; i < index; i++) start += state.doc.child(i).nodeSize;
+  const $from = state.doc.resolve(start + 1);
+  const $to = state.doc.resolve(start + list.nodeSize - 1);
+  const expanded = state.apply(state.tr.setSelection(TextSelection.between($from, $to)));
+  return liftListItem(listItem)(expanded, dispatch);
+}
+
+/** Wrap the selected top-level block(s) in ONE blockquote (all N as children), or dissolve if already a blockquote. */
+export const toggleBlockquote: Command = (state, dispatch) => {
+  if (!canTransform(state)) return false;
+  if (currentBlockType(state) === 'blockquote') return unwrapBlockquote(state, dispatch);
+  const { $from, $to } = state.selection;
+  const range = $from.blockRange($to);
+  if (!range) return false;
+  const wrapping = findWrapping(range, blockquote, rangeAttrs(topBlock(state).node));
+  if (!wrapping) return false;
+  if (dispatch) dispatch(state.tr.wrap(range, wrapping).scrollIntoView());
+  return true;
 };
 
-/**
- * Wrap the cursor's single block in `wrapperType` (carrying the block's range attrs),
- * or unwrap if already that type. For task lists, `itemAttrs` are injected into the
- * listItem entry of the wrapping before calling tr.wrap.
- */
-function toggleWrap(
-  wrapperType: NodeType,
-  isType: (state: EditorState) => boolean,
-  itemAttrs: Record<string, unknown> = {},
-): Command {
+/** Wrap the selected top-level block(s) into ONE list with N items, or dissolve if already that list type. */
+function toggleListCmd(listType: NodeType, isType: (s: EditorState) => boolean): Command {
   return (state, dispatch) => {
     if (!canTransform(state)) return false;
-    if (isType(state)) return unwrap(state, dispatch);
-    const { $from, $to } = state.selection;
-    const range = $from.blockRange($to);
-    if (!range) return false;
-    const { node } = topBlock(state);
-    const wrapping = findWrapping(range, wrapperType, rangeAttrs(node));
-    if (!wrapping) return false;
-    if (dispatch) {
-      // If itemAttrs are provided (task list), inject them into the listItem entry
-      // of the wrapping array so tr.wrap creates the listItem with correct attrs.
-      const finalWrapping = Object.keys(itemAttrs).length > 0
-        ? wrapping.map((entry) =>
-            entry.type === liveSchema.nodes.listItem
-              ? { type: entry.type, attrs: { ...entry.attrs, ...itemAttrs } }
-              : entry,
-          )
-        : wrapping;
-      const tr = state.tr.wrap(range, finalWrapping);
-      dispatch(tr.scrollIntoView());
-    }
-    return true;
+    if (isType(state)) return unwrapList(state, dispatch);
+    return wrapInList(listType, rangeAttrs(topBlock(state).node))(state, dispatch);
   };
 }
 
-export const toggleBlockquote: Command = toggleWrap(
-  blockquote, (s) => currentBlockType(s) === 'blockquote',
-);
-export const toggleBulletList: Command = toggleWrap(
-  bulletList, (s) => currentBlockType(s) === 'bulletList',
-);
-export const toggleOrderedList: Command = toggleWrap(
-  orderedList, (s) => currentBlockType(s) === 'orderedList',
-);
-export const toggleTaskList: Command = toggleWrap(
-  bulletList, (s) => currentBlockType(s) === 'taskList', { checked: false },
-);
+export const toggleBulletList: Command = toggleListCmd(bulletList, (s) => currentBlockType(s) === 'bulletList');
+export const toggleOrderedList: Command = toggleListCmd(orderedList, (s) => currentBlockType(s) === 'orderedList');
+
+/** Task list: wrap into a bullet list whose items are checked:false, or dissolve if already a task list. */
+export const toggleTaskList: Command = (state, dispatch) => {
+  if (!canTransform(state)) return false;
+  if (currentBlockType(state) === 'taskList') return unwrapList(state, dispatch);
+  const wrap = wrapInList(bulletList, rangeAttrs(topBlock(state).node));
+  if (!dispatch) return wrap(state); // dry-run (isEnabled)
+  return wrap(state, (tr) => {
+    // The selection now sits inside the new bullet list; mark every item checked:false.
+    const $from = tr.selection.$from;
+    for (let d = $from.depth; d > 0; d--) {
+      if ($from.node(d).type === bulletList) {
+        const listPos = $from.before(d);
+        let pos = listPos + 1;
+        $from.node(d).forEach((item) => {
+          tr.setNodeMarkup(pos, undefined, { ...item.attrs, checked: false });
+          pos += item.nodeSize;
+        });
+        break;
+      }
+    }
+    dispatch(tr.scrollIntoView());
+  });
+};

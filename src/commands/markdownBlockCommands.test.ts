@@ -159,3 +159,52 @@ describe('wrap / unwrap commands', () => {
   });
 
 });
+
+describe('multi-block grouping', () => {
+  const { blockquote, bulletList, orderedList, listItem, paragraph } = liveSchema.nodes;
+
+  it('blockquote: wraps 3 selected blocks into ONE blockquote with 3 children', () => {
+    const s = selectAll(stateOf('a\n\nb\n\nc\n'));
+    const st = run(s, toggleBlockquote).state;
+    expect(st.doc.childCount).toBe(1);
+    expect(st.doc.child(0).type).toBe(blockquote);
+    expect(st.doc.child(0).childCount).toBe(3);
+  });
+
+  it('blockquote: unwrap dissolves a multi-child quote back to 3 top-level blocks', () => {
+    const wrapped = run(selectAll(stateOf('a\n\nb\n\nc\n')), toggleBlockquote).state;
+    const back = run(cursorInBlock(wrapped, 0), toggleBlockquote).state;
+    expect(back.doc.childCount).toBe(3);
+    expect(back.doc.child(0).type).toBe(paragraph);
+    expect(back.doc.child(2).type).toBe(paragraph);
+  });
+
+  it('bullet list: wraps 3 selected blocks into ONE list with 3 items', () => {
+    const st = run(selectAll(stateOf('a\n\nb\n\nc\n')), toggleBulletList).state;
+    expect(st.doc.childCount).toBe(1);
+    expect(st.doc.child(0).type).toBe(bulletList);
+    expect(st.doc.child(0).childCount).toBe(3);
+    expect(st.doc.child(0).child(0).type).toBe(listItem);
+  });
+
+  it('ordered list: wraps 3 selected blocks into ONE list with 3 items', () => {
+    const st = run(selectAll(stateOf('a\n\nb\n\nc\n')), toggleOrderedList).state;
+    expect(st.doc.childCount).toBe(1);
+    expect(st.doc.child(0).type).toBe(orderedList);
+    expect(st.doc.child(0).childCount).toBe(3);
+  });
+
+  it('task list: wraps 3 blocks into 3 items, each checked:false', () => {
+    const st = run(selectAll(stateOf('a\n\nb\n\nc\n')), toggleTaskList).state;
+    expect(st.doc.child(0).type).toBe(bulletList);
+    expect(st.doc.child(0).childCount).toBe(3);
+    st.doc.child(0).forEach((item) => expect(item.attrs.checked).toBe(false));
+  });
+
+  it('list: unwrap dissolves a multi-item list back to 3 top-level blocks', () => {
+    const wrapped = run(selectAll(stateOf('a\n\nb\n\nc\n')), toggleBulletList).state;
+    const back = run(cursorInBlock(wrapped, 0), toggleBulletList).state;
+    expect(back.doc.childCount).toBe(3);
+    expect(back.doc.child(0).type).toBe(paragraph);
+  });
+});
