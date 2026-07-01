@@ -3,6 +3,7 @@ import { liveSchema } from './liveSchema';
 import { escapeInline, serializeInline, serializeBlock } from './markdownSerializer';
 import type { FlavorProfile } from '../doc/types';
 import { parseMarkdownAst } from '../doc/parse';
+import { detectFlavor } from '../doc/flavor';
 
 const star: FlavorProfile = {
   bullet: '-', emphasis: '*', strong: '**', headingStyle: 'atx', fence: '`', orderedDelimiter: '.', gfm: true,
@@ -277,5 +278,30 @@ describe('serializeInline — whitespace outside symmetric marks (round-trip)', 
     expect(serialized).not.toMatch(/\*\* \*\*/);
     // "files" must be present in output
     expect(serialized).toContain('files');
+  });
+});
+
+describe('serializeBlock — structural-editing coverage', () => {
+  const flavor = detectFlavor('x\n', 'markdown');
+
+  it('an empty paragraph serializes to the empty string', () => {
+    const empty = liveSchema.node('paragraph');
+    expect(serializeBlock(empty, flavor)).toBe('');
+  });
+
+  it('a nested list (list item containing a sublist) serializes with indentation', () => {
+    // Build: bulletList > listItem > [ paragraph "a", bulletList > listItem > paragraph "b" ]
+    const sub = liveSchema.node('bulletList', null, [
+      liveSchema.node('listItem', { checked: null }, [liveSchema.node('paragraph', null, [liveSchema.text('b')])]),
+    ]);
+    const outer = liveSchema.node('bulletList', null, [
+      liveSchema.node('listItem', { checked: null }, [
+        liveSchema.node('paragraph', null, [liveSchema.text('a')]),
+        sub,
+      ]),
+    ]);
+    const out = serializeBlock(outer, flavor);
+    expect(out.split('\n')[0]).toMatch(/^[-*+] a$/); // top item
+    expect(out).toMatch(/\n\s+[-*+] b$/);            // sub item is indented under it
   });
 });
