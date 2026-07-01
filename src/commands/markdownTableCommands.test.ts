@@ -102,3 +102,30 @@ describe('arrowVertical', () => {
     expect(next.selection.$from.parent.textContent).toBe('c');
   });
 });
+
+// 3x3 table preceded by a heading — locks findTable's offset math on a non-square,
+// non-first-block table (the foundation only covered a bare 2x2).
+const SRC3 = '# H\n\n| a | b | c |\n| --- | --- | --- |\n| d | e | f |\n| g | h | i |\n';
+
+describe('findTable / nav on a 3x3 table after a heading', () => {
+  it('Tab walks row-major across all 9 cells', () => {
+    let s = cursorAtText(setup(SRC3), 'a');
+    for (const t of ['b', 'c', 'd', 'e', 'f', 'g', 'h', 'i']) {
+      s = run(s, goToNextCell(1)).state;
+      expect(s.selection.$from.parent.textContent).toBe(t);
+    }
+  });
+  it('ArrowDown from b → e → h (middle column)', () => {
+    let s = cursorAtText(setup(SRC3), 'b');
+    s = run(s, arrowVertical('down')).state; expect(s.selection.$from.parent.textContent).toBe('e');
+    s = run(s, arrowVertical('down')).state; expect(s.selection.$from.parent.textContent).toBe('h');
+  });
+  it('ArrowUp from f → c (same column, previous row)', () => {
+    const s = cursorAtText(setup(SRC3), 'f');
+    expect(run(s, arrowVertical('up')).state.selection.$from.parent.textContent).toBe('c');
+  });
+  it('ArrowUp from a top edge → false; ArrowDown from i bottom edge → false', () => {
+    expect(arrowVertical('up')(cursorAtText(setup(SRC3), 'a'))).toBe(false);
+    expect(arrowVertical('down')(cursorAtText(setup(SRC3), 'i'))).toBe(false);
+  });
+});
