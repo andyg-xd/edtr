@@ -3,11 +3,12 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import type { ReactElement } from 'react';
-import { EditorState } from 'prosemirror-state';
+import { EditorState, TextSelection } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import { buildLiveDoc } from './liveModel';
 import { liveSchema } from './liveSchema';
 import { LiveView, structureLockPlugin } from './LiveView';
+import { setHeading } from '../commands/markdownBlockCommands';
 
 let container: HTMLDivElement | null = null;
 afterEach(() => {
@@ -97,5 +98,21 @@ describe('structureLockPlugin', () => {
     const after = state.apply(state.tr.insertText('X', 1));
     expect(after.doc.childCount).toBe(1);          // structure unchanged
     expect(after.doc.textContent).toBe('Xalpha');  // but the text WAS applied
+  });
+
+  it('structureLockPlugin permits a BLOCK_TRANSFORM-tagged structural tx and rejects an untagged one', () => {
+    const state = EditorState.create({ doc: docFor('hello\n\nworld\n'), schema: liveSchema, plugins: [structureLockPlugin()] });
+    const inFirst = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, 1)));
+    // tagged: setHeading sets the meta → should apply and change block 0 to a heading
+    let tagged = inFirst;
+    setHeading(2)(inFirst, (tr) => { tagged = inFirst.apply(tr); });
+    expect(tagged.doc.child(0).type.name).toBe('heading');
+    // untagged structural tx (same markup change, no meta) → filtered out (doc unchanged)
+    const pos = inFirst.selection.$from.before(1);
+    const b = inFirst.doc.child(0);
+    const untagged = inFirst.apply(
+      inFirst.tr.setNodeMarkup(pos, liveSchema.nodes.heading, { level: 2, srcFrom: b.attrs.srcFrom, srcTo: b.attrs.srcTo, blockId: b.attrs.blockId }),
+    );
+    expect(untagged.doc.child(0).type.name).toBe('paragraph'); // rejected by filterTransaction
   });
 });

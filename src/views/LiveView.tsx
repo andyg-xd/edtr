@@ -8,6 +8,7 @@ import { baseKeymap, chainCommands, newlineInCode } from 'prosemirror-commands';
 import { liveSchema } from './liveSchema';
 import { dirtyTrackingPlugin, getDirtyBlockIds } from './dirtyTracking';
 import { toggleStrong, toggleEm } from '../commands/markdownInlineCommands';
+import { BLOCK_TRANSFORM } from '../commands/markdownBlockCommands';
 
 interface LiveViewProps {
   doc: PMNode;
@@ -33,6 +34,7 @@ interface LiveViewProps {
 export function structureLockPlugin(): Plugin {
   return new Plugin({
     filterTransaction(tr, state) {
+      if (tr.getMeta(BLOCK_TRANSFORM)) return true;   // trusted ribbon block-transform command
       if (!tr.docChanged) return true;
       const before = state.doc;
       const after = tr.doc;
