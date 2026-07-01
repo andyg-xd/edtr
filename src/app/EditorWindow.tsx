@@ -9,6 +9,8 @@ import { CodeView } from '../views/CodeView';
 import { LiveView } from '../views/LiveView';
 import { RibbonView } from '../ribbon/RibbonView';
 import { markdownRibbon } from '../ribbon/markdownRibbon';
+import { markdownTableRibbon } from '../ribbon/markdownTableRibbon';
+import { isInTable } from '../commands/markdownTableCommands';
 import { toLive, writeBack } from '../views/ViewSync';
 import { openViaDialog, saveSession } from '../files/fileController';
 import { DocumentSession } from '../files/documentSession';
@@ -176,6 +178,11 @@ export function EditorWindow() {
         showLive && live && live.ok ? (
           <>
             {liveView && <RibbonView view={liveView} controls={markdownRibbon} linkRequest={linkRequest} />}
+            {liveView && isInTable(liveView.state) && (
+              <div className="ribbon-context">
+                <RibbonView view={liveView} controls={markdownTableRibbon} ariaLabel="Table tools" />
+              </div>
+            )}
             <LiveView
               key={`live-${openCount}`}
               doc={live.doc}

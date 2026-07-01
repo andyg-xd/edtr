@@ -203,3 +203,26 @@ body,
   font-weight: 600;
   background: rgba(0, 0, 0, 0.03);
 }
+
+/* Contextual table toolbar — a second ribbon row shown only inside a table. */
+.ribbon-context { border-bottom: 1px solid #e2e2e2; }
+.ribbon-context .ribbon { background: #f6f7f9; }
+
+/* Insert-table size picker. */
+.table-size-picker {
+  position: absolute;
+  z-index: 30;
+  margin-top: 4px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #c8c8c8;
+  border-radius: 6px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+.tsp-grid { display: grid; gap: 3px; }
+.tsp-cell {
+  width: 16px; height: 16px;
+  border: 1px solid #b9b9b9; background: #fff; cursor: pointer;
+}
+.tsp-cell.tsp-on { background: #4a90d9; border-color: #3f7fc0; }
+.tsp-caption { margin-top: 6px; text-align: center; font-size: 12px; color: #444; }
