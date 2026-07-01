@@ -305,3 +305,32 @@ describe('serializeBlock — structural-editing coverage', () => {
     expect(out).toMatch(/\n\s+[-*+] b$/);            // sub item is indented under it
   });
 });
+
+describe('serializeBlock — multi-child + schema-exhaustiveness', () => {
+  const flavor = detectFlavor('x\n', 'markdown');
+
+  it('a multi-paragraph blockquote serializes with blank quote lines as ">"', () => {
+    const bq = liveSchema.node('blockquote', null, [
+      liveSchema.node('paragraph', null, [liveSchema.text('a')]),
+      liveSchema.node('paragraph', null, [liveSchema.text('b')]),
+      liveSchema.node('paragraph', null, [liveSchema.text('c')]),
+    ]);
+    expect(serializeBlock(bq, flavor)).toBe('> a\n>\n> b\n>\n> c');
+  });
+
+  it('a multi-item bullet list serializes one line per item', () => {
+    const item = (t: string) =>
+      liveSchema.node('listItem', { checked: null }, [liveSchema.node('paragraph', null, [liveSchema.text(t)])]);
+    const list = liveSchema.node('bulletList', null, [item('a'), item('b'), item('c')]);
+    expect(serializeBlock(list, flavor)).toBe('- a\n- b\n- c');
+  });
+
+  it('serializeBlock handles EVERY block-group schema node (build-failing guard)', () => {
+    for (const type of Object.values(liveSchema.nodes)) {
+      if (type.spec.group !== 'block') continue; // only top-level block nodes
+      const node = type.createAndFill();          // minimal valid instance
+      if (!node) throw new Error(`could not construct a ${type.name} for the exhaustiveness check`);
+      expect(() => serializeBlock(node, flavor)).not.toThrow();
+    }
+  });
+});

@@ -163,6 +163,10 @@ export function serializeBlock(block: PMNode, flavor: FlavorProfile): string {
     case 'orderedList':
       return serializeList(block, flavor, true, block.attrs.start as number);
 
+    // Schema-invariant guard: every liveSchema `group: 'block'` node must have an
+    // arm above. If a future schema block node (e.g. an editable table in 3c-v)
+    // lands without a serializer arm, the exhaustiveness test in
+    // markdownSerializer.test.ts fails the build here rather than silently.
     default:
       throw new Error(`serializeBlock: unsupported block type: ${block.type.name}`);
   }
