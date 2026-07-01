@@ -11,24 +11,8 @@ interface TableSizePickerProps {
 export function TableSizePicker({ onSelect, onCancel }: TableSizePickerProps) {
   const [hover, setHover] = useState({ r: 1, c: 1 });
   const rootRef = useRef<HTMLDivElement>(null);
-  const gridRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { rootRef.current?.focus(); }, []);
-
-  // Use native mouseenter on the grid to capture mouseenter events dispatched by tests
-  // (React delegates onMouseEnter via mouseover, but tests dispatch native mouseenter)
-  useEffect(() => {
-    const grid = gridRef.current;
-    if (!grid) return;
-    function onMouseEnterCell(e: MouseEvent) {
-      const target = e.target as HTMLElement;
-      const r = Number(target.dataset.r);
-      const c = Number(target.dataset.c);
-      if (r && c) setHover({ r, c });
-    }
-    grid.addEventListener('mouseenter', onMouseEnterCell, true);
-    return () => grid.removeEventListener('mouseenter', onMouseEnterCell, true);
-  }, []);
 
   useEffect(() => {
     function onDocMouseDown(e: MouseEvent) {
@@ -57,8 +41,6 @@ export function TableSizePicker({ onSelect, onCancel }: TableSizePickerProps) {
           className={`tsp-cell${on ? ' tsp-on' : ''}`}
           role="gridcell"
           aria-selected={on}
-          data-r={r}
-          data-c={c}
           onMouseEnter={() => setHover({ r, c })}
           onMouseDown={(e) => { e.preventDefault(); onSelect(r, c); }}
         />,
@@ -75,7 +57,7 @@ export function TableSizePicker({ onSelect, onCancel }: TableSizePickerProps) {
       tabIndex={-1}
       onKeyDown={onKeyDown}
     >
-      <div ref={gridRef} className="tsp-grid" style={{ gridTemplateColumns: `repeat(${COLS}, 1fr)` }}>
+      <div className="tsp-grid" style={{ gridTemplateColumns: `repeat(${COLS}, 1fr)` }}>
         {cells}
       </div>
       <div className="tsp-caption" aria-live="polite">{hover.r} × {hover.c}</div>

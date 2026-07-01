@@ -1,6 +1,4 @@
 // @vitest-environment jsdom
-// @ts-expect-error — configure React 18 act() for jsdom
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
@@ -28,7 +26,7 @@ describe('TableSizePicker', () => {
     const { container } = await render(<TableSizePicker onSelect={() => {}} onCancel={() => {}} />);
     const cells = Array.from(container.querySelectorAll('.tsp-cell'));
     // cell at row 3, col 4 (0-based index (3-1)*8 + (4-1) = 19)
-    await act(async () => { cells[19].dispatchEvent(new MouseEvent('mouseenter', { bubbles: true })); });
+    await act(async () => { cells[19].dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); });
     expect(container.querySelector('.tsp-caption')?.textContent).toBe('3 × 4');
     expect(container.querySelectorAll('.tsp-cell.tsp-on').length).toBe(3 * 4);
   });
