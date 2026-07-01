@@ -69,10 +69,11 @@ describe('markdownRibbon', () => {
 });
 
 describe('markdownRibbon — block controls', () => {
-  it('has 13 controls in order (6 inline + 7 block)', () => {
+  it('has 14 controls in order (6 inline + 8 block)', () => {
     expect(markdownRibbon.map((c) => c.id)).toEqual([
       'bold', 'italic', 'strike', 'code', 'link', 'image',
       'heading', 'codeBlock', 'blockquote', 'bulletList', 'orderedList', 'taskList', 'horizontalRule',
+      'insertTable',
     ]);
   });
   it('heading is a dropdown with Paragraph + H1–H6 and reports the current level', () => {

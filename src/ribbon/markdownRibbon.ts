@@ -11,6 +11,7 @@ import {
   toggleBlockquote, toggleBulletList, toggleOrderedList, toggleTaskList,
 } from '../commands/markdownBlockCommands';
 import { insertHorizontalRule } from '../commands/markdownStructureCommands';
+import { insertTable, canInsertTable } from '../commands/markdownTableCommands';
 
 const { strong, em, strikethrough, code, link } = liveSchema.marks;
 const { image } = liveSchema.nodes;
@@ -93,4 +94,7 @@ export const markdownRibbon: RibbonControl[] = [
   { id: 'horizontalRule', label: '―', ariaLabel: 'Horizontal rule',
     isActive: () => false, isEnabled: (s) => insertHorizontalRule(s),
     action: { kind: 'command', run: insertHorizontalRule } },
+  { id: 'insertTable', label: '⊞', ariaLabel: 'Insert table',
+    isActive: () => false, isEnabled: (s) => canInsertTable(s),
+    action: { kind: 'sizePicker', buildCommand: (rows, cols) => insertTable(rows, cols) } },
 ];
