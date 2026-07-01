@@ -101,8 +101,11 @@ body,
   background: #f6f6f6; border: 1px dashed #ccc; border-radius: 4px;
   padding: 8px 12px; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 13px;
 }
-.live-view .task-item { list-style: none; }
-.live-view .task-item input { margin-right: 6px; }
+/* Task-list item: checkbox and text on one line (the task body is a block div). */
+.live-view .task-item { list-style: none; display: flex; align-items: flex-start; gap: 6px; }
+.live-view .task-item input { margin: 0; flex: none; }
+.live-view .task-body { flex: 1; }
+.live-view .task-body > p { margin: 0; }
 
 /* Code block + inline code in Live view.
    Tint all code, then reset code INSIDE a fenced block so the block reads as a
