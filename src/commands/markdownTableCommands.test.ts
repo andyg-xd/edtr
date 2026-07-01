@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { EditorState, TextSelection, type Command } from 'prosemirror-state';
 import { liveSchema } from '../views/liveSchema';
 import { buildLiveDoc } from '../views/liveModel';
-import { goToNextCell, arrowVertical, addRow, canAddRowAbove, deleteRow, canDeleteRow } from './markdownTableCommands';
+import { goToNextCell, arrowVertical, addRow, canAddRowAbove, deleteRow, canDeleteRow, addColumn, deleteColumn, canDeleteColumn } from './markdownTableCommands';
 
 function setup(src: string) {
   const r = buildLiveDoc(src);
@@ -156,6 +156,45 @@ describe('addRow', () => {
     // new row sits between header and old body: index 1 is the new empty row
     expect(tableOf(state).child(1).child(0).textContent).toBe('');
     expect(tableOf(state).child(2).child(0).textContent).toBe('c');
+  });
+});
+
+describe('addColumn', () => {
+  it('addColumn("right") inserts an empty cell into every row after the current column', () => {
+    const s = cursorAtText(setup(SRC), 'a');   // col 0
+    const { ok, state } = run(s, addColumn('right'));
+    expect(ok).toBe(true);
+    const t = tableOf(state);
+    expect(t.child(0).childCount).toBe(3);     // header now 3 cells
+    expect(t.child(1).childCount).toBe(3);     // body too
+    expect(t.child(0).child(1).textContent).toBe(''); // new empty cell between a and b
+    expect(t.child(0).child(1).attrs.header).toBe(true);
+    expect(t.child(1).child(1).attrs.header).toBe(false);
+    expect(state.selection.$from.parent.textContent).toBe(''); // cursor in the new cell
+  });
+  it('addColumn("left") inserts before the current column', () => {
+    const s = cursorAtText(setup(SRC), 'b');   // col 1
+    const t = tableOf(run(s, addColumn('left')).state);
+    expect(t.child(0).child(1).textContent).toBe(''); // new empty cell before b
+    expect(t.child(0).child(2).textContent).toBe('b');
+  });
+});
+
+describe('deleteColumn', () => {
+  it('removes the current column from every row', () => {
+    const s = cursorAtText(setup(SRC), 'b');   // col 1
+    const { ok, state } = run(s, deleteColumn);
+    expect(ok).toBe(true);
+    const t = tableOf(state);
+    expect(t.child(0).childCount).toBe(1);
+    expect(t.child(0).child(0).textContent).toBe('a');
+    expect(t.child(1).child(0).textContent).toBe('c');
+  });
+  it('is disabled when only one column remains', () => {
+    const oneCol = '| a |\n| --- |\n| c |\n';
+    const s = cursorAtText(setup(oneCol), 'a');
+    expect(canDeleteColumn(s)).toBe(false);
+    expect(deleteColumn(s)).toBe(false);
   });
 });
 
