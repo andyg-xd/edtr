@@ -167,4 +167,24 @@ describe('RibbonView', () => {
     expect(container.querySelector('[role="dialog"]')).toBeNull();
     expect(view.focus).toHaveBeenCalled();
   });
+
+  it('renders a dropdown control as a <select> and runs the command on change', async () => {
+    const runFor = vi.fn(() => () => true);
+    const control: RibbonControl = {
+      id: 'heading', label: 'Paragraph', ariaLabel: 'Text style',
+      isActive: () => false, isEnabled: () => true,
+      action: { kind: 'dropdown',
+        options: [{ label: 'Paragraph', value: 'paragraph' }, { label: 'Heading 2', value: 'h2' }],
+        getValue: () => 'paragraph', run: runFor },
+    };
+    const view = fakeView();
+    const { container } = await render(<RibbonView view={view} controls={[control]} />);
+    const select = container.querySelector('select.ribbon-select') as HTMLSelectElement;
+    expect(select).toBeTruthy();
+    expect(select.value).toBe('paragraph');
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')!.set!;
+    await act(async () => { setter.call(select, 'h2'); select.dispatchEvent(new Event('change', { bubbles: true })); });
+    expect(runFor).toHaveBeenCalledWith('h2');
+    expect(view.focus).toHaveBeenCalled();
+  });
 });

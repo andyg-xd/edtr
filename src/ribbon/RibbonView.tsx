@@ -22,10 +22,12 @@ export function RibbonView({ view, controls, linkRequest = 0 }: RibbonViewProps)
   function activate(control: RibbonControl) {
     const { action } = control;
     if (action.kind === 'command') { runCommand(action.run); return; }
-    if (action.whenActiveRun && control.isActive(view.state)) { runCommand(action.whenActiveRun); return; }
-    const { from, to } = view.state.selection;
-    const initialText = action.popover === 'link' ? view.state.doc.textBetween(from, to) : '';
-    setPopover({ control, initialText });
+    if (action.kind === 'popover') {
+      if (action.whenActiveRun && control.isActive(view.state)) { runCommand(action.whenActiveRun); return; }
+      const { from, to } = view.state.selection;
+      const initialText = action.popover === 'link' ? view.state.doc.textBetween(from, to) : '';
+      setPopover({ control, initialText });
+    }
   }
 
   const prevLinkRequest = useRef(linkRequest);
@@ -52,8 +54,24 @@ export function RibbonView({ view, controls, linkRequest = 0 }: RibbonViewProps)
   return (
     <div className="ribbon" role="toolbar" aria-label="Formatting">
       {controls.map((c) => {
+        const isEnabled = c.isEnabled(view.state);
+        if (c.action.kind === 'dropdown') {
+          const action = c.action;
+          return (
+            <select
+              key={c.id}
+              className="ribbon-select"
+              aria-label={c.ariaLabel}
+              disabled={!isEnabled}
+              value={action.getValue(view.state)}
+              onMouseDown={(e) => e.stopPropagation()}
+              onChange={(e) => { runCommand(action.run(e.target.value)); }}
+            >
+              {action.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          );
+        }
         const active = c.isActive(view.state);
-        const enabled = c.isEnabled(view.state);
         return (
           <button
             key={c.id}
@@ -61,7 +79,7 @@ export function RibbonView({ view, controls, linkRequest = 0 }: RibbonViewProps)
             className={`ribbon-btn${active ? ' is-active' : ''}`}
             aria-label={c.ariaLabel}
             aria-pressed={active}
-            disabled={!enabled}
+            disabled={!isEnabled}
             onMouseDown={(e) => e.preventDefault()} // keep the editor selection on click
             onClick={() => activate(c)}
           >
