@@ -5,6 +5,7 @@ import { buildLiveDoc } from '../views/liveModel';
 import {
   BLOCK_TRANSFORM, currentBlockType, blockActive, canTransform,
   setHeading, setParagraph, toggleCodeBlock,
+  toggleBlockquote, toggleBulletList, toggleOrderedList, toggleTaskList,
 } from './markdownBlockCommands';
 
 const { heading, codeBlock, paragraph } = liveSchema.nodes;
@@ -94,5 +95,52 @@ describe('type-change commands', () => {
     expect(st.doc.child(0).type).toBe(heading);
     expect(st.doc.child(1).type).toBe(heading);
     expect(st.doc.child(0).attrs.blockId).not.toBe(st.doc.child(1).attrs.blockId); // each kept its own
+  });
+});
+
+describe('wrap / unwrap commands', () => {
+  const { blockquote, bulletList, orderedList, paragraph } = liveSchema.nodes;
+
+  it('toggleBlockquote wraps a paragraph; the blockquote inherits the range attrs; toggling again unwraps', () => {
+    const s = cursorInBlock(stateOf('quote me\n\ntail\n'), 0);
+    const orig = s.doc.child(0);
+    const wrapped = run(s, toggleBlockquote).state;
+    const bq = wrapped.doc.child(0);
+    expect(bq.type).toBe(blockquote);
+    expect(bq.attrs.blockId).toBe(orig.attrs.blockId);
+    expect(bq.attrs.srcFrom).toBe(orig.attrs.srcFrom);
+    expect(bq.firstChild!.type).toBe(paragraph);
+    // toggle off → back to a top-level paragraph with the range attrs restored
+    const back = run(cursorInBlock(wrapped, 0), toggleBlockquote).state.doc.child(0);
+    expect(back.type).toBe(paragraph);
+    expect(back.attrs.blockId).toBe(orig.attrs.blockId);
+  });
+
+  it('toggleBulletList wraps a paragraph into a one-item list; toggling off restores the paragraph', () => {
+    const s = cursorInBlock(stateOf('item\n'), 0);
+    const orig = s.doc.child(0);
+    const wrapped = run(s, toggleBulletList).state;
+    const list = wrapped.doc.child(0);
+    expect(list.type).toBe(bulletList);
+    expect(list.attrs.blockId).toBe(orig.attrs.blockId);
+    expect(list.firstChild!.type).toBe(liveSchema.nodes.listItem);
+    const back = run(cursorInBlock(wrapped, 0), toggleBulletList).state.doc.child(0);
+    expect(back.type).toBe(paragraph);
+    expect(back.attrs.blockId).toBe(orig.attrs.blockId);
+  });
+
+  it('toggleOrderedList produces an orderedList', () => {
+    const list = run(cursorInBlock(stateOf('item\n'), 0), toggleOrderedList).state.doc.child(0);
+    expect(list.type).toBe(orderedList);
+  });
+
+  it('toggleTaskList produces a bulletList whose item is checkbox-bearing (checked=false)', () => {
+    const list = run(cursorInBlock(stateOf('todo\n'), 0), toggleTaskList).state.doc.child(0);
+    expect(list.type).toBe(bulletList);
+    expect(list.firstChild!.attrs.checked).toBe(false);
+  });
+
+  it('all wrap commands tag the transaction', () => {
+    expect(run(cursorInBlock(stateOf('x\n'), 0), toggleBlockquote).meta).toBe(true);
   });
 });

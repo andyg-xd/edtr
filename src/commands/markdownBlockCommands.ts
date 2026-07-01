@@ -1,5 +1,6 @@
 import type { Command, EditorState } from 'prosemirror-state';
 import type { NodeType } from 'prosemirror-model';
+import { findWrapping, liftTarget } from 'prosemirror-transform';
 import { liveSchema } from '../views/liveSchema';
 
 /** Meta key marking a transaction as a trusted block-transform (the structure lock permits these). */
@@ -78,3 +79,86 @@ export const toggleCodeBlock: Command = (state, dispatch) => {
   if (currentBlockType(state) === 'codeBlock') return setParagraph(state, dispatch);
   return setType(codeBlock, { lang: null })(state, dispatch);
 };
+
+// ─── Wrap / unwrap commands ──────────────────────────────────────────────────
+
+const { blockquote, bulletList, orderedList } = liveSchema.nodes;
+
+/** Lift the cursor's block out of its wrapper back to the top level.
+ *  We walk down to the first leaf textblock inside the top-level wrapper so
+ *  blockRange captures the inner content. This works for both blockquote
+ *  (one level: wrapper > paragraph) and lists (two levels: list > listItem > paragraph). */
+const unwrap: Command = (state, dispatch) => {
+  const { node: wrapperNode, index } = topBlock(state);
+  // Compute absolute start position of the top-level wrapper.
+  let wrapperStart = 0;
+  for (let i = 0; i < index; i++) wrapperStart += state.doc.child(i).nodeSize;
+  // Walk down the wrapper's first-child chain to find the first textblock,
+  // accumulating the offset from wrapperStart.
+  let offset = 1; // skip the wrapper's own open token
+  let cur = wrapperNode;
+  while (cur.firstChild && !cur.isTextblock) {
+    offset += 1; // skip cur's first child's open token
+    cur = cur.firstChild;
+  }
+  // offset now points just inside the first textblock. Resolve that position.
+  const innerPos = wrapperStart + offset;
+  if (innerPos >= state.doc.content.size) return false;
+  const $inner = state.doc.resolve(innerPos);
+  const range = $inner.blockRange($inner);
+  if (!range) return false;
+  const target = liftTarget(range);
+  if (target == null) return false;
+  if (dispatch) dispatch(state.tr.lift(range, target).setMeta(BLOCK_TRANSFORM, true).scrollIntoView());
+  return true;
+};
+
+/**
+ * Wrap the cursor's single block in `wrapperType` (carrying the block's range attrs),
+ * or unwrap if already that type. For task lists, `itemAttrs` are injected into the
+ * listItem entry of the wrapping before calling tr.wrap.
+ */
+function toggleWrap(
+  wrapperType: NodeType,
+  isType: (state: EditorState) => boolean,
+  itemAttrs: Record<string, unknown> = {},
+): Command {
+  return (state, dispatch) => {
+    if (!canTransform(state)) return false;
+    if (isType(state)) return unwrap(state, dispatch);
+    const { $from, $to } = state.selection;
+    const range = $from.blockRange($to);
+    if (!range) return false;
+    const { node } = topBlock(state);
+    const wrapping = findWrapping(range, wrapperType, rangeAttrs(node));
+    if (!wrapping) return false;
+    if (dispatch) {
+      // If itemAttrs are provided (task list), inject them into the listItem entry
+      // of the wrapping array so tr.wrap creates the listItem with correct attrs.
+      const finalWrapping = Object.keys(itemAttrs).length > 0
+        ? wrapping.map((entry) =>
+            entry.type === liveSchema.nodes.listItem
+              ? { type: entry.type, attrs: { ...entry.attrs, ...itemAttrs } }
+              : entry,
+          )
+        : wrapping;
+      const tr = state.tr.wrap(range, finalWrapping);
+      tr.setMeta(BLOCK_TRANSFORM, true);
+      dispatch(tr.scrollIntoView());
+    }
+    return true;
+  };
+}
+
+export const toggleBlockquote: Command = toggleWrap(
+  blockquote, (s) => currentBlockType(s) === 'blockquote',
+);
+export const toggleBulletList: Command = toggleWrap(
+  bulletList, (s) => currentBlockType(s) === 'bulletList',
+);
+export const toggleOrderedList: Command = toggleWrap(
+  orderedList, (s) => currentBlockType(s) === 'orderedList',
+);
+export const toggleTaskList: Command = toggleWrap(
+  bulletList, (s) => currentBlockType(s) === 'taskList', { checked: false },
+);
