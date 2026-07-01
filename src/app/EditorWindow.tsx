@@ -96,8 +96,8 @@ export function EditorWindow() {
     setLiveHasEdits(dirtyIds.size > 0);
   }, []);
 
-  const flushLiveToSource = useCallback(() => {
-    if (!session || !liveDocRef.current || liveDirtyRef.current.size === 0) return;
+  const flushLiveToSource = useCallback((): boolean => {
+    if (!session || !liveDocRef.current || liveDirtyRef.current.size === 0) return true;
     const flavor = detectFlavor(liveBaselineRef.current, 'markdown');
     try {
       const newSource = writeBack(
@@ -110,17 +110,23 @@ export function EditorWindow() {
       session.setCurrentText(newSource);
       liveDirtyRef.current = new Set();
       setLiveHasEdits(false);
+      setError(null); // clear any prior serializer-error banner on success
+      return true;
     } catch (e) {
-      // A serializer throw must never corrupt or lose work: keep the live edits,
-      // surface a non-destructive error, and stay editable.
-      setError(`Edtr couldn't safely serialize an edit — your changes are still here. ${String(e)}`);
+      // Never corrupt or lose work: keep the live edits, surface a non-destructive
+      // error, stay editable, and report failure so callers don't proceed.
+      setError(
+        `Edtr couldn't safely convert one of your edits back to Markdown. ` +
+          `Your work is still here in Live view. Please adjust that edit and try again. ${String(e)}`,
+      );
+      return false;
     }
   }, [session]);
 
   const dirty = (session?.isDirty() ?? false) || liveHasEdits;
 
   const handleSave = useCallback(async (): Promise<boolean> => {
-    if (showLive) flushLiveToSource();
+    if (showLive && !flushLiveToSource()) return false; // flush failed → do not save
     if (!session || !session.isDirty()) {
       setLiveHasEdits(false);
       return true;
@@ -152,7 +158,7 @@ export function EditorWindow() {
         liveDisabled={!liveAvailable}
         onSetViewMode={(m) => {
           if (m === 'live' && !liveAvailable) return;
-          if (m === 'code' && showLive) flushLiveToSource(); // fold edits into source before showing Code
+          if (m === 'code' && showLive && !flushLiveToSource()) return; // flush failed → stay in Live
           setViewMode(m);
         }}
       />
