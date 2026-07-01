@@ -129,9 +129,18 @@ describe('wrap / unwrap commands', () => {
     expect(back.attrs.blockId).toBe(orig.attrs.blockId);
   });
 
-  it('toggleOrderedList produces an orderedList', () => {
-    const list = run(cursorInBlock(stateOf('item\n'), 0), toggleOrderedList).state.doc.child(0);
+  it('toggleOrderedList — range-attr + round-trip: inherits blockId/srcFrom; toggling off restores paragraph', () => {
+    const s = cursorInBlock(stateOf('item\n'), 0);
+    const orig = s.doc.child(0);
+    const wrapped = run(s, toggleOrderedList).state;
+    const list = wrapped.doc.child(0);
     expect(list.type).toBe(orderedList);
+    expect(list.attrs.blockId).toBe(orig.attrs.blockId);
+    expect(list.attrs.srcFrom).toBe(orig.attrs.srcFrom);
+    // toggle off → back to paragraph with original blockId
+    const back = run(cursorInBlock(wrapped, 0), toggleOrderedList).state.doc.child(0);
+    expect(back.type).toBe(paragraph);
+    expect(back.attrs.blockId).toBe(orig.attrs.blockId);
   });
 
   it('toggleTaskList produces a bulletList whose item is checkbox-bearing (checked=false)', () => {
@@ -140,7 +149,22 @@ describe('wrap / unwrap commands', () => {
     expect(list.firstChild!.attrs.checked).toBe(false);
   });
 
-  it('all wrap commands tag the transaction', () => {
-    expect(run(cursorInBlock(stateOf('x\n'), 0), toggleBlockquote).meta).toBe(true);
+  it('toggleTaskList — round-trip: toggling off restores a paragraph with the original blockId', () => {
+    const s = cursorInBlock(stateOf('todo\n'), 0);
+    const orig = s.doc.child(0);
+    const wrapped = run(s, toggleTaskList).state;
+    // toggle off → back to paragraph
+    const back = run(cursorInBlock(wrapped, 0), toggleTaskList).state.doc.child(0);
+    expect(back.type).toBe(paragraph);
+    expect(back.attrs.blockId).toBe(orig.attrs.blockId);
+  });
+
+  it.each([
+    ['toggleBlockquote', toggleBlockquote],
+    ['toggleBulletList', toggleBulletList],
+    ['toggleOrderedList', toggleOrderedList],
+    ['toggleTaskList', toggleTaskList],
+  ] as const)('%s tags the transaction with BLOCK_TRANSFORM', (_name, cmd) => {
+    expect(run(cursorInBlock(stateOf('x\n'), 0), cmd).meta).toBe(true);
   });
 });
