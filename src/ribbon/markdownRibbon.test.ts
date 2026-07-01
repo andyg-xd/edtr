@@ -90,7 +90,7 @@ describe('markdownRibbon — block controls', () => {
     expect(byId('bulletList').isActive(cursorInBlock(stateOf('- a\n'), 0))).toBe(true);
   });
   it('block controls are disabled in a verbatim block', () => {
-    const s = stateOf('| a | b |\n| - | - |\n| 1 | 2 |\n');
+    const s = stateOf('<div>x</div>\n');
     const sel = s.apply(s.tr.setSelection(TextSelection.create(s.doc, 0, 0)));
     expect(byId('codeBlock').isEnabled(sel)).toBe(false);
   });

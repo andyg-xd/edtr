@@ -37,8 +37,8 @@ describe('currentBlockType / blockActive / canTransform', () => {
     expect(blockActive(cursorInBlock(stateOf('# H\n'), 0), 'h1')).toBe(true);
   });
   it('canTransform is false inside a verbatim block', () => {
-    // a GFM table → verbatim atom in liveModel
-    const s = stateOf('| a | b |\n| - | - |\n| 1 | 2 |\n');
+    // a raw HTML block → verbatim atom in liveModel
+    const s = stateOf('<div>x</div>\n');
     // select the verbatim node
     const sel = s.apply(s.tr.setSelection(TextSelection.create(s.doc, 0, 0)));
     // cursor at doc start lands before/at the verbatim atom
@@ -83,7 +83,7 @@ describe('type-change commands', () => {
     expect(back.type).toBe(paragraph);
   });
   it('is disabled (returns false) inside a verbatim block', () => {
-    const s = stateOf('| a | b |\n| - | - |\n| 1 | 2 |\n');
+    const s = stateOf('<div>x</div>\n');
     const sel = s.apply(s.tr.setSelection(TextSelection.create(s.doc, 0, 0)));
     expect(setHeading(2)(sel)).toBe(false);
   });

@@ -141,8 +141,26 @@ function buildBlock(node: any, source: string, ctx: BuildCtx, topLevel: boolean)
       const r = rangeAttrs(node, ctx, topLevel);
       return liveSchema.node('horizontalRule', r);
     }
+    case 'table': {
+      const r = rangeAttrs(node, ctx, topLevel);
+      const align = (node.align ?? []) as (string | null)[];
+      const rows = (node.children ?? []).map((row: any, rowIdx: number) =>
+        liveSchema.node(
+          'tableRow',
+          null,
+          (row.children ?? []).map((cell: any, colIdx: number) =>
+            liveSchema.node(
+              'tableCell',
+              { header: rowIdx === 0, align: align[colIdx] ?? null },
+              inlineContent(cell, source),
+            ),
+          ),
+        ),
+      );
+      return liveSchema.node('table', r, rows);
+    }
     default:
-      // Unsupported-but-locatable (table, html, footnoteDefinition, …) → verbatim.
+      // Unsupported-but-locatable (html, footnoteDefinition, …) → verbatim.
       return buildVerbatim(node, source, ctx, topLevel);
   }
 }

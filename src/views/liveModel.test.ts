@@ -150,14 +150,12 @@ describe('buildLiveDoc — inline content', () => {
 });
 
 describe('buildLiveDoc — verbatim fallback', () => {
-  it('renders a GFM table as a verbatim block holding its exact raw markdown', () => {
+  it('renders a GFM table as a real table node (not verbatim)', () => {
     const src = '| a | b |\n| - | - |\n| 1 | 2 |\n';
     const d = doc(src);
-    const v = d.child(0);
-    expect(v.type.name).toBe('verbatim');
-    // raw must equal the exact source slice at the block's range (no reflow)
-    expect(v.attrs.raw).toBe(src.slice(v.attrs.srcFrom, v.attrs.srcTo));
-    expect(v.attrs.raw).toContain('| a | b |');
+    const t = d.child(0);
+    expect(t.type.name).toBe('table');
+    expect(t.childCount).toBe(2); // header row + body row
   });
 
   it('renders a raw HTML block as verbatim', () => {
@@ -169,13 +167,47 @@ describe('buildLiveDoc — verbatim fallback', () => {
     expect(v.attrs.raw).toContain('<div');
   });
 
-  it('keeps supported blocks structural even when a table is present (hybrid degradation)', () => {
+  it('keeps supported blocks structural when mixed with a table', () => {
     const src = '# Heading\n\n| a |\n| - |\n';
     const d = doc(src);
     expect(d.child(0).type.name).toBe('heading');
     const table = d.child(1);
-    expect(table.type.name).toBe('verbatim');
-    expect(table.attrs.raw).toBe(src.slice(table.attrs.srcFrom, table.attrs.srcTo));
+    expect(table.type.name).toBe('table'); // tables are now real editable nodes
+    expect(table.childCount).toBe(1); // one header row
+  });
+});
+
+describe('table builder', () => {
+  function docFor(src: string) {
+    const r = buildLiveDoc(src);
+    if (!r.ok) throw new Error('degraded');
+    return r.doc;
+  }
+
+  it('builds a real table (not verbatim) with header + body rows', () => {
+    const doc = docFor('| A | B |\n| --- | :-: |\n| 1 | 2 |\n');
+    const t = doc.child(0);
+    expect(t.type.name).toBe('table');       // NOT 'verbatim'
+    expect(t.childCount).toBe(2);            // header + body (delimiter is not a row in mdast)
+  });
+
+  it('marks row-0 cells as header, later rows as body', () => {
+    const t = docFor('| A | B |\n| --- | --- |\n| 1 | 2 |\n').child(0);
+    t.child(0).forEach((c) => expect(c.attrs.header).toBe(true));
+    t.child(1).forEach((c) => expect(c.attrs.header).toBe(false));
+  });
+
+  it('carries per-column alignment from the source', () => {
+    const t = docFor('| A | B |\n| --- | :-: |\n| 1 | 2 |\n').child(0);
+    expect(t.child(0).child(0).attrs.align).toBe(null);      // col A: ---
+    expect(t.child(0).child(1).attrs.align).toBe('center');  // col B: :-:
+    expect(t.child(1).child(1).attrs.align).toBe('center');  // body cell same column
+  });
+
+  it('builds a cell with inline marks', () => {
+    const t = docFor('| **b** |\n| --- |\n| x |\n').child(0);
+    const headerCell = t.child(0).child(0);
+    expect(headerCell.firstChild!.marks.some((m) => m.type.name === 'strong')).toBe(true);
   });
 });
 

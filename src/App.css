@@ -187,3 +187,19 @@ body,
 .insert-popover-field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
 .insert-popover-field input { padding: 4px 6px; font-size: 13px; }
 .insert-popover-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+/* GFM tables in Live view */
+.live-view table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+}
+.live-view th,
+.live-view td {
+  border: 1px solid #d0d7de;
+  padding: 0.3em 0.6em;
+  text-align: left;
+}
+.live-view th {
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.03);
+}
