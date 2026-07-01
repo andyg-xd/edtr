@@ -14,8 +14,7 @@ function setup(src: string) {
   const r = buildLiveDoc(src);
   if (!r.ok) throw new Error('degraded');
   const base = r.doc;
-  const state = EditorState.create({ doc: base, schema: liveSchema, plugins: [blockIdentityPlugin(), dirtyTrackingPlugin()] });
-  return { base, state, flavor: detectFlavor(src, 'markdown') };
+  return { base, flavor: detectFlavor(src, 'markdown') };
 }
 function cursor(s: EditorState, index: number, offset = 1) {
   let pos = 0; for (let i = 0; i < index; i++) pos += s.doc.child(i).nodeSize;
@@ -52,8 +51,7 @@ describe('structural write-back (no beautify, end-to-end)', () => {
     let s = cursor(EditorState.create({ doc: base, schema: liveSchema, plugins: [blockIdentityPlugin(), dirtyTrackingPlugin()] }), 1, 1);
     s = run(s, insertHorizontalRule);
     const out = writeBack(s.doc, src, getDirtyBlockIds(s), flavor, base);
-    expect(out.startsWith('# Title\n\nbody\n\n---')).toBe(true);
-    expect(out).toContain('---');
+    expect(out).toBe('# Title\n\nbody\n\n---\n\n\n');
   });
 
   it('wrap then unwrap returns to byte-identical source (carry-forward golden)', () => {
