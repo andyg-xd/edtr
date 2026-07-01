@@ -23,8 +23,9 @@ export function EditorWindow() {
   const [showCloseGuard, setShowCloseGuard] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('code');
 
-  const liveBaselineRef = useRef<string>('');      // source when Live was entered
-  const liveDocRef = useRef<PMNode | null>(null);  // latest live doc
+  const liveBaselineRef = useRef<string>('');           // source when Live was entered
+  const liveBaselineDocRef = useRef<PMNode | null>(null); // live doc as of enter-Live
+  const liveDocRef = useRef<PMNode | null>(null);       // latest live doc
   const liveDirtyRef = useRef<Set<string>>(new Set());
   const [liveHasEdits, setLiveHasEdits] = useState(false);
   const [liveView, setLiveView] = useState<EditorView | null>(null);
@@ -66,9 +67,10 @@ export function EditorWindow() {
     } catch (e) {
       return { ok: false as const, degrade: true as const, reason: String(e) };
     }
-    // Re-derive when the file changes (openCount) or the mode flips to live.
+    // Re-derive when the file changes (openCount) or the mode flips to live,
+    // or when session.text is mutated (tracked via version counter).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openCount, viewMode, session]);
+  }, [openCount, viewMode, session, session?.version]);
 
   const liveAvailable = !!session && session.format === 'markdown' && !!live && live.ok;
   const showLive = viewMode === 'live' && liveAvailable;
@@ -78,6 +80,7 @@ export function EditorWindow() {
   useEffect(() => {
     if (showLive && live && live.ok) {
       liveBaselineRef.current = session!.text;
+      liveBaselineDocRef.current = live.doc;   // stash baseline doc for writeBack
       liveDocRef.current = live.doc;
       liveDirtyRef.current = new Set();
       setLiveHasEdits(false);
@@ -97,7 +100,13 @@ export function EditorWindow() {
     if (!session || !liveDocRef.current || liveDirtyRef.current.size === 0) return;
     const flavor = detectFlavor(liveBaselineRef.current, 'markdown');
     try {
-      const newSource = writeBack(liveDocRef.current, liveBaselineRef.current, liveDirtyRef.current, flavor);
+      const newSource = writeBack(
+        liveDocRef.current,
+        liveBaselineRef.current,
+        liveDirtyRef.current,
+        flavor,
+        liveBaselineDocRef.current ?? undefined,
+      );
       session.setCurrentText(newSource);
       liveDirtyRef.current = new Set();
       setLiveHasEdits(false);

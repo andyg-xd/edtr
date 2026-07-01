@@ -10,6 +10,7 @@ export class DocumentSession {
   readonly meta: FileMeta;
   private savedText: string;
   private currentText: string;
+  private _version = 0;
 
   constructor(loaded: LoadedFile) {
     this.path = loaded.path;
@@ -23,8 +24,13 @@ export class DocumentSession {
     return this.currentText;
   }
 
+  get version(): number {
+    return this._version;
+  }
+
   setCurrentText(text: string): void {
     this.currentText = text;
+    this._version++;
   }
 
   markSaved(): void {

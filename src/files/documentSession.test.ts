@@ -43,3 +43,14 @@ describe('DocumentSession', () => {
     expect(s.meta).toEqual({ eol: 'lf', hadBom: false });
   });
 });
+
+describe('DocumentSession.version', () => {
+  it('starts at 0 and bumps on each setCurrentText', () => {
+    const s = new DocumentSession(loaded);
+    expect(s.version).toBe(0);
+    s.setCurrentText('a');
+    expect(s.version).toBe(1);
+    s.setCurrentText('b');
+    expect(s.version).toBe(2);
+  });
+});
