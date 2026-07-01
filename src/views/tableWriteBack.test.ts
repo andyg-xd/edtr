@@ -92,6 +92,7 @@ describe('structural table ops — no beautify', () => {
   it('inserting a new table serializes to valid GFM; neighbors byte-identical', () => {
     const out = afterCmd('Hello.\n', 'Hello', insertTable(2, 2));
     expect(out.startsWith('Hello.\n')).toBe(true);
+    expect(out.endsWith('|  |  |\n')).toBe(true);
     expect(out).toContain('|  |  |\n| --- | --- |\n|  |  |');
   });
 });
