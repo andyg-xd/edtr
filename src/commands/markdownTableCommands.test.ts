@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { EditorState, TextSelection, type Command } from 'prosemirror-state';
 import { liveSchema } from '../views/liveSchema';
 import { buildLiveDoc } from '../views/liveModel';
-import { goToNextCell, arrowVertical, addRow, canAddRowAbove, deleteRow, canDeleteRow, addColumn, deleteColumn, canDeleteColumn } from './markdownTableCommands';
+import { goToNextCell, arrowVertical, addRow, canAddRowAbove, deleteRow, canDeleteRow, addColumn, deleteColumn, canDeleteColumn, setColumnAlign, getColumnAlign } from './markdownTableCommands';
 
 function setup(src: string) {
   const r = buildLiveDoc(src);
@@ -195,6 +195,31 @@ describe('deleteColumn', () => {
     const s = cursorAtText(setup(oneCol), 'a');
     expect(canDeleteColumn(s)).toBe(false);
     expect(deleteColumn(s)).toBe(false);
+  });
+});
+
+describe('column alignment', () => {
+  it('setColumnAlign sets align on EVERY cell in the current column', () => {
+    const s = cursorAtText(setup(SRC), 'a'); // col 0
+    const { ok, state } = run(s, setColumnAlign('center'));
+    expect(ok).toBe(true);
+    const t = tableOf(state);
+    expect(t.child(0).child(0).attrs.align).toBe('center'); // header cell
+    expect(t.child(1).child(0).attrs.align).toBe('center'); // body cell
+    expect(t.child(0).child(1).attrs.align).toBe(null);     // other column untouched
+  });
+  it('getColumnAlign reads the current column header cell align', () => {
+    let s = cursorAtText(setup(SRC), 'a');
+    expect(getColumnAlign(s)).toBe(null);
+    s = run(s, setColumnAlign('right')).state;
+    // cursor is still in column 0 after the op
+    expect(getColumnAlign(s)).toBe('right');
+  });
+  it('setColumnAlign(null) clears alignment', () => {
+    let s = cursorAtText(setup(SRC), 'a');
+    s = run(s, setColumnAlign('left')).state;
+    s = run(s, setColumnAlign(null)).state;
+    expect(tableOf(s).child(0).child(0).attrs.align).toBe(null);
   });
 });
 

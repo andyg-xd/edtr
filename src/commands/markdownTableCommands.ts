@@ -228,3 +228,25 @@ export function canDeleteColumn(state: EditorState): boolean {
   const ctx = findTable(state.selection.$from);
   return !!ctx && ctx.colCount > 1;
 }
+
+// ---------------------------------------------------------------------------
+// Column alignment commands
+// ---------------------------------------------------------------------------
+
+export function setColumnAlign(align: Align): Command {
+  return (state, dispatch) => {
+    const ctx = findTable(state.selection.$from);
+    if (!ctx) return false;
+    const rows = rowsOf(ctx.table).map((row) =>
+      tableRow.create(row.attrs, cellsOf(row).map((cell, c) => (c === ctx.colIndex ? withAlign(cell, align) : cell))),
+    );
+    if (dispatch) dispatch(replaceTableTr(state, ctx, table.create(ctx.table.attrs, rows), ctx.rowIndex, ctx.colIndex));
+    return true;
+  };
+}
+
+export function getColumnAlign(state: EditorState): Align {
+  const ctx = findTable(state.selection.$from);
+  if (!ctx) return null;
+  return ctx.table.child(0).child(ctx.colIndex).attrs.align as Align;
+}
