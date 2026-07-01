@@ -164,7 +164,7 @@ export function serializeBlock(block: PMNode, flavor: FlavorProfile): string {
       return serializeList(block, flavor, true, block.attrs.start as number);
 
     default:
-      return block.textContent;
+      throw new Error(`serializeBlock: unsupported block type: ${block.type.name}`);
   }
 }
 

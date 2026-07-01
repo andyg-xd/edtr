@@ -225,6 +225,11 @@ describe('serializeBlock', () => {
     const v = liveSchema.node('verbatim', { raw: '| a | b |\n| - | - |', srcFrom: 0, srcTo: 0, blockId: 'b0' });
     expect(serializeBlock(v, star)).toBe('| a | b |\n| - | - |');
   });
+  it('throws on an unknown block type (no lossy silent fallback)', () => {
+    // liveSchema has no such node; fake a node-like object exercising the default arm.
+    const fake = { type: { name: 'someFutureBlock' }, textContent: 'x', attrs: {} } as unknown as import('prosemirror-model').Node;
+    expect(() => serializeBlock(fake, star)).toThrow(/unsupported block type: someFutureBlock/i);
+  });
 });
 
 // Helpers for whitespace-around-mark round-trip tests.
