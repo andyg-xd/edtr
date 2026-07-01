@@ -17,11 +17,16 @@ function selectFirstBlock(s: EditorState): EditorState {
 function cursorAt(s: EditorState, pos: number): EditorState {
   return s.apply(s.tr.setSelection(TextSelection.create(s.doc, pos, pos)));
 }
+function cursorInBlock(s: EditorState, blockIndex: number): EditorState {
+  let pos = 1;
+  for (let i = 0; i < blockIndex; i++) pos += s.doc.child(i).nodeSize;
+  return s.apply(s.tr.setSelection(TextSelection.create(s.doc, pos, pos)));
+}
 const byId = (id: string) => markdownRibbon.find((c) => c.id === id)!;
 
 describe('markdownRibbon', () => {
   it('has the 6 inline controls in order', () => {
-    expect(markdownRibbon.map((c) => c.id)).toEqual(['bold', 'italic', 'strike', 'code', 'link', 'image']);
+    expect(markdownRibbon.slice(0, 6).map((c) => c.id)).toEqual(['bold', 'italic', 'strike', 'code', 'link', 'image']);
   });
   it('every control has an aria-label and a glyph label', () => {
     for (const c of markdownRibbon) {
@@ -60,5 +65,33 @@ describe('markdownRibbon', () => {
       expect(image.action.popover).toBe('image');
       expect(image.action.whenActiveRun).toBeUndefined();
     }
+  });
+});
+
+describe('markdownRibbon — block controls', () => {
+  it('has 12 controls in order (6 inline + 6 block)', () => {
+    expect(markdownRibbon.map((c) => c.id)).toEqual([
+      'bold', 'italic', 'strike', 'code', 'link', 'image',
+      'heading', 'codeBlock', 'blockquote', 'bulletList', 'orderedList', 'taskList',
+    ]);
+  });
+  it('heading is a dropdown with Paragraph + H1–H6 and reports the current level', () => {
+    const h = byId('heading');
+    expect(h.action.kind).toBe('dropdown');
+    if (h.action.kind === 'dropdown') {
+      expect(h.action.options.map((o) => o.value)).toEqual(['paragraph', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+      expect(h.action.getValue(cursorInBlock(stateOf('## t\n'), 0))).toBe('h2');
+      expect(h.action.getValue(cursorInBlock(stateOf('p\n'), 0))).toBe('paragraph');
+    }
+  });
+  it('codeBlock / blockquote / list controls reflect active state', () => {
+    expect(byId('codeBlock').isActive(cursorInBlock(stateOf('```\nx\n```\n'), 0))).toBe(true);
+    expect(byId('blockquote').isActive(cursorInBlock(stateOf('> q\n'), 0))).toBe(true);
+    expect(byId('bulletList').isActive(cursorInBlock(stateOf('- a\n'), 0))).toBe(true);
+  });
+  it('block controls are disabled in a verbatim block', () => {
+    const s = stateOf('| a | b |\n| - | - |\n| 1 | 2 |\n');
+    const sel = s.apply(s.tr.setSelection(TextSelection.create(s.doc, 0, 0)));
+    expect(byId('codeBlock').isEnabled(sel)).toBe(false);
   });
 });

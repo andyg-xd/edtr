@@ -5,6 +5,11 @@ import {
   toggleStrong, toggleEm, toggleStrike, toggleCode,
   canLink, applyLink, removeLink, insertImage,
 } from '../commands/markdownInlineCommands';
+import {
+  currentBlockType, canTransform,
+  setHeading, setParagraph, toggleCodeBlock,
+  toggleBlockquote, toggleBulletList, toggleOrderedList, toggleTaskList,
+} from '../commands/markdownBlockCommands';
 
 const { strong, em, strikethrough, code, link } = liveSchema.marks;
 const { image } = liveSchema.nodes;
@@ -53,4 +58,35 @@ export const markdownRibbon: RibbonControl[] = [
       buildCommand: ({ text, url }) => insertImage(url, text),
     },
   },
+  {
+    id: 'heading', label: 'Paragraph', ariaLabel: 'Text style',
+    isActive: () => false,
+    isEnabled: (s) => canTransform(s),
+    action: {
+      kind: 'dropdown',
+      options: [
+        { label: 'Paragraph', value: 'paragraph' },
+        { label: 'Heading 1', value: 'h1' }, { label: 'Heading 2', value: 'h2' },
+        { label: 'Heading 3', value: 'h3' }, { label: 'Heading 4', value: 'h4' },
+        { label: 'Heading 5', value: 'h5' }, { label: 'Heading 6', value: 'h6' },
+      ],
+      getValue: (s) => { const t = currentBlockType(s); return t.startsWith('h') || t === 'paragraph' ? t : 'paragraph'; },
+      run: (v) => (v === 'paragraph' ? setParagraph : setHeading(Number(v[1]))),
+    },
+  },
+  { id: 'codeBlock', label: '{ }', ariaLabel: 'Code block',
+    isActive: (s) => currentBlockType(s) === 'codeBlock', isEnabled: (s) => canTransform(s),
+    action: { kind: 'command', run: toggleCodeBlock } },
+  { id: 'blockquote', label: '❝', ariaLabel: 'Blockquote',
+    isActive: (s) => currentBlockType(s) === 'blockquote', isEnabled: (s) => canTransform(s),
+    action: { kind: 'command', run: toggleBlockquote } },
+  { id: 'bulletList', label: '•', ariaLabel: 'Bullet list',
+    isActive: (s) => currentBlockType(s) === 'bulletList', isEnabled: (s) => canTransform(s),
+    action: { kind: 'command', run: toggleBulletList } },
+  { id: 'orderedList', label: '1.', ariaLabel: 'Numbered list',
+    isActive: (s) => currentBlockType(s) === 'orderedList', isEnabled: (s) => canTransform(s),
+    action: { kind: 'command', run: toggleOrderedList } },
+  { id: 'taskList', label: '☑', ariaLabel: 'Task list',
+    isActive: (s) => currentBlockType(s) === 'taskList', isEnabled: (s) => canTransform(s),
+    action: { kind: 'command', run: toggleTaskList } },
 ];

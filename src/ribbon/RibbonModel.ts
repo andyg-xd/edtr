@@ -15,6 +15,12 @@ export type RibbonAction =
       buildCommand: (values: PopoverValues) => Command;
       /** If present and the control isActive, a click runs this instead of opening the popover. */
       whenActiveRun?: Command;
+    }
+  | {
+      kind: 'dropdown';
+      options: { label: string; value: string }[];
+      getValue: (state: EditorState) => string;
+      run: (value: string) => Command;
     };
 
 export interface RibbonControl {
