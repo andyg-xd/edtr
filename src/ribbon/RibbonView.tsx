@@ -3,16 +3,19 @@ import type { EditorView } from 'prosemirror-view';
 import type { Command } from 'prosemirror-state';
 import type { RibbonControl, PopoverValues } from './RibbonModel';
 import { InsertPopover } from './InsertPopover';
+import { TableSizePicker } from './TableSizePicker';
 
 interface RibbonViewProps {
   view: EditorView;
   controls: RibbonControl[];
   /** Incremented by ⌘K to trigger the link control programmatically. */
   linkRequest?: number;
+  ariaLabel?: string;
 }
 
-export function RibbonView({ view, controls, linkRequest = 0 }: RibbonViewProps) {
+export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Formatting' }: RibbonViewProps) {
   const [popover, setPopover] = useState<{ control: RibbonControl; initialText: string } | null>(null);
+  const [sizePicker, setSizePicker] = useState<RibbonControl | null>(null);
 
   function runCommand(cmd: Command) {
     cmd(view.state, view.dispatch);
@@ -27,7 +30,9 @@ export function RibbonView({ view, controls, linkRequest = 0 }: RibbonViewProps)
       const { from, to } = view.state.selection;
       const initialText = action.popover === 'link' ? view.state.doc.textBetween(from, to) : '';
       setPopover({ control, initialText });
+      return;
     }
+    if (action.kind === 'sizePicker') { setSizePicker(control); return; }
   }
 
   const prevLinkRequest = useRef(linkRequest);
@@ -52,7 +57,7 @@ export function RibbonView({ view, controls, linkRequest = 0 }: RibbonViewProps)
   }
 
   return (
-    <div className="ribbon" role="toolbar" aria-label="Formatting">
+    <div className="ribbon" role="toolbar" aria-label={ariaLabel}>
       {controls.map((c) => {
         const isEnabled = c.isEnabled(view.state);
         if (c.action.kind === 'dropdown') {
@@ -93,6 +98,18 @@ export function RibbonView({ view, controls, linkRequest = 0 }: RibbonViewProps)
           initialText={popover.initialText}
           onConfirm={confirmPopover}
           onCancel={() => { setPopover(null); view.focus(); }}
+        />
+      )}
+      {sizePicker && sizePicker.action.kind === 'sizePicker' && (
+        <TableSizePicker
+          onSelect={(rows, cols) => {
+            if (sizePicker.action.kind === 'sizePicker') {
+              sizePicker.action.buildCommand(rows, cols)(view.state, view.dispatch);
+            }
+            setSizePicker(null);
+            view.focus();
+          }}
+          onCancel={() => { setSizePicker(null); view.focus(); }}
         />
       )}
     </div>

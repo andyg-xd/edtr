@@ -168,6 +168,26 @@ describe('RibbonView', () => {
     expect(view.focus).toHaveBeenCalled();
   });
 
+  it('opens the size picker for a sizePicker control and runs buildCommand on select', async () => {
+    const built = vi.fn(() => true);
+    const buildCommand = vi.fn(() => built);
+    const control: RibbonControl = {
+      id: 'insertTable', label: '⊞', ariaLabel: 'Insert table',
+      isActive: () => false, isEnabled: () => true,
+      action: { kind: 'sizePicker', buildCommand },
+    };
+    const view = fakeView();
+    const { container } = await render(<RibbonView view={view} controls={[control]} />);
+    await act(async () => { btn(container, 'Insert table').click(); });
+    expect(container.querySelector('.table-size-picker')).toBeTruthy();
+    const cells = Array.from(container.querySelectorAll('.tsp-cell'));
+    await act(async () => { cells[9].dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); }); // row2,col2
+    expect(buildCommand).toHaveBeenCalledWith(2, 2);
+    expect(built).toHaveBeenCalledWith(view.state, view.dispatch);
+    expect(container.querySelector('.table-size-picker')).toBeNull();
+    expect(view.focus).toHaveBeenCalled();
+  });
+
   it('renders a dropdown control as a <select> and runs the command on change', async () => {
     const runFor = vi.fn(() => () => true);
     const control: RibbonControl = {

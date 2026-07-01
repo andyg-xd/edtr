@@ -21,6 +21,11 @@ export type RibbonAction =
       options: { label: string; value: string }[];
       getValue: (state: EditorState) => string;
       run: (value: string) => Command;
+    }
+  | {
+      kind: 'sizePicker';
+      /** Build the insert command from the chosen dimensions. */
+      buildCommand: (rows: number, cols: number) => Command;
     };
 
 export interface RibbonControl {
