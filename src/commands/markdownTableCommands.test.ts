@@ -38,13 +38,20 @@ describe('goToNextCell', () => {
     s = run(s, goToNextCell(-1)).state; expect(s.selection.$from.parent.textContent).toBe('b');
   });
 
-  it('is a no-op at the last cell (forward) and first cell (backward), consuming the key', () => {
-    const last = run(cursorAtText(setup(SRC), 'd'), goToNextCell(1));
-    expect(last.ok).toBe(true);
-    expect(last.state.selection.$from.parent.textContent).toBe('d'); // stayed
+  it('Shift-Tab at the first cell is a no-op, consuming the key', () => {
     const first = run(cursorAtText(setup(SRC), 'a'), goToNextCell(-1));
     expect(first.ok).toBe(true);
     expect(first.state.selection.$from.parent.textContent).toBe('a'); // stayed
+  });
+
+  it('Tab at the last cell appends an empty body row and lands in its first cell', () => {
+    const s = cursorAtText(setup(SRC), 'd'); // last cell of the 2x2
+    const { ok, state } = run(s, goToNextCell(1));
+    expect(ok).toBe(true);
+    const t = state.doc.child(0);            // SRC is table-only
+    expect(t.childCount).toBe(3);            // header + old body + new row
+    expect(state.selection.$from.parent.textContent).toBe(''); // in the new empty cell
+    expect(t.child(2).child(0).attrs.header).toBe(false);
   });
 
   it('returns false when the cursor is not in a table', () => {

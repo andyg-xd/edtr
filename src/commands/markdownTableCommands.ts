@@ -64,7 +64,14 @@ export function goToNextCell(dir: 1 | -1): Command {
     for (let r = 0; r < ctx.rowIndex; r++) idx += ctx.table.child(r).childCount;
     idx += ctx.colIndex;
     const targetIdx = idx + dir;
-    if (targetIdx < 0 || targetIdx >= cellStarts.length) return true; // no-op at ends, consume key
+    if (targetIdx < 0) return true; // Shift-Tab past the first cell: no-op, consume key
+    if (targetIdx >= cellStarts.length) {
+      // Tab past the last cell → append an empty body row, land in its first cell.
+      const rows = rowsOf(ctx.table);
+      rows.push(tableRow.create(null, headerAligns(ctx.table).map((a) => tableCell.create({ header: false, align: a }))));
+      if (dispatch) dispatch(replaceTableTr(state, ctx, table.create(ctx.table.attrs, rows), rows.length - 1, 0));
+      return true;
+    }
     if (dispatch) {
       dispatch(state.tr.setSelection(TextSelection.create(state.doc, cellStarts[targetIdx])).scrollIntoView());
     }
