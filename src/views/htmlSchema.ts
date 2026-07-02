@@ -1,5 +1,5 @@
 import { Schema, type NodeSpec, type MarkSpec } from 'prosemirror-model';
-import { safeAttrs, sanitizeFragment } from './htmlSanitize';
+import { safeAttrs, sanitizeHtml } from './htmlSanitize';
 
 // Source-range attrs carried by every block node.
 const rangeAttrs = {
@@ -90,8 +90,7 @@ const nodes: Record<string, NodeSpec> = {
     attrs: { raw: { default: '' }, ...rangeAttrs },
     toDOM: (n) => {
       const tpl = document.createElement('template');
-      tpl.innerHTML = n.attrs.raw as string;
-      sanitizeFragment(tpl.content);
+      tpl.innerHTML = sanitizeHtml(n.attrs.raw as string);
       const wrap = document.createElement('div');
       wrap.setAttribute('data-verbatim', '');
       wrap.appendChild(tpl.content.cloneNode(true));
@@ -125,8 +124,7 @@ const nodes: Record<string, NodeSpec> = {
       const span = document.createElement('span');
       span.setAttribute('data-verbatim', '');
       const tpl = document.createElement('template');
-      tpl.innerHTML = n.attrs.raw as string;
-      sanitizeFragment(tpl.content);
+      tpl.innerHTML = sanitizeHtml(n.attrs.raw as string);
       span.appendChild(tpl.content.cloneNode(true));
       return span;
     },

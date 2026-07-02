@@ -45,24 +45,28 @@ describe('htmlSchema', () => {
     expect(n.attrs.htmlAttrs).toEqual({ src: 'x', onerror: 'boom()' });
   });
 
-  it('sanitizes a javascript: href on the link mark', () => {
+  it('sanitizes a javascript: href on the link mark, model stays verbatim', () => {
     const link = htmlSchema.marks.link.create({ htmlAttrs: { href: 'javascript:alert(1)' } });
     const spec = htmlSchema.marks.link.spec.toDOM!(link, true) as [string, Record<string, string>, number];
     expect(spec[1]).not.toHaveProperty('href');
+    // mark attrs stay verbatim (model unaffected — render-only sanitize)
+    expect(link.attrs.htmlAttrs).toEqual({ href: 'javascript:alert(1)' });
   });
 
-  it('verbatim toDOM strips <script> and onerror from raw HTML before rendering', () => {
+  it('verbatim toDOM strips iframe/srcdoc, <script>, and onerror before rendering', () => {
     const n = htmlSchema.nodes.verbatim.create({
-      raw: '<img src=x onerror="boom()"><script>evil()</script>',
+      raw: '<iframe srcdoc="<script>x</script>"></iframe><img src=x onerror="boom()">',
     });
     const dom = htmlSchema.nodes.verbatim.spec.toDOM!(n) as HTMLElement;
     const container = document.createElement('div');
     container.appendChild(dom);
+    expect(container.querySelector('iframe')).toBeNull();
     expect(container.querySelector('script')).toBeNull();
     const img = container.querySelector('img');
     expect(img).toBeTruthy();
     expect(img!.hasAttribute('onerror')).toBe(false);
-    // raw attr itself stays verbatim (model unaffected)
+    // raw attr itself stays verbatim (model unaffected — render-only sanitize)
     expect(n.attrs.raw).toContain('onerror');
+    expect(n.attrs.raw).toContain('iframe');
   });
 });
