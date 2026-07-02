@@ -3,7 +3,7 @@ import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { TextSelection } from 'prosemirror-state';
+import { Selection } from 'prosemirror-state';
 import { WindowChrome, type ViewMode } from './WindowChrome';
 import { CloseGuard } from './CloseGuard';
 import { useShortcutsAndCloseGuard } from './MenuBridge';
@@ -98,31 +98,46 @@ export function EditorWindow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showLive, openCount]);
 
-  // Local-image drag-drop: only while a saved Markdown Live view is open.
+  // Kept current for the single, mount-once drag-drop listener below.
+  const liveViewRef = useRef(liveView);
+  liveViewRef.current = liveView;
+  const showLiveRef = useRef(showLive);
+  showLiveRef.current = showLive;
+  const dropDocPathRef = useRef<string | null>(session?.path ?? null);
+  dropDocPathRef.current = session?.path ?? null;
+
+  // Local-image drag-drop. Registered ONCE for the window's lifetime; the
+  // handler reads the current view/path/mode via refs, so repeated Live<->Code
+  // toggles or file switches never accumulate duplicate listeners.
   useEffect(() => {
-    if (!showLive || !liveView || !session?.path) return;
-    const docPath = session.path;
     let unlisten: (() => void) | undefined;
     let disposed = false;
     getCurrentWebview()
       .onDragDropEvent(async (e) => {
         if (e.payload.type !== 'drop') return;
+        const view = liveViewRef.current;
+        const docPath = dropDocPathRef.current;
+        if (!showLiveRef.current || !view || view.isDestroyed || !docPath) return;
         const imgs = e.payload.paths.filter((p) =>
           IMAGE_EXTS.includes((p.split('.').pop() ?? '').toLowerCase() as (typeof IMAGE_EXTS)[number]),
         );
         if (imgs.length === 0) return; // let non-image drops be
-        // Map the physical drop position to a document position (Retina: /dpr).
+        // Place the cursor at the drop point, snapped to the nearest valid inline
+        // position. Selection.near avoids "TextSelection endpoint not pointing
+        // into a node with inline content", which previously mis-landed the image.
         const dpr = window.devicePixelRatio || 1;
-        const at = liveView.posAtCoords({ left: e.payload.position.x / dpr, top: e.payload.position.y / dpr });
-        let pos = at ? at.pos : liveView.state.selection.from;
+        const at = view.posAtCoords({ left: e.payload.position.x / dpr, top: e.payload.position.y / dpr });
+        if (at) {
+          const pos = Math.min(at.pos, view.state.doc.content.size);
+          view.dispatch(view.state.tr.setSelection(Selection.near(view.state.doc.resolve(pos))));
+        }
+        view.focus();
         for (const path of imgs) {
           try {
             const rel = await copyImageIntoAssets(docPath, path);
-            if (disposed) return; // Live view was torn down (toggle/doc-switch) while copying — don't touch a destroyed view
+            if (disposed || view.isDestroyed) return;
             const display = resolveImageDisplaySrc(rel, docPath);
-            liveView.dispatch(liveView.state.tr.setSelection(TextSelection.create(liveView.state.doc, Math.min(pos, liveView.state.doc.content.size))));
-            insertImage(rel, null, null, display)(liveView.state, liveView.dispatch);
-            pos = liveView.state.selection.from; // advance for the next image
+            insertImage(rel, null, null, display)(view.state, view.dispatch);
           } catch (err) {
             if (!disposed) setError(`Could not insert the dropped image. ${String(err)}`);
           }
@@ -136,7 +151,9 @@ export function EditorWindow() {
       disposed = true;
       unlisten?.();
     };
-  }, [showLive, liveView, session?.path]);
+    // Registered once; the handler reads live values via refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleLiveEdit = useCallback((doc: PMNode, dirtyIds: Set<string>) => {
     liveDocRef.current = doc;
