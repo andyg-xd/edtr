@@ -1,4 +1,4 @@
-import { EditorState, type Extension } from '@codemirror/state';
+import { EditorState, Compartment, type Extension } from '@codemirror/state';
 import {
   lineNumbers,
   highlightActiveLine,
@@ -12,6 +12,8 @@ import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { markdown } from '@codemirror/lang-markdown';
 import { html } from '@codemirror/lang-html';
 import type { EditorFormat } from '../files/fileTypes';
+import { darkEditorTheme, darkHighlightStyle } from './codeTheme';
+import type { EffectiveTheme } from '../settings/theme';
 
 function languageExtension(format: EditorFormat): Extension {
   // Disable the language packs' own format-on-type: markdown's addKeymap
@@ -21,6 +23,20 @@ function languageExtension(format: EditorFormat): Extension {
   if (format === 'markdown') return markdown({ addKeymap: false, completeHTMLTags: false });
   if (format === 'html') return html({ autoCloseTags: false });
   return [];
+}
+
+/**
+ * The CodeMirror theme lives in a Compartment so CodeView can swap light/dark
+ * in place (reconfigure) without recreating the EditorView — cursor, selection,
+ * and undo history are preserved. Light keeps the default highlight style;
+ * dark uses the hand-rolled theme (codeTheme.ts).
+ */
+export const themeCompartment = new Compartment();
+
+export function themeExtensionFor(effective: EffectiveTheme): Extension {
+  return effective === 'dark'
+    ? [darkEditorTheme, syntaxHighlighting(darkHighlightStyle)]
+    : [syntaxHighlighting(defaultHighlightStyle, { fallback: true })];
 }
 
 /**
@@ -35,7 +51,10 @@ function languageExtension(format: EditorFormat): Extension {
  * bindings; html({ autoCloseTags: false }) removes the auto-closing-tag input
  * handler. The inert contract (§5.1) holds across all formats.
  */
-export function buildCodeViewExtensions(format: EditorFormat): Extension[] {
+export function buildCodeViewExtensions(
+  format: EditorFormat,
+  effective: EffectiveTheme = 'light',
+): Extension[] {
   return [
     lineNumbers(),
     highlightActiveLineGutter(),
@@ -44,7 +63,7 @@ export function buildCodeViewExtensions(format: EditorFormat): Extension[] {
     history(),
     bracketMatching(),
     highlightSelectionMatches(),
-    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+    themeCompartment.of(themeExtensionFor(effective)),
     EditorState.lineSeparator.of('\n'),
     languageExtension(format),
     keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),

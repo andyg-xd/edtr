@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
-import { buildCodeViewExtensions } from './codeViewExtensions';
+import { buildCodeViewExtensions, themeCompartment, themeExtensionFor } from './codeViewExtensions';
 
 describe('buildCodeViewExtensions', () => {
   it('round-trips \\n text unchanged (lineSeparator is \\n)', () => {
@@ -40,5 +40,26 @@ describe('buildCodeViewExtensions', () => {
     for (const run of defaultMd) {
       expect(ours).not.toContain(run);                    // ours must not include the pack's Enter command
     }
+  });
+});
+
+describe('theme compartment', () => {
+  it('builds a dark editor and round-trips text unchanged', () => {
+    const doc = 'a\nb\n';
+    const state = EditorState.create({ doc, extensions: buildCodeViewExtensions('markdown', 'dark') });
+    expect(state.doc.toString()).toBe(doc);
+  });
+
+  it('defaults to light when no effective theme is passed', () => {
+    // Existing callers pass no second arg; this must keep working (no throw).
+    const state = EditorState.create({ doc: 'x\n', extensions: buildCodeViewExtensions('markdown') });
+    expect(state.doc.toString()).toBe('x\n');
+  });
+
+  it('themeExtensionFor is reconfigurable via the compartment', () => {
+    const state = EditorState.create({ doc: 'x\n', extensions: buildCodeViewExtensions('markdown', 'light') });
+    const effect = themeCompartment.reconfigure(themeExtensionFor('dark'));
+    const next = state.update({ effects: effect }).state;
+    expect(next.doc.toString()).toBe('x\n'); // reconfigure is content-preserving
   });
 });
