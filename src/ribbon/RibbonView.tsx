@@ -11,9 +11,11 @@ interface RibbonViewProps {
   /** Incremented by ⌘K to trigger the link control programmatically. */
   linkRequest?: number;
   ariaLabel?: string;
+  /** Absolute path of the open document; enables the local-image file picker. */
+  docPath?: string | null;
 }
 
-export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Formatting' }: RibbonViewProps) {
+export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Formatting', docPath = null }: RibbonViewProps) {
   const [popover, setPopover] = useState<{ control: RibbonControl; initialText: string } | null>(null);
   const [sizePicker, setSizePicker] = useState<RibbonControl | null>(null);
 
@@ -96,6 +98,7 @@ export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Forma
         <InsertPopover
           kind={popover.control.action.popover}
           initialText={popover.initialText}
+          docPath={docPath}
           onConfirm={confirmPopover}
           onCancel={() => { setPopover(null); view.focus(); }}
         />

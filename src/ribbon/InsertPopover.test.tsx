@@ -5,6 +5,13 @@ import { act } from 'react';
 import type { ReactElement } from 'react';
 import { InsertPopover } from './InsertPopover';
 
+vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn(async () => '/picked/p.png') }));
+vi.mock('../files/imageAssets', () => ({
+  copyImageIntoAssets: vi.fn(async () => 'notes.assets/p.png'),
+  resolveImageDisplaySrc: vi.fn(() => 'CONVERTED:/a/notes.assets/p.png'),
+  IMAGE_EXTS: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif'],
+}));
+
 let container: HTMLDivElement | null = null;
 afterEach(() => { container?.remove(); container = null; });
 
@@ -27,6 +34,9 @@ const urlInput = (el: HTMLElement) => el.querySelectorAll('input')[1] as HTMLInp
 const textInput = (el: HTMLElement) => el.querySelectorAll('input')[0] as HTMLInputElement;
 const confirmBtn = (el: HTMLElement) =>
   Array.from(el.querySelectorAll('button')).find((b) => /add/i.test(b.textContent ?? ''))! as HTMLButtonElement;
+const chooseBtn = (el: HTMLElement) =>
+  (Array.from(el.querySelectorAll('button')).find((b) => /choose file/i.test(b.textContent ?? '')) ??
+    null) as HTMLButtonElement | null;
 
 describe('InsertPopover', () => {
   it('disables confirm until the URL is non-empty', async () => {
@@ -78,5 +88,22 @@ describe('InsertPopover', () => {
     const input = urlInput(el);
     expect(input.getAttribute('autocapitalize')).toBe('none');
     expect(input.getAttribute('spellcheck')).toBe('false');
+  });
+
+  it('shows "Choose file…" only for image kind', async () => {
+    const link = await render(<InsertPopover kind="link" onConfirm={() => {}} onCancel={() => {}} />);
+    expect(chooseBtn(link)).toBeNull();
+    const img = await render(<InsertPopover kind="image" docPath="/a/notes.md" onConfirm={() => {}} onCancel={() => {}} />);
+    expect(chooseBtn(img)).not.toBeNull();
+  });
+
+  it('picking a file copies it and confirms with the relative path + displaySrc', async () => {
+    const onConfirm = vi.fn();
+    const el = await render(<InsertPopover kind="image" docPath="/a/notes.md" onConfirm={onConfirm} onCancel={() => {}} />);
+    await act(async () => { chooseBtn(el)!.click(); });
+    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({
+      url: 'notes.assets/p.png',
+      displaySrc: 'CONVERTED:/a/notes.assets/p.png',
+    }));
   });
 });

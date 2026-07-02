@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
+import { open } from '@tauri-apps/plugin-dialog';
 import type { PopoverValues } from './RibbonModel';
+import { copyImageIntoAssets, resolveImageDisplaySrc, IMAGE_EXTS } from '../files/imageAssets';
 
 interface InsertPopoverProps {
   kind: 'link' | 'image';
   initialText?: string;
+  /** Absolute path of the open document; enables the local-image file picker. */
+  docPath?: string | null;
   onConfirm: (values: PopoverValues) => void;
   onCancel: () => void;
 }
 
-export function InsertPopover({ kind, initialText = '', onConfirm, onCancel }: InsertPopoverProps) {
+export function InsertPopover({ kind, initialText = '', docPath = null, onConfirm, onCancel }: InsertPopoverProps) {
   const [text, setText] = useState(initialText);
   const [url, setUrl] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
@@ -30,6 +34,17 @@ export function InsertPopover({ kind, initialText = '', onConfirm, onCancel }: I
   const submit = () => { if (canConfirm) onConfirm({ text, url: url.trim() }); };
   const firstLabel = kind === 'link' ? 'Text' : 'Alt text';
   const confirmLabel = kind === 'link' ? 'Add link' : 'Add image';
+
+  const chooseFile = async () => {
+    if (!docPath) return;
+    const picked = await open({
+      multiple: false,
+      filters: [{ name: 'Images', extensions: [...IMAGE_EXTS] }],
+    });
+    if (typeof picked !== 'string') return; // cancelled
+    const rel = await copyImageIntoAssets(docPath, picked);
+    onConfirm({ text, url: rel, displaySrc: resolveImageDisplaySrc(rel, docPath) });
+  };
 
   return (
     <div
@@ -60,6 +75,9 @@ export function InsertPopover({ kind, initialText = '', onConfirm, onCancel }: I
           inputMode="url"
         />
       </label>
+      {kind === 'image' && (
+        <button type="button" onClick={chooseFile} disabled={!docPath}>Choose file…</button>
+      )}
       <div className="insert-popover-actions">
         <button type="button" onClick={onCancel}>Cancel</button>
         <button type="button" onClick={submit} disabled={!canConfirm}>{confirmLabel}</button>
