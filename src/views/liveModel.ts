@@ -98,7 +98,10 @@ function childInline(node: any, source: string, marks: readonly Mark[], docPath:
 }
 
 function addMark(marks: readonly Mark[], name: 'strong' | 'em' | 'strikethrough' | 'code'): readonly Mark[] {
-  return marks.concat(liveSchema.marks[name].create());
+  // addToSet dedupes a same-type mark (e.g. nested strong-in-strong from
+  // messy/malformed markdown) instead of stacking a duplicate; distinct
+  // mark types are unaffected, so well-formed docs behave identically.
+  return liveSchema.marks[name].create().addToSet(marks as Mark[]);
 }
 
 // ---- Verbatim fallback (filled in Task 5; Task 3 stub uses the raw slice) ----

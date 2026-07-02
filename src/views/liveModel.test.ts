@@ -155,6 +155,36 @@ describe('buildLiveDoc — inline content', () => {
   });
 });
 
+describe('buildLiveDoc — nested same-type marks (dedup, no degrade)', () => {
+  // '**a __b__ c**' nests strong-via-** around strong-via-__: remark produces
+  // strong > [text, strong > text, text] — the SAME mark type twice in the
+  // ancestor chain. A naive concat stacks two 'strong' marks on the inner
+  // text node, which PM's doc.check() rejects as an invalid mark set.
+  const input = '**a __b__ c**\n';
+
+  it('does not degrade or throw on nested same-type emphasis', () => {
+    expect(() => buildLiveDoc(input)).not.toThrow();
+    const res = buildLiveDoc(input);
+    expect(res.ok).toBe(true);
+  });
+
+  it('carries exactly one strong mark on every text run (no duplicate-type stacking)', () => {
+    const res = buildLiveDoc(input);
+    if (!res.ok) throw new Error('degraded');
+    let sawText = false;
+    res.doc.descendants((n) => {
+      if (!n.isText) return;
+      sawText = true;
+      const strongCount = n.marks.filter((m: any) => m.type.name === 'strong').length;
+      expect(strongCount).toBe(1); // deduped: never two 'strong' marks on one node
+    });
+    expect(sawText).toBe(true);
+    // dedup makes "a ", "b", " c" carry an identical mark set, so PM merges
+    // the run into a single text node — that's the correct, expected shape.
+    expect(res.doc.child(0).textContent).toBe('a b c');
+  });
+});
+
 describe('buildLiveDoc — verbatim fallback', () => {
   it('renders a GFM table as a real table node (not verbatim)', () => {
     const src = '| a | b |\n| - | - |\n| 1 | 2 |\n';
