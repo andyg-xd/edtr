@@ -21,6 +21,7 @@ function installMatchMedia(initialDark: boolean) {
       dark = v;
       listeners.forEach((cb) => cb({ matches: v }));
     },
+    listenerCount: () => listeners.size,
   };
 }
 
@@ -51,7 +52,7 @@ async function render(node: ReactElement) {
   document.body.appendChild(container);
   const root = createRoot(container);
   await act(async () => root.render(node));
-  return container!;
+  return { container: container!, root };
 }
 
 const txt = (c: HTMLElement, id: string) => c.querySelector(`[data-testid="${id}"]`)!.textContent;
@@ -59,7 +60,7 @@ const txt = (c: HTMLElement, id: string) => c.querySelector(`[data-testid="${id}
 describe('useTheme', () => {
   it('System mode follows the OS (dark) and sets the attribute', async () => {
     installMatchMedia(true);
-    const c = await render(<Probe />);
+    const { container: c } = await render(<Probe />);
     expect(txt(c, 'mode')).toBe('system');
     expect(txt(c, 'effective')).toBe('dark');
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
@@ -67,7 +68,7 @@ describe('useTheme', () => {
 
   it('setMode(light) overrides, clears the attribute, and persists', async () => {
     installMatchMedia(true);
-    const c = await render(<Probe />);
+    const { container: c } = await render(<Probe />);
     await act(async () => {
       c.querySelector<HTMLButtonElement>('[data-testid="to-light"]')!.click();
     });
@@ -79,10 +80,18 @@ describe('useTheme', () => {
 
   it('System mode reacts live to an OS appearance change', async () => {
     const media = installMatchMedia(false);
-    const c = await render(<Probe />);
+    const { container: c } = await render(<Probe />);
     expect(txt(c, 'effective')).toBe('light');
     await act(async () => media.setDark(true));
     expect(txt(c, 'effective')).toBe('dark');
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
+
+  it('removes the OS listener on unmount', async () => {
+    const media = installMatchMedia(false);
+    const { root } = await render(<Probe />);
+    expect(media.listenerCount()).toBe(1);
+    await act(async () => root.unmount());
+    expect(media.listenerCount()).toBe(0);
   });
 });
