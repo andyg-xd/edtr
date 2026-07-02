@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { TextSelection } from 'prosemirror-state';
 import { WindowChrome, type ViewMode } from './WindowChrome';
 import { CloseGuard } from './CloseGuard';
 import { useShortcutsAndCloseGuard } from './MenuBridge';
@@ -17,6 +19,8 @@ import { DocumentSession } from '../files/documentSession';
 import { basename } from '../files/fileTypes';
 import { detectFlavor } from '../doc/flavor';
 import { useTheme } from '../settings/useTheme';
+import { copyImageIntoAssets, resolveImageDisplaySrc, IMAGE_EXTS } from '../files/imageAssets';
+import { insertImage } from '../commands/markdownInlineCommands';
 
 export function EditorWindow() {
   const [session, setSession] = useState<DocumentSession | null>(null);
@@ -67,7 +71,7 @@ export function EditorWindow() {
   const live = useMemo(() => {
     if (!session || session.format !== 'markdown') return null;
     try {
-      return toLive(session.text);
+      return toLive(session.text, session?.path ?? null);
     } catch (e) {
       return { ok: false as const, degrade: true as const, reason: String(e) };
     }
@@ -93,6 +97,45 @@ export function EditorWindow() {
     // enter-Live (showLive) or file-switch (openCount), never mid-edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showLive, openCount]);
+
+  // Local-image drag-drop: only while a saved Markdown Live view is open.
+  useEffect(() => {
+    if (!showLive || !liveView || !session?.path) return;
+    const docPath = session.path;
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    getCurrentWebview()
+      .onDragDropEvent(async (e) => {
+        if (e.payload.type !== 'drop') return;
+        const imgs = e.payload.paths.filter((p) =>
+          IMAGE_EXTS.includes((p.split('.').pop() ?? '').toLowerCase() as (typeof IMAGE_EXTS)[number]),
+        );
+        if (imgs.length === 0) return; // let non-image drops be
+        // Map the physical drop position to a document position (Retina: /dpr).
+        const dpr = window.devicePixelRatio || 1;
+        const at = liveView.posAtCoords({ left: e.payload.position.x / dpr, top: e.payload.position.y / dpr });
+        let pos = at ? at.pos : liveView.state.selection.from;
+        for (const path of imgs) {
+          try {
+            const rel = await copyImageIntoAssets(docPath, path);
+            const display = resolveImageDisplaySrc(rel, docPath);
+            liveView.dispatch(liveView.state.tr.setSelection(TextSelection.create(liveView.state.doc, Math.min(pos, liveView.state.doc.content.size))));
+            insertImage(rel, null, null, display)(liveView.state, liveView.dispatch);
+            pos = liveView.state.selection.from; // advance for the next image
+          } catch (err) {
+            setError(`Could not insert the dropped image. ${String(err)}`);
+          }
+        }
+      })
+      .then((fn) => {
+        if (disposed) fn();
+        else unlisten = fn;
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [showLive, liveView, session?.path]);
 
   const handleLiveEdit = useCallback((doc: PMNode, dirtyIds: Set<string>) => {
     liveDocRef.current = doc;
@@ -181,10 +224,22 @@ export function EditorWindow() {
       {session ? (
         showLive && live && live.ok ? (
           <>
-            {liveView && <RibbonView view={liveView} controls={markdownRibbon} linkRequest={linkRequest} />}
+            {liveView && (
+              <RibbonView
+                view={liveView}
+                controls={markdownRibbon}
+                linkRequest={linkRequest}
+                docPath={session?.path ?? null}
+              />
+            )}
             {liveView && isInTable(liveView.state) && (
               <div className="ribbon-context">
-                <RibbonView view={liveView} controls={markdownTableRibbon} ariaLabel="Table tools" />
+                <RibbonView
+                  view={liveView}
+                  controls={markdownTableRibbon}
+                  ariaLabel="Table tools"
+                  docPath={session?.path ?? null}
+                />
               </div>
             )}
             <LiveView
