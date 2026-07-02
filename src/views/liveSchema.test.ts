@@ -67,3 +67,18 @@ describe('table schema', () => {
     expect(() => t!.check()).not.toThrow();
   });
 });
+
+describe('image displaySrc', () => {
+  it('toDOM prefers displaySrc when present', () => {
+    const node = liveSchema.nodes.image.create({ src: 'n.assets/p.png', alt: 'a', displaySrc: 'CONVERTED:/abs/p.png' });
+    const spec = liveSchema.nodes.image.spec.toDOM!(node) as [string, Record<string, string>];
+    expect(spec[0]).toBe('img');
+    expect(spec[1].src).toBe('CONVERTED:/abs/p.png');
+    expect(spec[1].alt).toBe('a');
+  });
+  it('toDOM falls back to src when displaySrc is null', () => {
+    const node = liveSchema.nodes.image.create({ src: 'https://x/y.png' });
+    const spec = liveSchema.nodes.image.spec.toDOM!(node) as [string, Record<string, string>];
+    expect(spec[1].src).toBe('https://x/y.png');
+  });
+});

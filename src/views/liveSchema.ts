@@ -118,9 +118,9 @@ const nodes: Record<string, NodeSpec> = {
     group: 'inline',
     inline: true,
     atom: true,
-    attrs: { src: { default: '' }, alt: { default: null }, title: { default: null } },
+    attrs: { src: { default: '' }, alt: { default: null }, title: { default: null }, displaySrc: { default: null } },
     toDOM: (node) => {
-      const attrs: Record<string, unknown> = { src: node.attrs.src };
+      const attrs: Record<string, unknown> = { src: node.attrs.displaySrc ?? node.attrs.src };
       if (node.attrs.alt !== null) attrs.alt = node.attrs.alt;
       if (node.attrs.title !== null) attrs.title = node.attrs.title;
       return ['img', attrs];

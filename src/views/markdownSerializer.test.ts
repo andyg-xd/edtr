@@ -111,6 +111,18 @@ describe('serializeInline', () => {
     const p = para(liveSchema.node('image', { src: 'pic.png', alt: 'alt', title: 'the title' }));
     expect(serializeInline(p, star)).toBe('![alt](pic.png "the title")');
   });
+  it('serializes an image from src only — displaySrc never leaks (no-beautify guard)', () => {
+    const p = para(
+      liveSchema.node('image', {
+        src: 'notes.assets/p.png',
+        alt: 'cap',
+        displaySrc: 'CONVERTED:/abs/notes.assets/p.png',
+      }),
+    );
+    const out = serializeInline(p, star);
+    expect(out).toBe('![cap](notes.assets/p.png)');
+    expect(out).not.toContain('CONVERTED');
+  });
 });
 
 // Round-trip helper: build a paragraph with a single code-marked text node,
