@@ -5,8 +5,8 @@ import { buildLiveDoc, type LiveResult } from './liveModel';
 import { serializeBlock } from './markdownSerializer';
 
 /** Build the read-only Live document from source (or signal degrade). */
-export function toLive(source: string): LiveResult {
-  return buildLiveDoc(source);
+export function toLive(source: string, docPath: string | null = null): LiveResult {
+  return buildLiveDoc(source, docPath);
 }
 
 /**

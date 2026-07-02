@@ -1,4 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('@tauri-apps/api/core', () => ({
+  convertFileSrc: (p: string) => `CONVERTED:${p}`,
+  invoke: vi.fn(),
+}));
+
 import { buildLiveDoc, mdastToLiveDoc } from './liveModel';
 
 function doc(source: string) {
@@ -261,5 +267,24 @@ describe('liveModel — top-level-only ranges + per-build ids', () => {
     expect(a.doc.child(0).attrs.blockId).toBe('b0');
     expect(a.doc.child(1).attrs.blockId).toBe('b1'); // counter increments within a build
     expect(b.doc.child(0).attrs.blockId).toBe('b0'); // each build restarts at b0
+  });
+});
+
+describe('image displaySrc resolution', () => {
+  it('resolves a local image src against docPath', () => {
+    const res = buildLiveDoc('![a](pics/x.png)\n', '/a/b/notes.md'); // buildLiveDoc(source, docPath)
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    let img: any = null;
+    res.doc.descendants((n) => { if (n.type.name === 'image') img = n; });
+    expect(img.attrs.src).toBe('pics/x.png');
+    expect(img.attrs.displaySrc).toBe('CONVERTED:/a/b/pics/x.png');
+  });
+  it('leaves a remote image displaySrc equal to src (passthrough)', () => {
+    const res = buildLiveDoc('![a](https://x/y.png)\n', '/a/b/notes.md');
+    if (!res.ok) return;
+    let img: any = null;
+    res.doc.descendants((n) => { if (n.type.name === 'image') img = n; });
+    expect(img.attrs.displaySrc).toBe('https://x/y.png');
   });
 });

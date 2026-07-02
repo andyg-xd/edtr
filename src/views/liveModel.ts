@@ -1,6 +1,7 @@
 import type { Node as PMNode, Mark } from 'prosemirror-model';
 import { liveSchema } from './liveSchema';
 import { parseMarkdownAst } from '../doc/parse';
+import { resolveImageDisplaySrc } from '../files/imageAssets';
 
 export type LiveResult =
   | { ok: true; doc: PMNode }
@@ -11,6 +12,7 @@ class DegradeError extends Error {}
 
 interface BuildCtx {
   nextId: () => string;
+  docPath: string | null;
 }
 
 /** Throw to degrade if an mdast node lacks a usable source position. */
@@ -32,24 +34,24 @@ function rangeAttrs(node: any, ctx: BuildCtx, topLevel: boolean) {
 // ---- Inline (Task 4: full mark/node mapping) ----
 
 // Map mdast inline nodes → PM inline nodes, carrying accumulated marks down.
-function inlineContent(node: any, source: string): PMNode[] {
+function inlineContent(node: any, source: string, docPath: string | null): PMNode[] {
   const out: PMNode[] = [];
   for (const child of node.children ?? []) {
-    out.push(...inlineNode(child, source, []));
+    out.push(...inlineNode(child, source, [], docPath));
   }
   return out;
 }
 
-function inlineNode(node: any, source: string, marks: readonly Mark[]): PMNode[] {
+function inlineNode(node: any, source: string, marks: readonly Mark[], docPath: string | null): PMNode[] {
   switch (node.type) {
     case 'text':
       return typeof node.value === 'string' ? [liveSchema.text(node.value, marks)] : [];
     case 'strong':
-      return childInline(node, source, addMark(marks, 'strong'));
+      return childInline(node, source, addMark(marks, 'strong'), docPath);
     case 'emphasis':
-      return childInline(node, source, addMark(marks, 'em'));
+      return childInline(node, source, addMark(marks, 'em'), docPath);
     case 'delete':
-      return childInline(node, source, addMark(marks, 'strikethrough'));
+      return childInline(node, source, addMark(marks, 'strikethrough'), docPath);
     case 'inlineCode': {
       const value = String(node.value ?? '');
       return value ? [liveSchema.text(value, addMark(marks, 'code'))] : [];
@@ -59,15 +61,19 @@ function inlineNode(node: any, source: string, marks: readonly Mark[]): PMNode[]
         node,
         source,
         marks.concat(liveSchema.marks.link.create({ href: node.url ?? '', title: node.title ?? null })),
+        docPath,
       );
-    case 'image':
+    case 'image': {
+      const src = node.url ?? '';
       return [
         liveSchema.node('image', {
-          src: node.url ?? '',
+          src,
           alt: typeof node.alt === 'string' ? node.alt : null,
           title: node.title ?? null,
+          displaySrc: resolveImageDisplaySrc(src, docPath),
         }),
       ];
+    }
     case 'break':
       return [liveSchema.node('hardBreak')];
     default: {
@@ -85,9 +91,9 @@ function inlineNode(node: any, source: string, marks: readonly Mark[]): PMNode[]
   }
 }
 
-function childInline(node: any, source: string, marks: readonly Mark[]): PMNode[] {
+function childInline(node: any, source: string, marks: readonly Mark[], docPath: string | null): PMNode[] {
   const out: PMNode[] = [];
-  for (const child of node.children ?? []) out.push(...inlineNode(child, source, marks));
+  for (const child of node.children ?? []) out.push(...inlineNode(child, source, marks, docPath));
   return out;
 }
 
@@ -112,11 +118,15 @@ function buildBlock(node: any, source: string, ctx: BuildCtx, topLevel: boolean)
   switch (node.type) {
     case 'paragraph': {
       const r = rangeAttrs(node, ctx, topLevel);
-      return liveSchema.node('paragraph', r, inlineContent(node, source));
+      return liveSchema.node('paragraph', r, inlineContent(node, source, ctx.docPath));
     }
     case 'heading': {
       const r = rangeAttrs(node, ctx, topLevel);
-      return liveSchema.node('heading', { level: node.depth ?? 1, ...r }, inlineContent(node, source));
+      return liveSchema.node(
+        'heading',
+        { level: node.depth ?? 1, ...r },
+        inlineContent(node, source, ctx.docPath),
+      );
     }
     case 'blockquote': {
       const r = rangeAttrs(node, ctx, topLevel);
@@ -152,7 +162,7 @@ function buildBlock(node: any, source: string, ctx: BuildCtx, topLevel: boolean)
             liveSchema.node(
               'tableCell',
               { header: rowIdx === 0, align: align[colIdx] ?? null },
-              inlineContent(cell, source),
+              inlineContent(cell, source, ctx.docPath),
             ),
           ),
         ),
@@ -166,9 +176,9 @@ function buildBlock(node: any, source: string, ctx: BuildCtx, topLevel: boolean)
 }
 
 /** Pure core: map an mdast root + its source into a Live PM doc, or signal degrade. */
-export function mdastToLiveDoc(root: any, source: string): LiveResult {
+export function mdastToLiveDoc(root: any, source: string, docPath: string | null = null): LiveResult {
   let counter = 0;
-  const ctx: BuildCtx = { nextId: () => `b${counter++}` };
+  const ctx: BuildCtx = { nextId: () => `b${counter++}`, docPath };
   try {
     const blocks = (root.children ?? []).map((c: any) => buildBlock(c, source, ctx, true));
     const doc =
@@ -184,6 +194,6 @@ export function mdastToLiveDoc(root: any, source: string): LiveResult {
 }
 
 /** Parse `source` and build the Live PM doc (or signal degrade). */
-export function buildLiveDoc(source: string): LiveResult {
-  return mdastToLiveDoc(parseMarkdownAst(source), source);
+export function buildLiveDoc(source: string, docPath: string | null = null): LiveResult {
+  return mdastToLiveDoc(parseMarkdownAst(source), source, docPath);
 }
