@@ -3,7 +3,6 @@ import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { Selection } from 'prosemirror-state';
 import { WindowChrome, type ViewMode } from './WindowChrome';
 import { CloseGuard } from './CloseGuard';
 import { useShortcutsAndCloseGuard } from './MenuBridge';
@@ -122,15 +121,9 @@ export function EditorWindow() {
           IMAGE_EXTS.includes((p.split('.').pop() ?? '').toLowerCase() as (typeof IMAGE_EXTS)[number]),
         );
         if (imgs.length === 0) return; // let non-image drops be
-        // Place the cursor at the drop point, snapped to the nearest valid inline
-        // position. Selection.near avoids "TextSelection endpoint not pointing
-        // into a node with inline content", which previously mis-landed the image.
-        const dpr = window.devicePixelRatio || 1;
-        const at = view.posAtCoords({ left: e.payload.position.x / dpr, top: e.payload.position.y / dpr });
-        if (at) {
-          const pos = Math.min(at.pos, view.state.doc.content.size);
-          view.dispatch(view.state.tr.setSelection(Selection.near(view.state.doc.resolve(pos))));
-        }
+        // Insert at the current cursor (same as paste). The WebView can't map a
+        // drop point to a reliable document position, so we don't use coordinates;
+        // the user places the cursor, then drops.
         view.focus();
         for (const path of imgs) {
           try {
