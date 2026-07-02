@@ -62,3 +62,24 @@ describe('parse (html)', () => {
     expect(types).toContain('strong');
   });
 });
+
+describe('fromParse5 attribute capture', () => {
+  it('captures element attributes into data.attrs', () => {
+    const root = parse('<div class="box" id="x" data-k="v">hi</div>', 'html');
+    // find the div node anywhere in the tree
+    let div: any = null;
+    const walk = (n: any) => { if (n.type === 'div') div = n; (n.children ?? []).forEach(walk); };
+    walk(root);
+    expect(div).toBeTruthy();
+    expect(div.data.attrs).toEqual({ class: 'box', id: 'x', 'data-k': 'v' });
+  });
+
+  it('omits attrs for an element with none', () => {
+    const root = parse('<p>hi</p>', 'html');
+    let p: any = null;
+    const walk = (n: any) => { if (n.type === 'p') p = n; (n.children ?? []).forEach(walk); };
+    walk(root);
+    expect(p).toBeTruthy();
+    expect(p.data?.attrs).toBeUndefined();
+  });
+});

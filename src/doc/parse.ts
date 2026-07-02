@@ -56,6 +56,11 @@ function fromParse5(node: any, source: string, ids: IdGen): SourceNode {
   const type: string = node.tagName ?? node.nodeName; // 'p', 'strong', '#text', '#document'
   const data: Record<string, unknown> = {};
   if (node.nodeName === '#text' && typeof node.value === 'string') data.text = node.value;
+  if (Array.isArray(node.attrs) && node.attrs.length > 0) {
+    const attrs: Record<string, string> = {};
+    for (const a of node.attrs) attrs[a.name] = a.value ?? '';
+    data.attrs = attrs;
+  }
   return {
     id,
     type,
