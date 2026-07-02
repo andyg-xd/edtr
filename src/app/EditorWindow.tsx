@@ -118,12 +118,13 @@ export function EditorWindow() {
         for (const path of imgs) {
           try {
             const rel = await copyImageIntoAssets(docPath, path);
+            if (disposed) return; // Live view was torn down (toggle/doc-switch) while copying — don't touch a destroyed view
             const display = resolveImageDisplaySrc(rel, docPath);
             liveView.dispatch(liveView.state.tr.setSelection(TextSelection.create(liveView.state.doc, Math.min(pos, liveView.state.doc.content.size))));
             insertImage(rel, null, null, display)(liveView.state, liveView.dispatch);
             pos = liveView.state.selection.from; // advance for the next image
           } catch (err) {
-            setError(`Could not insert the dropped image. ${String(err)}`);
+            if (!disposed) setError(`Could not insert the dropped image. ${String(err)}`);
           }
         }
       })
