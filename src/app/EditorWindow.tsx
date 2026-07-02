@@ -251,6 +251,7 @@ export function EditorWindow() {
               onViewReady={setLiveView}
               onStateChange={bumpRibbon}
               onLinkShortcut={bumpLinkRequest}
+              docPath={session?.path ?? null}
             />
           </>
         ) : (

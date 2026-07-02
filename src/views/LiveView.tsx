@@ -11,6 +11,8 @@ import { toggleStrong, toggleEm } from '../commands/markdownInlineCommands';
 import { blockIdentityPlugin } from './blockIdentity';
 import { splitCommand, softBreakCommand } from '../commands/markdownStructureCommands';
 import { goToNextCell, arrowVertical } from '../commands/markdownTableCommands';
+import { writeImageIntoAssets, resolveImageDisplaySrc } from '../files/imageAssets';
+import { insertImage } from '../commands/markdownInlineCommands';
 
 interface LiveViewProps {
   doc: PMNode;
@@ -26,9 +28,19 @@ interface LiveViewProps {
   onStateChange?: (view: EditorView) => void;
   /** Called by ⌘K so the consumer can open the link popover. */
   onLinkShortcut?: () => void;
+  /** Absolute path of the document being edited; enables pasted-image insertion into <doc>.assets/. */
+  docPath?: string | null;
 }
 
-export function LiveView({ doc, editable = true, onEdit, onViewReady, onStateChange, onLinkShortcut }: LiveViewProps) {
+export function LiveView({
+  doc,
+  editable = true,
+  onEdit,
+  onViewReady,
+  onStateChange,
+  onLinkShortcut,
+  docPath = null,
+}: LiveViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const onEditRef = useRef(onEdit);
   onEditRef.current = onEdit;
@@ -64,6 +76,27 @@ export function LiveView({ doc, editable = true, onEdit, onViewReady, onStateCha
     const view = new EditorView(host.current, {
       state: EditorState.create({ doc, schema: liveSchema, plugins }),
       editable: () => editable,
+      handlePaste: (view, event) => {
+        if (!docPath) return false;
+        const items = event.clipboardData?.items;
+        if (!items) return false;
+        for (const item of items) {
+          if (item.kind === 'file' && item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (!file) continue;
+            const ext = item.type.split('/')[1] || 'png';
+            file.arrayBuffer().then((buf) => {
+              const bytes = Array.from(new Uint8Array(buf));
+              return writeImageIntoAssets(docPath, bytes, ext).then((rel) => {
+                const display = resolveImageDisplaySrc(rel, docPath);
+                insertImage(rel, null, null, display)(view.state, view.dispatch);
+              });
+            });
+            return true; // consume the paste (image handled asynchronously)
+          }
+        }
+        return false; // not an image → default paste
+      },
       dispatchTransaction(tr) {
         const next = view.state.apply(tr);
         view.updateState(next);
