@@ -57,7 +57,7 @@ export const markdownRibbon: RibbonControl[] = [
     isEnabled: (s) => canInsert(s, image),
     action: {
       kind: 'popover', popover: 'image',
-      buildCommand: ({ text, url }) => insertImage(url, text),
+      buildCommand: ({ text, url, displaySrc }) => insertImage(url, text, null, displaySrc ?? null),
     },
   },
   {

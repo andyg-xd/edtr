@@ -77,6 +77,14 @@ describe('canInsert / image', () => {
   it('insertImage with empty src is a no-op (returns false)', () => {
     expect(insertImage('')(cursorAt(stateOf('hi\n'), 2))).toBe(false);
   });
+  it('insertImage sets displaySrc when provided', () => {
+    const s = cursorAt(stateOf('hi\n'), 2);
+    const next = run(s, insertImage('notes.assets/p.png', 'cap', null, 'CONVERTED:/abs/notes.assets/p.png'))!;
+    let inserted: any = null;
+    next.doc.descendants((n) => { if (n.type === image) inserted = n; });
+    expect(inserted.attrs.src).toBe('notes.assets/p.png');
+    expect(inserted.attrs.displaySrc).toBe('CONVERTED:/abs/notes.assets/p.png');
+  });
 });
 
 describe('link commands', () => {

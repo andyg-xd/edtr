@@ -114,10 +114,15 @@ export const removeLink: Command = (state, dispatch) => {
 };
 
 /** Insert an image inline node at the current selection. */
-export function insertImage(src: string, alt: string | null = null, title: string | null = null): Command {
+export function insertImage(
+  src: string,
+  alt: string | null = null,
+  title: string | null = null,
+  displaySrc: string | null = null,
+): Command {
   return (state, dispatch) => {
     if (!src || !canInsert(state, image)) return false;
-    if (dispatch) dispatch(state.tr.replaceSelectionWith(image.create({ src, alt, title })).scrollIntoView());
+    if (dispatch) dispatch(state.tr.replaceSelectionWith(image.create({ src, alt, title, displaySrc })).scrollIntoView());
     return true;
   };
 }

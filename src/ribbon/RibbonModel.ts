@@ -4,6 +4,8 @@ import type { Command, EditorState } from 'prosemirror-state';
 export interface PopoverValues {
   text: string;
   url: string;
+  /** Set for local-file image inserts: the WebView-loadable display URL. */
+  displaySrc?: string;
 }
 
 export type RibbonAction =
