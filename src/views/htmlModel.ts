@@ -61,6 +61,13 @@ const BLOCK_TAGS = new Set([
 ]);
 const isBlockElement = (n: SourceNode) => n.type !== '#text' && BLOCK_TAGS.has(n.type);
 
+// Text + known-inline elements. Everything else (incl. unknown containers like
+// <section>/<main>/<article>) routes through buildBlock, which types known
+// blocks and block-verbatims the rest — so unknown top-level containers render
+// as a faithful BLOCK verbatim rather than being squashed into a paragraph.
+const INLINE_TAGS = new Set([...Object.keys(INLINE_MARK), 'a', 'span', 'img', 'br']);
+const isInlineChild = (n: SourceNode) => n.type === '#text' || INLINE_TAGS.has(n.type);
+
 /** Build a block element into a typed node, or a verbatim atom if it doesn't fit. */
 function buildBlock(node: SourceNode, range: object): PMNode {
   const verbatim = () => htmlSchema.node('verbatim', { raw: node.raw, ...range });
@@ -147,14 +154,14 @@ export function toLiveHtml(source: string): HtmlLiveResult {
     const blocks: PMNode[] = [];
     for (const child of body.children ?? []) {
       if (isWhitespaceText(child)) continue;
-      const range =
-        child.type !== '#text'
-          ? { srcFrom: child.range[0], srcTo: child.range[1], blockId: `h${counter++}` }
-          : { srcFrom: 0, srcTo: 0, blockId: `h${counter++}` };
-      // Bare inline text directly in body → wrap in a paragraph.
-      const node = isBlockElement(child)
-        ? buildBlock(child, range)
-        : htmlSchema.node('paragraph', { htmlAttrs: {}, ...range }, buildInline({ ...body, children: [child] }, []));
+      // doc/parse.ts populates a real range for every node (incl. #text), so
+      // always carry it — a 0/0 range would break 4b's byte-slice reconciler.
+      const range = { srcFrom: child.range[0], srcTo: child.range[1], blockId: `h${counter++}` };
+      // Text + known-inline → wrap in a paragraph; everything else (known
+      // blocks + unknown containers) → buildBlock (types or block-verbatims it).
+      const node = isInlineChild(child)
+        ? htmlSchema.node('paragraph', { htmlAttrs: {}, ...range }, buildInline({ ...body, children: [child] }, []))
+        : buildBlock(child, range);
       blocks.push(node);
     }
     const doc = blocks.length

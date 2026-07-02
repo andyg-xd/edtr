@@ -54,4 +54,23 @@ describe('toLiveHtml', () => {
     expect(first.attrs.srcTo).toBeGreaterThan(first.attrs.srcFrom);
     expect(first.attrs.blockId).toBeTruthy();
   });
+
+  it('routes an unknown top-level container to a BLOCK verbatim (not squashed)', () => {
+    const res = toLiveHtml('<html><body><section><p>x</p></section></body></html>');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const top = res.doc.child(0);
+    expect(top.type.name).toBe('verbatim');
+    expect(top.attrs.raw).toContain('<section');
+  });
+
+  it('bare top-level text carries its real (non-zero) range', () => {
+    const src = '<html><body>hello</body></html>';
+    const res = toLiveHtml(src);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const first = res.doc.child(0);
+    expect(first.attrs.srcTo).toBeGreaterThan(first.attrs.srcFrom);
+    expect(src.slice(first.attrs.srcFrom, first.attrs.srcTo)).toContain('hello');
+  });
 });
