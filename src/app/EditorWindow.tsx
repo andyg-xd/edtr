@@ -16,6 +16,7 @@ import { openViaDialog, saveSession } from '../files/fileController';
 import { DocumentSession } from '../files/documentSession';
 import { basename } from '../files/fileTypes';
 import { detectFlavor } from '../doc/flavor';
+import { useTheme } from '../settings/useTheme';
 
 export function EditorWindow() {
   const [session, setSession] = useState<DocumentSession | null>(null);
@@ -33,6 +34,7 @@ export function EditorWindow() {
   const [liveView, setLiveView] = useState<EditorView | null>(null);
   const [, bumpRibbon] = useReducer((x: number) => x + 1, 0); // re-render ribbon on selection change
   const [linkRequest, bumpLinkRequest] = useReducer((x: number) => x + 1, 0); // ⌘K
+  const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme();
 
   const handleOpen = useCallback(async () => {
     try {
@@ -163,6 +165,8 @@ export function EditorWindow() {
           if (m === 'code' && showLive && !flushLiveToSource()) return; // flush failed → stay in Live
           setViewMode(m);
         }}
+        themeMode={themeMode}
+        onSetThemeMode={setThemeMode}
       />
       {degraded && (
         <div className="notice notice-info" role="status">
@@ -198,6 +202,7 @@ export function EditorWindow() {
             key={openCount}
             initialText={session.text}
             format={session.format}
+            effectiveTheme={themeEffective}
             onChange={handleChange}
           />
         )

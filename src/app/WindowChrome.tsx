@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { ThemeControl } from './ThemeControl';
+import type { ThemeMode } from '../settings/theme';
 
 export type ViewMode = 'code' | 'live';
 
@@ -9,10 +11,20 @@ interface WindowChromeProps {
   viewMode: ViewMode;
   onSetViewMode: (mode: ViewMode) => void;
   liveDisabled: boolean;
+  themeMode: ThemeMode;
+  onSetThemeMode: (mode: ThemeMode) => void;
 }
 
-/** Top bar: filename + dirty dot + Code/Live toggle. Keeps the OS title in sync. */
-export function WindowChrome({ name, dirty, viewMode, onSetViewMode, liveDisabled }: WindowChromeProps) {
+/** Top bar: filename + dirty dot + Code/Live toggle + theme control. Keeps the OS title in sync. */
+export function WindowChrome({
+  name,
+  dirty,
+  viewMode,
+  onSetViewMode,
+  liveDisabled,
+  themeMode,
+  onSetThemeMode,
+}: WindowChromeProps) {
   useEffect(() => {
     const title = name ? `${dirty ? '• ' : ''}${name}` : 'Edtr';
     getCurrentWindow().setTitle(title).catch(() => {});
@@ -47,6 +59,7 @@ export function WindowChrome({ name, dirty, viewMode, onSetViewMode, liveDisable
           Live
         </button>
       </div>
+      <ThemeControl mode={themeMode} onSetMode={onSetThemeMode} />
     </header>
   );
 }
