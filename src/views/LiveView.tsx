@@ -30,6 +30,8 @@ interface LiveViewProps {
   onLinkShortcut?: () => void;
   /** Absolute path of the document being edited; enables pasted-image insertion into <doc>.assets/. */
   docPath?: string | null;
+  /** Surface a non-destructive error to the consumer (e.g. a pasted-image write failure). */
+  onError?: (msg: string) => void;
 }
 
 export function LiveView({
@@ -40,6 +42,7 @@ export function LiveView({
   onStateChange,
   onLinkShortcut,
   docPath = null,
+  onError,
 }: LiveViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const onEditRef = useRef(onEdit);
@@ -84,14 +87,17 @@ export function LiveView({
           if (item.kind === 'file' && item.type.startsWith('image/')) {
             const file = item.getAsFile();
             if (!file) continue;
-            const ext = item.type.split('/')[1] || 'png';
-            file.arrayBuffer().then((buf) => {
-              const bytes = Array.from(new Uint8Array(buf));
-              return writeImageIntoAssets(docPath, bytes, ext).then((rel) => {
+            const ext = (item.type.split('/')[1] || 'png').split('+')[0]; // image/svg+xml -> svg
+            file.arrayBuffer()
+              .then((buf) => writeImageIntoAssets(docPath, Array.from(new Uint8Array(buf)), ext))
+              .then((rel) => {
+                if (view.isDestroyed) return; // Live view was torn down mid-write — don't touch a destroyed view
                 const display = resolveImageDisplaySrc(rel, docPath);
                 insertImage(rel, null, null, display)(view.state, view.dispatch);
+              })
+              .catch((err) => {
+                onError?.(`Edtr couldn't paste that image. ${String(err)}`);
               });
-            });
             return true; // consume the paste (image handled asynchronously)
           }
         }

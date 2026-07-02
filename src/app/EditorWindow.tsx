@@ -252,6 +252,7 @@ export function EditorWindow() {
               onStateChange={bumpRibbon}
               onLinkShortcut={bumpLinkRequest}
               docPath={session?.path ?? null}
+              onError={setError}
             />
           </>
         ) : (
