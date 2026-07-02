@@ -8,6 +8,8 @@ import { CloseGuard } from './CloseGuard';
 import { useShortcutsAndCloseGuard } from './MenuBridge';
 import { CodeView } from '../views/CodeView';
 import { LiveView } from '../views/LiveView';
+import { toLiveHtml, type HtmlLiveResult } from '../views/htmlModel';
+import { HtmlLiveView } from '../views/HtmlLiveView';
 import { RibbonView } from '../ribbon/RibbonView';
 import { markdownRibbon } from '../ribbon/markdownRibbon';
 import { markdownTableRibbon } from '../ribbon/markdownTableRibbon';
@@ -79,9 +81,27 @@ export function EditorWindow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openCount, viewMode, session, session?.version]);
 
-  const liveAvailable = !!session && session.format === 'markdown' && !!live && live.ok;
+  // Build the Live doc only for an HTML session; guard against parse errors.
+  const liveHtml = useMemo<HtmlLiveResult | null>(() => {
+    if (!session || session.format !== 'html') return null;
+    try {
+      return toLiveHtml(session.text);
+    } catch (e) {
+      return { ok: false as const, degrade: true as const, reason: String(e) };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openCount, viewMode, session, session?.version]);
+
+  const liveAvailable =
+    !!session &&
+    ((session.format === 'markdown' && !!live && live.ok) ||
+      (session.format === 'html' && !!liveHtml && liveHtml.ok));
   const showLive = viewMode === 'live' && liveAvailable;
-  const degraded = viewMode === 'live' && !!session && session.format === 'markdown' && !!live && !live.ok;
+  const degraded =
+    viewMode === 'live' &&
+    !!session &&
+    ((session.format === 'markdown' && !!live && !live.ok) ||
+      (session.format === 'html' && !!liveHtml && !liveHtml.ok));
 
   // Capture the baseline source whenever we (re)enter Live with a fresh doc.
   useEffect(() => {
@@ -233,7 +253,9 @@ export function EditorWindow() {
         </div>
       )}
       {session ? (
-        showLive && live && live.ok ? (
+        showLive && session.format === 'html' && liveHtml && liveHtml.ok ? (
+          <HtmlLiveView key={`htmllive-${openCount}`} doc={liveHtml.doc} styleText={liveHtml.styleText} />
+        ) : showLive && live && live.ok ? (
           <>
             {liveView && (
               <RibbonView
