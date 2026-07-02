@@ -1,7 +1,75 @@
 :root {
+  color-scheme: light;
+
+  /* Palette tokens — light. */
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --fg-muted: #444444;
+  --fg-faint: #888888;
+  --fg-disabled: #bbbbbb;
+  --surface: #ffffff;
+  --surface-2: #f6f6f6;
+  --border: #d0d0d0;
+  --border-subtle: #e5e5e5;
+  --border-strong: #b9b9b9;
+  --accent: #4a90d9;
+  --accent-border: #3f7fc0;
+  --seg-active-bg: #1a1a1a;
+  --seg-active-fg: #ffffff;
+  --btn-hover-bg: rgba(0, 0, 0, 0.06);
+  --btn-active-bg: rgba(0, 0, 0, 0.12);
+  --btn-active-border: rgba(0, 0, 0, 0.18);
+  --danger-bg: #fde8e8;
+  --danger-fg: #9b1c1c;
+  --info-bg: #eef2ff;
+  --info-fg: #3730a3;
+  --code-bg: #f6f8fa;
+  --code-border: #d0d7de;
+  --inline-code-bg: rgba(0, 0, 0, 0.06);
+  --verbatim-border: #cccccc;
+  --table-border: #d0d7de;
+  --th-bg: rgba(0, 0, 0, 0.03);
+  --overlay: rgba(0, 0, 0, 0.3);
+  --shadow: rgba(0, 0, 0, 0.2);
+
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color: #1a1a1a;
-  background: #ffffff;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Palette tokens — dark (soft dark-gray). */
+  --bg: #1e1e1e;
+  --fg: #e4e4e4;
+  --fg-muted: #9a9a9a;
+  --fg-faint: #6f6f6f;
+  --fg-disabled: #5a5a5a;
+  --surface: #252526;
+  --surface-2: #2d2d2d;
+  --border: #3a3a3a;
+  --border-subtle: #333333;
+  --border-strong: #4a4a4a;
+  --accent: #4c8ed6;
+  --accent-border: #3f7fc0;
+  --seg-active-bg: #37373d;
+  --seg-active-fg: #ffffff;
+  --btn-hover-bg: rgba(255, 255, 255, 0.08);
+  --btn-active-bg: rgba(255, 255, 255, 0.14);
+  --btn-active-border: rgba(255, 255, 255, 0.22);
+  --danger-bg: #4a2323;
+  --danger-fg: #f2b8b8;
+  --info-bg: #22304d;
+  --info-fg: #c2d1ff;
+  --code-bg: #262626;
+  --code-border: #3a3a3a;
+  --inline-code-bg: rgba(255, 255, 255, 0.1);
+  --verbatim-border: #4a4a4a;
+  --table-border: #3a3a3a;
+  --th-bg: rgba(255, 255, 255, 0.05);
+  --overlay: rgba(0, 0, 0, 0.5);
+  --shadow: rgba(0, 0, 0, 0.55);
 }
 
 * {
@@ -26,20 +94,20 @@ body,
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  border-bottom: 1px solid #e5e5e5;
+  border-bottom: 1px solid var(--border-subtle);
   font-size: 13px;
   user-select: none;
 }
 
 .dirty-dot {
-  color: #888;
+  color: var(--fg-faint);
   font-size: 10px;
 }
 
 .notice-error {
   padding: 8px 12px;
-  background: #fde8e8;
-  color: #9b1c1c;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
   font-size: 13px;
 }
 
@@ -62,18 +130,19 @@ body,
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .modal {
-  background: #fff;
+  background: var(--surface);
+  color: var(--fg);
   border-radius: 8px;
   padding: 20px;
   min-width: 320px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 32px var(--shadow);
 }
 
 .modal-actions {
@@ -85,20 +154,24 @@ body,
 
 .chrome-spacer { flex: 1; }
 
-.view-toggle { display: inline-flex; border: 1px solid #d0d0d0; border-radius: 6px; overflow: hidden; }
-.view-toggle button {
-  border: 0; background: #fff; padding: 2px 10px; font-size: 12px; cursor: pointer;
+.view-toggle,
+.theme-control { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.view-toggle button,
+.theme-control button {
+  border: 0; background: var(--surface); color: var(--fg); padding: 2px 10px; font-size: 12px; cursor: pointer;
 }
-.view-toggle button.active { background: #1a1a1a; color: #fff; }
-.view-toggle button:disabled { color: #bbb; cursor: default; }
+.view-toggle button.active,
+.theme-control button.active { background: var(--seg-active-bg); color: var(--seg-active-fg); }
+.view-toggle button:disabled,
+.theme-control button:disabled { color: var(--fg-disabled); cursor: default; }
 
-.notice-info { padding: 8px 12px; background: #eef2ff; color: #3730a3; font-size: 13px; }
+.notice-info { padding: 8px 12px; background: var(--info-bg); color: var(--info-fg); font-size: 13px; }
 
 .live-view { flex: 1; overflow: auto; padding: 16px 24px; }
 .live-view .ProseMirror { outline: none; max-width: 60rem; }
 .live-view .ProseMirror:focus { outline: none; }
 .md-verbatim {
-  background: #f6f6f6; border: 1px dashed #ccc; border-radius: 4px;
+  background: var(--surface-2); border: 1px dashed var(--verbatim-border); border-radius: 4px;
   padding: 8px 12px; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 13px;
 }
 /* Task-list item: checkbox and text on one line (the task body is a block div). */
@@ -112,15 +185,15 @@ body,
    single container box (not per-line highlights). `:not(.md-verbatim)` leaves
    the read-only verbatim block's dashed styling alone. */
 .live-view pre:not(.md-verbatim) {
-  background: #f6f8fa;
-  border: 1px solid #d0d7de;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
   border-radius: 6px;
   padding: 12px 16px;
   overflow-x: auto;
   white-space: pre;
 }
 .live-view code {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--inline-code-bg);
   border-radius: 3px;
   padding: 0.1em 0.3em;
   font-size: 0.9em;
@@ -137,8 +210,8 @@ body,
   display: flex;
   gap: 4px;
   padding: 6px 8px;
-  border-bottom: 1px solid var(--chrome-border, #d0d0d0);
-  background: var(--chrome-bg, #f6f6f6);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
   position: relative;
 }
 .ribbon-btn {
@@ -151,8 +224,8 @@ body,
   cursor: pointer;
   color: inherit;
 }
-.ribbon-btn:hover:not(:disabled) { background: rgba(0, 0, 0, 0.06); }
-.ribbon-btn.is-active { background: rgba(0, 0, 0, 0.12); border-color: rgba(0, 0, 0, 0.18); }
+.ribbon-btn:hover:not(:disabled) { background: var(--btn-hover-bg); }
+.ribbon-btn.is-active { background: var(--btn-active-bg); border-color: var(--btn-active-border); }
 .ribbon-btn:disabled { opacity: 0.4; cursor: default; }
 .ribbon-select {
   height: 28px;
@@ -164,7 +237,7 @@ body,
   cursor: pointer;
   padding: 0 4px;
 }
-.ribbon-select:hover:not(:disabled) { background: rgba(0, 0, 0, 0.06); }
+.ribbon-select:hover:not(:disabled) { background: var(--btn-hover-bg); }
 .ribbon-select:disabled { opacity: 0.4; cursor: default; }
 
 /* Insert link/image popover */
@@ -179,10 +252,11 @@ body,
   flex-direction: column;
   gap: 8px;
   min-width: 240px;
-  background: var(--popover-bg, #fff);
-  border: 1px solid var(--chrome-border, #d0d0d0);
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 16px var(--shadow);
 }
 .insert-popover-field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
 .insert-popover-field input { padding: 4px 6px; font-size: 13px; }
@@ -195,18 +269,18 @@ body,
 }
 .live-view th,
 .live-view td {
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--table-border);
   padding: 0.3em 0.6em;
   text-align: left;
 }
 .live-view th {
   font-weight: 600;
-  background: rgba(0, 0, 0, 0.03);
+  background: var(--th-bg);
 }
 
 /* Contextual table toolbar — a second ribbon row shown only inside a table. */
-.ribbon-context { border-bottom: 1px solid #e2e2e2; }
-.ribbon-context .ribbon { background: #f6f7f9; }
+.ribbon-context { border-bottom: 1px solid var(--border-subtle); }
+.ribbon-context .ribbon { background: var(--surface-2); }
 
 /* Insert-table size picker. */
 .table-size-picker {
@@ -214,15 +288,15 @@ body,
   z-index: 30;
   margin-top: 4px;
   padding: 8px;
-  background: #fff;
-  border: 1px solid #c8c8c8;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 2px 10px var(--shadow);
 }
 .tsp-grid { display: grid; gap: 3px; }
 .tsp-cell {
   width: 16px; height: 16px;
-  border: 1px solid #b9b9b9; background: #fff; cursor: pointer;
+  border: 1px solid var(--border-strong); background: var(--surface); cursor: pointer;
 }
-.tsp-cell.tsp-on { background: #4a90d9; border-color: #3f7fc0; }
-.tsp-caption { margin-top: 6px; text-align: center; font-size: 12px; color: #444; }
+.tsp-cell.tsp-on { background: var(--accent); border-color: var(--accent-border); }
+.tsp-caption { margin-top: 6px; text-align: center; font-size: 12px; color: var(--fg-muted); }
