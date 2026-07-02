@@ -1,6 +1,7 @@
 import { Schema, type NodeSpec, type MarkSpec } from 'prosemirror-model';
+import { safeAttrs, sanitizeFragment } from './htmlSanitize';
 
-// Source-range attrs carried by every top-level block (direct child of doc).
+// Source-range attrs carried by every block node.
 const rangeAttrs = {
   srcFrom: { default: 0 },
   srcTo: { default: 0 },
@@ -11,9 +12,14 @@ const rangeAttrs = {
 // mutated (toDOM only reads it), so sharing the default reference is safe.
 const attrBag = { htmlAttrs: { default: {} as Record<string, string> } };
 
-/** DOM output helper: [tag, htmlAttrs, hole?] with hole for content nodes. */
+/**
+ * DOM output helper: [tag, htmlAttrs, hole?] with hole for content nodes.
+ * Sanitized at render time (drops on* handlers / javascript: URLs) — the
+ * node's own `htmlAttrs` stays verbatim; only what's emitted to toDOM is
+ * cleaned, so write-back later still sees the untouched source attrs.
+ */
 const domAttrs = (n: { attrs: { htmlAttrs?: Record<string, string> } }) =>
-  (n.attrs.htmlAttrs ?? {}) as Record<string, string>;
+  safeAttrs((n.attrs.htmlAttrs ?? {}) as Record<string, string>);
 
 const nodes: Record<string, NodeSpec> = {
   doc: { content: 'block+' },
@@ -85,6 +91,7 @@ const nodes: Record<string, NodeSpec> = {
     toDOM: (n) => {
       const tpl = document.createElement('template');
       tpl.innerHTML = n.attrs.raw as string;
+      sanitizeFragment(tpl.content);
       const wrap = document.createElement('div');
       wrap.setAttribute('data-verbatim', '');
       wrap.appendChild(tpl.content.cloneNode(true));
@@ -119,6 +126,7 @@ const nodes: Record<string, NodeSpec> = {
       span.setAttribute('data-verbatim', '');
       const tpl = document.createElement('template');
       tpl.innerHTML = n.attrs.raw as string;
+      sanitizeFragment(tpl.content);
       span.appendChild(tpl.content.cloneNode(true));
       return span;
     },
@@ -134,11 +142,11 @@ const marks: Record<string, MarkSpec> = {
   link: {
     attrs: { ...attrBag },
     inclusive: false,
-    toDOM: (m) => ['a', (m.attrs.htmlAttrs ?? {}) as Record<string, string>, 0],
+    toDOM: (m) => ['a', safeAttrs((m.attrs.htmlAttrs ?? {}) as Record<string, string>), 0],
   },
   span: {
     attrs: { ...attrBag },
-    toDOM: (m) => ['span', (m.attrs.htmlAttrs ?? {}) as Record<string, string>, 0],
+    toDOM: (m) => ['span', safeAttrs((m.attrs.htmlAttrs ?? {}) as Record<string, string>), 0],
   },
 };
 

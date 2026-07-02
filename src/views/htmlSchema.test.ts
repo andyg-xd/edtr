@@ -34,4 +34,35 @@ describe('htmlSchema', () => {
     expect(spec[0]).toBe('a');
     expect(spec[1]).toEqual({ href: 'https://x', class: 'l' });
   });
+
+  it('sanitizes dangerous htmlAttrs at render time without touching the node attrs', () => {
+    const n = htmlSchema.nodes.image.create({ htmlAttrs: { src: 'x', onerror: 'boom()' } });
+    const spec = htmlSchema.nodes.image.spec.toDOM!(n) as [string, Record<string, string>];
+    expect(spec[0]).toBe('img');
+    expect(spec[1].src).toBe('x');
+    expect(spec[1]).not.toHaveProperty('onerror');
+    // the node's own attrs stay verbatim (model unaffected)
+    expect(n.attrs.htmlAttrs).toEqual({ src: 'x', onerror: 'boom()' });
+  });
+
+  it('sanitizes a javascript: href on the link mark', () => {
+    const link = htmlSchema.marks.link.create({ htmlAttrs: { href: 'javascript:alert(1)' } });
+    const spec = htmlSchema.marks.link.spec.toDOM!(link, true) as [string, Record<string, string>, number];
+    expect(spec[1]).not.toHaveProperty('href');
+  });
+
+  it('verbatim toDOM strips <script> and onerror from raw HTML before rendering', () => {
+    const n = htmlSchema.nodes.verbatim.create({
+      raw: '<img src=x onerror="boom()"><script>evil()</script>',
+    });
+    const dom = htmlSchema.nodes.verbatim.spec.toDOM!(n) as HTMLElement;
+    const container = document.createElement('div');
+    container.appendChild(dom);
+    expect(container.querySelector('script')).toBeNull();
+    const img = container.querySelector('img');
+    expect(img).toBeTruthy();
+    expect(img!.hasAttribute('onerror')).toBe(false);
+    // raw attr itself stays verbatim (model unaffected)
+    expect(n.attrs.raw).toContain('onerror');
+  });
 });
