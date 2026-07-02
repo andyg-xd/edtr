@@ -10,9 +10,11 @@ interface InsertPopoverProps {
   docPath?: string | null;
   onConfirm: (values: PopoverValues) => void;
   onCancel: () => void;
+  /** Surfaces a copy/write failure via the app's non-destructive error banner. */
+  onError?: (msg: string) => void;
 }
 
-export function InsertPopover({ kind, initialText = '', docPath = null, onConfirm, onCancel }: InsertPopoverProps) {
+export function InsertPopover({ kind, initialText = '', docPath = null, onConfirm, onCancel, onError }: InsertPopoverProps) {
   const [text, setText] = useState(initialText);
   const [url, setUrl] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
@@ -37,13 +39,17 @@ export function InsertPopover({ kind, initialText = '', docPath = null, onConfir
 
   const chooseFile = async () => {
     if (!docPath) return;
-    const picked = await open({
-      multiple: false,
-      filters: [{ name: 'Images', extensions: [...IMAGE_EXTS] }],
-    });
-    if (typeof picked !== 'string') return; // cancelled
-    const rel = await copyImageIntoAssets(docPath, picked);
-    onConfirm({ text, url: rel, displaySrc: resolveImageDisplaySrc(rel, docPath) });
+    try {
+      const picked = await open({
+        multiple: false,
+        filters: [{ name: 'Images', extensions: [...IMAGE_EXTS] }],
+      });
+      if (typeof picked !== 'string') return; // cancelled
+      const rel = await copyImageIntoAssets(docPath, picked);
+      onConfirm({ text, url: rel, displaySrc: resolveImageDisplaySrc(rel, docPath) });
+    } catch (err) {
+      onError?.(`Edtr couldn't add that image. ${String(err)}`);
+    }
   };
 
   return (

@@ -231,6 +231,7 @@ export function EditorWindow() {
                 controls={markdownRibbon}
                 linkRequest={linkRequest}
                 docPath={session?.path ?? null}
+                onError={setError}
               />
             )}
             {liveView && isInTable(liveView.state) && (
@@ -240,6 +241,7 @@ export function EditorWindow() {
                   controls={markdownTableRibbon}
                   ariaLabel="Table tools"
                   docPath={session?.path ?? null}
+                  onError={setError}
                 />
               </div>
             )}

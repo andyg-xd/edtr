@@ -13,9 +13,11 @@ interface RibbonViewProps {
   ariaLabel?: string;
   /** Absolute path of the open document; enables the local-image file picker. */
   docPath?: string | null;
+  /** Surfaces a copy/write failure via the app's non-destructive error banner. */
+  onError?: (msg: string) => void;
 }
 
-export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Formatting', docPath = null }: RibbonViewProps) {
+export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Formatting', docPath = null, onError }: RibbonViewProps) {
   const [popover, setPopover] = useState<{ control: RibbonControl; initialText: string } | null>(null);
   const [sizePicker, setSizePicker] = useState<RibbonControl | null>(null);
 
@@ -101,6 +103,7 @@ export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Forma
           docPath={docPath}
           onConfirm={confirmPopover}
           onCancel={() => { setPopover(null); view.focus(); }}
+          onError={onError}
         />
       )}
       {sizePicker && sizePicker.action.kind === 'sizePicker' && (

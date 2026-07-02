@@ -282,6 +282,7 @@ describe('image displaySrc resolution', () => {
   });
   it('leaves a remote image displaySrc equal to src (passthrough)', () => {
     const res = buildLiveDoc('![a](https://x/y.png)\n', '/a/b/notes.md');
+    expect(res.ok).toBe(true);
     if (!res.ok) return;
     let img: any = null;
     res.doc.descendants((n) => { if (n.type.name === 'image') img = n; });

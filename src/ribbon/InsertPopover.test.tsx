@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import type { ReactElement } from 'react';
 import { InsertPopover } from './InsertPopover';
+import { copyImageIntoAssets } from '../files/imageAssets';
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn(async () => '/picked/p.png') }));
 vi.mock('../files/imageAssets', () => ({
@@ -13,7 +14,7 @@ vi.mock('../files/imageAssets', () => ({
 }));
 
 let container: HTMLDivElement | null = null;
-afterEach(() => { container?.remove(); container = null; });
+afterEach(() => { container?.remove(); container = null; vi.mocked(copyImageIntoAssets).mockClear(); });
 
 async function render(node: ReactElement) {
   container = document.createElement('div');
@@ -105,5 +106,24 @@ describe('InsertPopover', () => {
       url: 'notes.assets/p.png',
       displaySrc: 'CONVERTED:/a/notes.assets/p.png',
     }));
+  });
+
+  it('surfaces a copy failure via onError and does not confirm', async () => {
+    vi.mocked(copyImageIntoAssets).mockRejectedValueOnce(new Error('disk full'));
+    const onConfirm = vi.fn();
+    const onError = vi.fn();
+    const el = await render(
+      <InsertPopover kind="image" docPath="/a/notes.md" onConfirm={onConfirm} onError={onError} onCancel={() => {}} />
+    );
+    await act(async () => { chooseBtn(el)!.click(); });
+    expect(onError).toHaveBeenCalledWith(expect.any(String));
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('disables "Choose file…" when docPath is null', async () => {
+    const el = await render(<InsertPopover kind="image" onConfirm={() => {}} onCancel={() => {}} />);
+    const btn = chooseBtn(el);
+    expect(btn).not.toBeNull();
+    expect(btn!.disabled).toBe(true);
   });
 });
