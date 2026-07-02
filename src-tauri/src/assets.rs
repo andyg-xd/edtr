@@ -1,6 +1,8 @@
 use std::fs;
+use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use tempfile::NamedTempFile;
 
 /// "<dir>/<stem>.assets" for a document path (e.g. /x/notes.md -> /x/notes.assets).
 fn assets_dir_for(doc_path: &str) -> PathBuf {
@@ -10,53 +12,63 @@ fn assets_dir_for(doc_path: &str) -> PathBuf {
     dir.join(format!("{stem}.assets"))
 }
 
-/// A non-colliding path in `dir` for `name`, appending -1, -2, ... before the
-/// extension until free. Never returns an existing path (never overwrites).
-fn dedup_path(dir: &Path, name: &str) -> PathBuf {
-    let first = dir.join(name);
-    if !first.exists() {
-        return first;
+/// Sanitize an extension to a bare lowercase alphanumeric string (no separators,
+/// no dots). Falls back to "png" if empty after sanitizing.
+fn sanitize_ext(ext: &str) -> String {
+    let cleaned: String = ext
+        .trim_start_matches('.')
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect();
+    if cleaned.is_empty() { "png".to_string() } else { cleaned }
+}
+
+/// Candidate file name #n: "name" for n==0, else "stem-n.ext" (or "stem-n").
+fn candidate_name(name: &str, n: u32) -> String {
+    if n == 0 {
+        return name.to_string();
     }
-    let np = Path::new(name);
-    let stem = np.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
-    let ext = np.extension().and_then(|s| s.to_str());
-    let mut n = 1;
-    loop {
-        let cand = match ext {
-            Some(e) => dir.join(format!("{stem}-{n}.{e}")),
-            None => dir.join(format!("{stem}-{n}")),
-        };
-        if !cand.exists() {
-            return cand;
-        }
-        n += 1;
+    let p = Path::new(name);
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+    match p.extension().and_then(|s| s.to_str()) {
+        Some(e) => format!("{stem}-{n}.{e}"),
+        None => format!("{stem}-{n}"),
     }
 }
 
-/// Atomic write: temp file in the same dir + rename (matches fs.rs discipline).
-fn atomic_write(dest: &Path, bytes: &[u8]) -> Result<(), String> {
-    let dir = dest.parent().ok_or("destination has no parent dir")?;
-    let base = dest.file_name().and_then(|s| s.to_str()).unwrap_or("asset");
-    let tmp = dir.join(format!(".{base}.tmp"));
-    {
-        let mut f = fs::File::create(&tmp).map_err(|e| e.to_string())?;
-        f.write_all(bytes).map_err(|e| e.to_string())?;
-        f.sync_all().map_err(|e| e.to_string())?;
-    }
-    fs::rename(&tmp, dest).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-/// Ensure <doc>.assets/, write `bytes` under a de-duped name derived from
-/// `desired_name`, and return the doc-folder-relative path "<stem>.assets/<name>".
+/// Ensure <doc>.assets/, write `bytes` to a unique temp there, then atomically
+/// persist it to a non-colliding destination (never overwriting — the race-free
+/// `persist_noclobber` closes the check-then-act gap; the NamedTempFile is
+/// auto-deleted on failure, matching fs.rs). Returns "<stem>.assets/<name>".
 fn store_asset(doc_path: &str, desired_name: &str, bytes: &[u8]) -> Result<String, String> {
     let dir = assets_dir_for(doc_path);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let dest = dedup_path(&dir, desired_name);
-    atomic_write(&dest, bytes)?;
-    let folder = dir.file_name().and_then(|s| s.to_str()).ok_or("bad assets dir")?;
-    let fname = dest.file_name().and_then(|s| s.to_str()).ok_or("bad file name")?;
-    Ok(format!("{folder}/{fname}"))
+    let folder = dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or("bad assets dir")?
+        .to_string();
+
+    let mut tmp = NamedTempFile::new_in(&dir).map_err(|e| e.to_string())?;
+    tmp.write_all(bytes).map_err(|e| e.to_string())?;
+    tmp.as_file().sync_all().map_err(|e| e.to_string())?;
+
+    let mut n = 0u32;
+    loop {
+        let cand = dir.join(candidate_name(desired_name, n));
+        match tmp.persist_noclobber(&cand) {
+            Ok(_) => {
+                let fname = cand.file_name().and_then(|s| s.to_str()).ok_or("bad file name")?;
+                return Ok(format!("{folder}/{fname}"));
+            }
+            Err(e) if e.error.kind() == ErrorKind::AlreadyExists => {
+                tmp = e.file; // reclaim the temp file, try the next candidate name
+                n += 1;
+            }
+            Err(e) => return Err(e.error.to_string()),
+        }
+    }
 }
 
 /// Copy an existing file into <doc>.assets/. For the file picker + drag-drop.
@@ -73,8 +85,8 @@ pub fn copy_image_into_assets(doc_path: String, source_path: String) -> Result<S
 /// Write raw image bytes into <doc>.assets/ as "pasted.<ext>" (de-duped). For paste.
 #[tauri::command]
 pub fn write_image_into_assets(doc_path: String, bytes: Vec<u8>, ext: String) -> Result<String, String> {
-    let ext = ext.trim_start_matches('.').to_lowercase();
-    let name = if ext.is_empty() { "pasted.png".to_string() } else { format!("pasted.{ext}") };
+    let ext = sanitize_ext(&ext);
+    let name = format!("pasted.{ext}");
     store_asset(&doc_path, &name, &bytes)
 }
 
@@ -144,5 +156,24 @@ mod tests {
             .map(|e| e.file_name())
             .collect();
         assert_eq!(names, vec![std::ffi::OsString::from("p.png")]);
+    }
+
+    #[test]
+    fn sanitize_ext_strips_separators_and_dots() {
+        assert_eq!(sanitize_ext("png"), "png");
+        assert_eq!(sanitize_ext(".JPEG"), "jpeg");
+        assert_eq!(sanitize_ext("png/../../x"), "pngx");
+        assert_eq!(sanitize_ext(""), "png");
+    }
+
+    #[test]
+    fn write_bytes_with_hostile_ext_stays_in_assets_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let doc = dir.path().join("notes.md");
+        fs::write(&doc, b"x").unwrap();
+        let rel = write_image_into_assets(doc.to_string_lossy().into_owned(), b"A".to_vec(), "png/../evil".into()).unwrap();
+        // ext sanitized to "pngevil"; path stays inside notes.assets/ with a single separator.
+        assert_eq!(rel, "notes.assets/pasted.pngevil");
+        assert!(dir.path().join("notes.assets/pasted.pngevil").exists());
     }
 }
