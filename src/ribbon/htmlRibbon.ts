@@ -1,9 +1,9 @@
 import type { RibbonControl } from './RibbonModel';
 import { htmlSchema } from '../views/htmlSchema';
 import {
-  markActive,
+  markActive, canInsert,
   toggleStrong, toggleEm, toggleUnderline, toggleStrike, toggleCode,
-  canLink, applyLink, removeLink,
+  canLink, applyLink, removeLink, insertImage,
 } from '../commands/htmlInlineCommands';
 import {
   currentBlockType, canTransform,
@@ -11,6 +11,7 @@ import {
 } from '../commands/htmlBlockCommands';
 
 const { strong, em, underline, strike, code, link } = htmlSchema.marks;
+const { image } = htmlSchema.nodes;
 
 export const htmlRibbon: RibbonControl[] = [
   { id: 'bold', label: 'B', ariaLabel: 'Bold',
@@ -35,6 +36,14 @@ export const htmlRibbon: RibbonControl[] = [
       buildCommand: ({ text, url }) => applyLink(url, text),
       whenActiveRun: removeLink,
     } },
+  {
+    id: 'image', label: '\u{1F5BC}', ariaLabel: 'Image',
+    isActive: () => false, isEnabled: (s) => canInsert(s, image),
+    action: {
+      kind: 'popover', popover: 'image',
+      buildCommand: ({ url, text, displaySrc }) => insertImage(url, text || null, displaySrc ?? null),
+    },
+  },
   {
     id: 'heading', label: 'Paragraph', ariaLabel: 'Text style',
     isActive: () => false, isEnabled: (s) => canTransform(s),
