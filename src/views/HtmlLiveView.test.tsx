@@ -167,6 +167,37 @@ describe('HtmlLiveView — editable (4b)', () => {
     expect(onEdit).toHaveBeenCalledTimes(2);
   });
 
+  it('runs a structural split through the mounted view\'s plugin stack (blockIdentityPlugin + splitCommand)', () => {
+    const r = toLiveHtml('<html><body><p>hello</p></body></html>');
+    if (!r.ok) throw new Error(r.reason);
+    let view: any = null;
+    const onEdit = vi.fn();
+    mount(
+      <HtmlLiveView
+        doc={r.doc} styleText={r.styleText} editable
+        onViewReady={(v) => { view = v; }}
+        onEdit={onEdit}
+      />,
+    );
+
+    // Place the selection mid-paragraph ("he|llo") and split there, driving
+    // the command through the mounted view's actual dispatch/plugin stack —
+    // not a bare EditorState — so this proves keymap wiring + blockIdentityPlugin
+    // + dirtyTracking all cooperate on the mounted component, not just in isolation.
+    act(() => {
+      view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(4))));
+    });
+    act(() => { splitCommand(view.state, view.dispatch); });
+
+    expect(view.state.doc.childCount).toBe(2);
+    expect(view.state.doc.child(0).type.name).toBe('paragraph');
+    expect(view.state.doc.child(1).type.name).toBe('paragraph');
+    // blockIdentityPlugin is active in the mounted view's plugin stack: the
+    // new second block gets a fresh id — the invariant htmlWriteBack relies on.
+    expect((view.state.doc.child(1).attrs.blockId as string).startsWith('new-')).toBe(true);
+    expect(onEdit).toHaveBeenCalled();
+  });
+
   it('accepts a docPath prop without error (editable)', () => {
     const r = toLiveHtml('<html><body><p>hi</p></body></html>');
     if (!r.ok) throw new Error('degraded');

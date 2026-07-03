@@ -117,10 +117,10 @@ export function HtmlLiveView({
         const prev = view.state;
         const next = prev.apply(tr);
         view.updateState(next);
-        // A lock-rejected tx makes `apply` return the same state object even
-        // though `tr.docChanged` is true (it reflects the tr's own steps, not
-        // whether state actually changed) — gate on state identity so a
-        // rejected structural edit never fires a false "edited" signal.
+        // `apply` can return the exact same state object for a transaction
+        // that produces no real change (e.g. one rejected by a plugin's
+        // filterTransaction, or a genuine no-op) — gate on state identity so
+        // onEdit only fires when the state actually changed.
         if (next !== prev && onEditRef.current) onEditRef.current(next.doc, getDirtyBlockIds(next));
         onStateChangeRef.current?.(view);
       },
