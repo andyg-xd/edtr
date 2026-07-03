@@ -1,44 +1,52 @@
 import { useEffect, useRef } from 'react';
-import { EditorState } from 'prosemirror-state';
+import { EditorState, type Command } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
+import { keymap } from 'prosemirror-keymap';
+import { history, undo, redo } from 'prosemirror-history';
+import { baseKeymap } from 'prosemirror-commands';
 import type { Node as PMNode } from 'prosemirror-model';
 import { htmlSchema } from './htmlSchema';
 import { safeAttrs } from './htmlSanitize';
+import { dirtyTrackingPlugin, getDirtyBlockIds } from './dirtyTracking';
+import { htmlStructureLockPlugin } from './htmlStructureLock';
+import {
+  toggleStrong, toggleEm, toggleUnderline, softBreak,
+} from '../commands/htmlInlineCommands';
 
 interface HtmlLiveViewProps {
   doc: PMNode;
   styleText: string;
   bodyAttrs?: Record<string, string>;
   rootAttrs?: Record<string, string>;
+  editable?: boolean;
+  onEdit?: (doc: PMNode, dirtyIds: Set<string>) => void;
+  onViewReady?: (view: EditorView | null) => void;
+  onStateChange?: (view: EditorView) => void;
+  onLinkShortcut?: () => void;
 }
 
 /**
- * Read-only HTML Live view (Phase 4a). Mounts a non-editable ProseMirror view
- * inside a shadow root and injects the file's CSS so the page renders like a
- * browser while staying encapsulated from the app chrome. No editing (4b).
- *
- * The shadow tree reconstructs an <html>/<body> scaffold (with the source's
- * own attributes, sanitized) so `html`/`body`/class-scoped CSS — page colors,
- * container borders, base styles defined on body/html — actually matches
- * something and applies, instead of being silently dropped. `:root` selectors
- * (which never match inside a shadow tree) are rewritten to `:host` before the
- * CSS is injected, so custom properties / inherited props declared there flow
- * down into the html/body/content we render.
+ * HTML Live view. Read-only (4a) or editable (4b). Mounts a ProseMirror view
+ * inside a shadow root and injects the file's CSS (`:root`→`:host`) plus an
+ * <html>/<body> scaffold so document-scoped CSS applies. When editable, wires
+ * history + mark shortcuts + Enter→soft-break + the structure lock + dirty
+ * tracking; edits are reported via onEdit (no write-back happens here).
  */
-export function HtmlLiveView({ doc, styleText, bodyAttrs = {}, rootAttrs = {} }: HtmlLiveViewProps) {
+export function HtmlLiveView({
+  doc, styleText, bodyAttrs = {}, rootAttrs = {},
+  editable = false, onEdit, onViewReady, onStateChange, onLinkShortcut,
+}: HtmlLiveViewProps) {
   const host = useRef<HTMLDivElement>(null);
+  const onEditRef = useRef(onEdit); onEditRef.current = onEdit;
+  const onViewReadyRef = useRef(onViewReady); onViewReadyRef.current = onViewReady;
+  const onStateChangeRef = useRef(onStateChange); onStateChangeRef.current = onStateChange;
+  const onLinkShortcutRef = useRef(onLinkShortcut); onLinkShortcutRef.current = onLinkShortcut;
 
   useEffect(() => {
     if (!host.current) return;
     const shadow = host.current.shadowRoot ?? host.current.attachShadow({ mode: 'open' });
-    // reset any prior content (remount safety)
     shadow.innerHTML = '';
     const style = document.createElement('style');
-    // `:root` never matches inside a shadow tree (it only matches the real
-    // document root), so page CSS that defines custom properties / base styles
-    // on `:root` would be dropped. Rewrite it to `:host` (the shadow host):
-    // custom properties + inherited props declared there flow down into the
-    // html/body/content we render below.
     style.textContent = styleText.replace(/:root\b/g, ':host');
     shadow.appendChild(style);
 
@@ -47,7 +55,6 @@ export function HtmlLiveView({ doc, styleText, bodyAttrs = {}, rootAttrs = {} }:
         try { el.setAttribute(k, v); } catch { /* invalid attr name — skip */ }
       }
     };
-
     const htmlEl = document.createElement('html');
     applyAttrs(htmlEl, rootAttrs);
     const bodyEl = document.createElement('body');
@@ -55,12 +62,34 @@ export function HtmlLiveView({ doc, styleText, bodyAttrs = {}, rootAttrs = {} }:
     htmlEl.appendChild(bodyEl);
     shadow.appendChild(htmlEl);
 
+    const linkShortcut: Command = () => { onLinkShortcutRef.current?.(); return true; };
+    const plugins = editable
+      ? [
+          history(),
+          keymap({ Enter: softBreak, 'Shift-Enter': softBreak }),
+          keymap({
+            'Mod-b': toggleStrong, 'Mod-i': toggleEm, 'Mod-u': toggleUnderline,
+            'Mod-k': linkShortcut, 'Mod-z': undo, 'Mod-y': redo, 'Shift-Mod-z': redo,
+          }),
+          keymap(baseKeymap),
+          htmlStructureLockPlugin(),
+          dirtyTrackingPlugin(),
+        ]
+      : [];
+
     const view = new EditorView(bodyEl, {
-      state: EditorState.create({ doc, schema: htmlSchema }),
-      editable: () => false,
+      state: EditorState.create({ doc, schema: htmlSchema, plugins }),
+      editable: () => editable,
+      dispatchTransaction(tr) {
+        const next = view.state.apply(tr);
+        view.updateState(next);
+        if (tr.docChanged && onEditRef.current) onEditRef.current(next.doc, getDirtyBlockIds(next));
+        onStateChangeRef.current?.(view);
+      },
     });
-    return () => view.destroy();
-    // Mount once per doc; the parent supplies a fresh `key` when the file changes.
+    onViewReadyRef.current?.(view);
+    return () => { onViewReadyRef.current?.(null); view.destroy(); };
+    // Mount once per doc; the parent supplies a fresh key when the file changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -71,3 +71,55 @@ describe('HtmlLiveView', () => {
     expect(css).not.toContain(':root');
   });
 });
+
+function mount(ui: ReactElement) {
+  const c = document.createElement('div');
+  document.body.appendChild(c);
+  const root = createRoot(c);
+  act(() => { root.render(ui); });
+  return { container: c, root };
+}
+
+describe('HtmlLiveView — editable (4b)', () => {
+  it('mounts an editable ProseMirror view inside the shadow root', () => {
+    const r = toLiveHtml('<html><body><p>hi</p></body></html>');
+    if (!r.ok) throw new Error(r.reason);
+    let view: any = null;
+    const { container: c } = mount(
+      <HtmlLiveView doc={r.doc} styleText={r.styleText} editable onViewReady={(v) => { view = v; }} />,
+    );
+    const shadow = c.querySelector('.html-live-view')!.shadowRoot!;
+    expect(shadow.querySelector('.ProseMirror')).not.toBeNull();
+    expect(view).not.toBeNull();
+    expect(view.editable).toBe(true);
+  });
+
+  it('reports edits with dirty block ids via onEdit', () => {
+    const r = toLiveHtml('<html><body><p>hi</p></body></html>');
+    if (!r.ok) throw new Error(r.reason);
+    let view: any = null;
+    let lastDirty: Set<string> | null = null;
+    mount(
+      <HtmlLiveView
+        doc={r.doc} styleText={r.styleText} editable
+        onViewReady={(v) => { view = v; }}
+        onEdit={(_d, dirty) => { lastDirty = dirty; }}
+      />,
+    );
+    act(() => { view.dispatch(view.state.tr.insertText('!', 2)); });
+    expect(lastDirty).not.toBeNull();
+    expect(lastDirty!.size).toBe(1);
+  });
+
+  it('rejects a structural transaction (structure lock)', () => {
+    const r = toLiveHtml('<html><body><p>a</p><p>b</p></body></html>');
+    if (!r.ok) throw new Error(r.reason);
+    let view: any = null;
+    mount(
+      <HtmlLiveView doc={r.doc} styleText={r.styleText} editable onViewReady={(v) => { view = v; }} />,
+    );
+    const firstSize = view.state.doc.child(0).nodeSize;
+    act(() => { view.dispatch(view.state.tr.delete(0, firstSize)); });
+    expect(view.state.doc.childCount).toBe(2); // rejected → still two blocks
+  });
+});
