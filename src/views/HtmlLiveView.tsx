@@ -8,9 +8,10 @@ import type { Node as PMNode } from 'prosemirror-model';
 import { htmlSchema } from './htmlSchema';
 import { safeAttrs } from './htmlSanitize';
 import { dirtyTrackingPlugin, getDirtyBlockIds } from './dirtyTracking';
-import { htmlStructureLockPlugin } from './htmlStructureLock';
+import { blockIdentityPlugin } from './blockIdentity';
+import { splitCommand, softBreakCommand } from '../commands/htmlStructureCommands';
 import {
-  toggleStrong, toggleEm, toggleUnderline, softBreak, insertImage,
+  toggleStrong, toggleEm, toggleUnderline, insertImage,
 } from '../commands/htmlInlineCommands';
 import { writeImageIntoAssets, resolveImageDisplaySrc } from '../files/imageAssets';
 
@@ -30,11 +31,12 @@ interface HtmlLiveViewProps {
 }
 
 /**
- * HTML Live view. Read-only (4a) or editable (4b). Mounts a ProseMirror view
- * inside a shadow root and injects the file's CSS (`:root`→`:host`) plus an
- * <html>/<body> scaffold so document-scoped CSS applies. When editable, wires
- * history + mark shortcuts + Enter→soft-break + the structure lock + dirty
- * tracking; edits are reported via onEdit (no write-back happens here).
+ * HTML Live view. Read-only (4a) or editable (4b/4d). Mounts a ProseMirror
+ * view inside a shadow root and injects the file's CSS (`:root`→`:host`) plus
+ * an <html>/<body> scaffold so document-scoped CSS applies. When editable,
+ * wires history + mark shortcuts + Enter→split / Shift-Enter→soft-break +
+ * block-identity tracking (structural editing, 4d) + dirty tracking; edits
+ * are reported via onEdit (no write-back happens here).
  */
 export function HtmlLiveView({
   doc, styleText, bodyAttrs = {}, rootAttrs = {},
@@ -72,13 +74,13 @@ export function HtmlLiveView({
     const plugins = editable
       ? [
           history(),
-          keymap({ Enter: softBreak, 'Shift-Enter': softBreak }),
+          keymap({ Enter: splitCommand, 'Shift-Enter': softBreakCommand }),
           keymap({
             'Mod-b': toggleStrong, 'Mod-i': toggleEm, 'Mod-u': toggleUnderline,
             'Mod-k': linkShortcut, 'Mod-z': undo, 'Mod-y': redo, 'Shift-Mod-z': redo,
           }),
           keymap(baseKeymap),
-          htmlStructureLockPlugin(),
+          blockIdentityPlugin(),
           dirtyTrackingPlugin(),
         ]
       : [];

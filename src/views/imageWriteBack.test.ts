@@ -4,7 +4,7 @@ import { EditorState, TextSelection } from 'prosemirror-state';
 import { toLiveHtml } from './htmlModel';
 import { htmlSchema } from './htmlSchema';
 import { dirtyTrackingPlugin, getDirtyBlockIds } from './dirtyTracking';
-import { htmlStructureLockPlugin } from './htmlStructureLock';
+import { blockIdentityPlugin } from './blockIdentity';
 import { toSource } from './ViewSync';
 import { serializeHtmlDirty } from './htmlSerializer';
 import { insertImage } from '../commands/htmlInlineCommands';
@@ -16,7 +16,7 @@ describe('HTML image insert write-back (no-beautify)', () => {
     if (!res.ok) throw new Error('degraded');
     let state = EditorState.create({
       doc: res.doc, schema: htmlSchema,
-      plugins: [dirtyTrackingPlugin(), htmlStructureLockPlugin()],
+      plugins: [dirtyTrackingPlugin(), blockIdentityPlugin()],
     });
     // cursor at end of block 0 ("alpha")
     const end = res.doc.child(0).nodeSize - 1;

@@ -4,12 +4,6 @@ import { htmlSchema } from '../views/htmlSchema';
 
 const { paragraph, heading, codeBlock } = htmlSchema.nodes;
 
-/**
- * Meta key marking a trusted, count/order-preserving block type-transform.
- * htmlStructureLockPlugin permits any tx carrying it (see Task 2).
- */
-export const BLOCK_TRANSFORM = 'htmlBlockTransform';
-
 function topBlock(state: EditorState): PMNode {
   const { $from } = state.selection;
   return state.doc.child($from.index(0));
@@ -38,9 +32,8 @@ export function canTransform(state: EditorState): boolean {
 /**
  * Change every convertible top-level textblock the selection touches to `target`,
  * preserving each block's htmlAttrs + range attrs and merging `extraAttrs`.
- * setBlockType is position-stable and strips marks the target disallows. Tags the
- * tx BLOCK_TRANSFORM so the structure lock permits it. Positions are computed from
- * the (size-stable) original doc.
+ * setBlockType is position-stable and strips marks the target disallows. Positions
+ * are computed from the (size-stable) original doc.
  */
 function setType(target: NodeType, extraAttrs: Record<string, unknown>): Command {
   return (state, dispatch) => {
@@ -64,7 +57,6 @@ function setType(target: NodeType, extraAttrs: Record<string, unknown>): Command
         }
         pos += block.nodeSize;
       }
-      tr.setMeta(BLOCK_TRANSFORM, true);
       dispatch(tr.scrollIntoView());
     }
     return true;

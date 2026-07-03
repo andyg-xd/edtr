@@ -5,7 +5,7 @@ import { EditorState, NodeSelection, TextSelection } from 'prosemirror-state';
 import { toLiveHtml } from '../views/htmlModel';
 import { htmlSchema } from '../views/htmlSchema';
 import {
-  currentBlockType, canTransform, setHeading, setParagraph, toggleCodeBlock, BLOCK_TRANSFORM,
+  currentBlockType, canTransform, setHeading, setParagraph, toggleCodeBlock,
 } from './htmlBlockCommands';
 
 function stateAt(html: string, blockIndex = 0): EditorState {
@@ -43,13 +43,6 @@ describe('htmlBlockCommands', () => {
     let after = s;
     toggleCodeBlock(s, (tr) => { after = s.apply(tr); });
     expect(after.doc.child(0).type.name).toBe('codeBlock');
-  });
-
-  it('tags the transaction with BLOCK_TRANSFORM', () => {
-    const s = stateAt('<html><body><p>hi</p></body></html>', 0);
-    let meta: unknown;
-    setHeading(1)(s, (tr) => { meta = tr.getMeta(BLOCK_TRANSFORM); });
-    expect(meta).toBe(true);
   });
 
   it('canTransform is false on a verbatim atom (table)', () => {

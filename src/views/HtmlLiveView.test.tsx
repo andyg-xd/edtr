@@ -5,8 +5,12 @@ import {
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import type { ReactElement } from 'react';
+import { EditorState, TextSelection } from 'prosemirror-state';
 import { HtmlLiveView } from './HtmlLiveView';
 import { toLiveHtml } from './htmlModel';
+import { htmlSchema } from './htmlSchema';
+import { blockIdentityPlugin } from './blockIdentity';
+import { splitCommand } from '../commands/htmlStructureCommands';
 
 let container: HTMLDivElement | null = null;
 afterEach(() => { container?.remove(); container = null; });
@@ -126,7 +130,7 @@ describe('HtmlLiveView — editable (4b)', () => {
     expect(lastDirty!.size).toBe(1);
   });
 
-  it('rejects a structural transaction (structure lock)', () => {
+  it('allows a structural transaction (lock removed, 4d) — deleting a whole block succeeds', () => {
     const r = toLiveHtml('<html><body><p>a</p><p>b</p></body></html>');
     if (!r.ok) throw new Error(r.reason);
     let view: any = null;
@@ -135,10 +139,10 @@ describe('HtmlLiveView — editable (4b)', () => {
     );
     const firstSize = view.state.doc.child(0).nodeSize;
     act(() => { view.dispatch(view.state.tr.delete(0, firstSize)); });
-    expect(view.state.doc.childCount).toBe(2); // rejected → still two blocks
+    expect(view.state.doc.childCount).toBe(1); // no lock → the block is actually removed
   });
 
-  it('does not fire onEdit for a lock-rejected transaction, but does for an in-block edit', () => {
+  it('fires onEdit for both a structural edit and an in-block edit', () => {
     const r = toLiveHtml('<html><body><p>a</p><p>b</p></body></html>');
     if (!r.ok) throw new Error(r.reason);
     let view: any = null;
@@ -151,16 +155,16 @@ describe('HtmlLiveView — editable (4b)', () => {
       />,
     );
 
-    // Structural edit: deletes the whole first block — rejected by the
-    // structure lock. Must NOT report an edit (the doc is unchanged).
+    // Structural edit: deletes the whole first block — no lock, so it applies
+    // and is reported.
     const firstSize = view.state.doc.child(0).nodeSize;
     act(() => { view.dispatch(view.state.tr.delete(0, firstSize)); });
-    expect(view.state.doc.childCount).toBe(2); // confirms rejection took effect
-    expect(onEdit).not.toHaveBeenCalled();
-
-    // Within-block text edit: allowed by the lock — must report an edit.
-    act(() => { view.dispatch(view.state.tr.insertText('!', 2)); });
+    expect(view.state.doc.childCount).toBe(1);
     expect(onEdit).toHaveBeenCalledTimes(1);
+
+    // Within-block text edit: also reported.
+    act(() => { view.dispatch(view.state.tr.insertText('!', 2)); });
+    expect(onEdit).toHaveBeenCalledTimes(2);
   });
 
   it('accepts a docPath prop without error (editable)', () => {
@@ -183,4 +187,22 @@ describe('HtmlLiveView — editable (4b)', () => {
     );
     expect(c.querySelector('.html-live-view')).toBeTruthy();
   });
+});
+
+// Structural editing: a split through a state with blockIdentityPlugin yields
+// two top-level blocks with DISTINCT ids (the 2nd is a fresh new-N), the
+// invariant htmlWriteBack relies on.
+it('a split assigns the second block a fresh id (blockIdentityPlugin)', () => {
+  const res = toLiveHtml('<html><body><p>hello</p></body></html>');
+  if (!res.ok) throw new Error('degraded');
+  let state = EditorState.create({ doc: res.doc, schema: htmlSchema, plugins: [blockIdentityPlugin()] });
+  state = state.apply(state.tr.setSelection(TextSelection.near(res.doc.resolve(4))));
+  splitCommand(state, (tr) => { state = state.apply(tr); });
+  expect(state.doc.childCount).toBe(2);
+  const id0 = state.doc.child(0).attrs.blockId as string;
+  const id1 = state.doc.child(1).attrs.blockId as string;
+  expect(id0).toBe('h0');
+  expect(id1).not.toBe('h0');
+  expect(id1.startsWith('new-')).toBe(true);
+  expect(state.doc.child(1).attrs.srcFrom).toBe(0); // cleared range
 });

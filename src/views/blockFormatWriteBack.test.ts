@@ -5,7 +5,7 @@ import { EditorState, TextSelection } from 'prosemirror-state';
 import { toLiveHtml } from './htmlModel';
 import { htmlSchema } from './htmlSchema';
 import { dirtyTrackingPlugin, getDirtyBlockIds } from './dirtyTracking';
-import { htmlStructureLockPlugin } from './htmlStructureLock';
+import { blockIdentityPlugin } from './blockIdentity';
 import { toSource } from './ViewSync';
 import { serializeHtmlDirty } from './htmlSerializer';
 import { setHeading } from '../commands/htmlBlockCommands';
@@ -18,7 +18,7 @@ describe('HTML block-format write-back (no-beautify)', () => {
     if (!res.ok) throw new Error('degraded');
     let state = EditorState.create({
       doc: res.doc, schema: htmlSchema,
-      plugins: [dirtyTrackingPlugin(), htmlStructureLockPlugin()],
+      plugins: [dirtyTrackingPlugin(), blockIdentityPlugin()],
     });
     state = state.apply(state.tr.setSelection(TextSelection.near(res.doc.resolve(1)))); // block 0
     setHeading(2)(state, (tr) => { state = state.apply(tr); });
