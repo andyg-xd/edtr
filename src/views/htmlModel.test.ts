@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { toLiveHtml } from './htmlModel';
+
+vi.mock('@tauri-apps/api/core', () => ({
+  convertFileSrc: (p: string) => `asset://localhost${p}`,
+  invoke: vi.fn(),
+}));
 
 const find = (doc: any, type: string): any => {
   let hit: any = null;
@@ -80,5 +85,34 @@ describe('toLiveHtml', () => {
     if (!res.ok) return;
     expect(res.bodyAttrs).toEqual({ class: 'dark', id: 'pg' });
     expect(res.rootAttrs).toEqual({ class: 'h' });
+  });
+});
+
+const findImage = (doc: any): any => {
+  let hit: any = null;
+  doc.descendants((n: any) => { if (!hit && n.type.name === 'image') hit = n; });
+  return hit;
+};
+
+describe('toLiveHtml image displaySrc (local-<img> render fix)', () => {
+  it('sets displaySrc for a relative local src when docPath is given', () => {
+    const res = toLiveHtml('<html><body><p><img src="pics/a.png"></p></body></html>', '/docs/note.html');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const img = findImage(res.doc);
+    expect(img.attrs.htmlAttrs.src).toBe('pics/a.png');          // verbatim
+    expect(img.attrs.displaySrc).toBe('asset://localhost/docs/pics/a.png');
+  });
+
+  it('leaves displaySrc null for a data: URI', () => {
+    const res = toLiveHtml('<html><body><p><img src="data:image/png;base64,AAAA"></p></body></html>', '/docs/note.html');
+    if (!res.ok) return;
+    expect(findImage(res.doc).attrs.displaySrc).toBeNull();
+  });
+
+  it('leaves displaySrc null when docPath is absent', () => {
+    const res = toLiveHtml('<html><body><p><img src="pics/a.png"></p></body></html>');
+    if (!res.ok) return;
+    expect(findImage(res.doc).attrs.displaySrc).toBeNull();
   });
 });
