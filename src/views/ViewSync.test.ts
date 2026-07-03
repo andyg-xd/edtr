@@ -1,8 +1,11 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { toLive, toSource, writeBack, serializeDirty } from './ViewSync';
+import { toLive, toSource, writeBack, serializeDirty, htmlWriteBack } from './ViewSync';
 import { buildLiveDoc } from './liveModel';
 import { detectFlavor } from '../doc/flavor';
 import { liveSchema } from './liveSchema';
+import { toLiveHtml } from './htmlModel';
+import { htmlSchema } from './htmlSchema';
 
 function liveDoc(src: string) {
   const r = toLive(src);
@@ -175,5 +178,32 @@ describe('writeBack reconciler — structural edits (no beautify)', () => {
 
   it('empty document round-trips to empty', () => {
     expect(writeBack(docFor(''), '', new Set(), flavorFor(''))).toBe('');
+  });
+});
+
+describe('htmlWriteBack (reconstruction reconciler)', () => {
+  const src = '<!doctype html>\n<html>\n<body>\n<p>a</p>\n<p>b</p>\n</body>\n</html>\n';
+
+  it('no-op reconstructs the baseline byte-for-byte', () => {
+    const r = toLiveHtml(src);
+    if (!r.ok) throw new Error('degraded');
+    expect(htmlWriteBack(r.doc, src, new Set(), r.doc)).toBe(src);
+  });
+
+  it('inserts a new block with a "\\n" separator; existing blocks byte-identical', () => {
+    const r = toLiveHtml(src);
+    if (!r.ok) throw new Error('degraded');
+    const b0 = r.doc.child(0); // <p>a</p>, id h0
+    const b1 = r.doc.child(1); // <p>b</p>, id h1
+    const mid = htmlSchema.node(
+      'paragraph',
+      { htmlAttrs: {}, srcFrom: 0, srcTo: 0, blockId: 'new-0' },
+      [htmlSchema.text('mid')],
+    );
+    const doc = htmlSchema.node('doc', null, [b0, mid, b1]);
+    const out = htmlWriteBack(doc, src, new Set(['new-0']), r.doc);
+    expect(out).toContain('<p>a</p>\n<p>mid</p>\n<p>b</p>');
+    expect(out.startsWith('<!doctype html>\n')).toBe(true);
+    expect(out.endsWith('</body>\n</html>\n')).toBe(true);
   });
 });

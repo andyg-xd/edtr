@@ -3,6 +3,8 @@ import { spliceSource } from '../doc/splice';
 import type { SpliceEdit, FlavorProfile } from '../doc/types';
 import { buildLiveDoc, type LiveResult } from './liveModel';
 import { serializeBlock } from './markdownSerializer';
+import { serializeHtmlBlock } from './htmlSerializer';
+import { toLiveHtml } from './htmlModel';
 
 /** Build the read-only Live document from source (or signal degrade). */
 export function toLive(source: string, docPath: string | null = null): LiveResult {
@@ -49,28 +51,27 @@ export function serializeDirty(
 
 type BaselineRef = { id: string; from: number; to: number; index: number };
 
+type ReconcileOpts = {
+  serialize: (block: PMNode) => string;
+  separator: string;
+  buildBaseline: () => PMNode;
+};
+
 /**
- * Re-derive source from the current Live doc by RECONSTRUCTION (not per-block
- * splice), so split/merge/insert are handled while untouched blocks + untouched
- * inter-block gaps stay byte-identical. A block is "new" iff its id is not in
- * the baseline. `baselineDoc` (the doc built when Live was entered) supplies the
- * baseline block ranges/order; when omitted, the baseline string is re-parsed
- * (deterministic ids → matches). This strictly generalizes the count-stable
- * splice model: the no-op case reconstructs the baseline byte-for-byte.
+ * Format-agnostic reconstruction reconciler. Walks the current doc's top-level
+ * blocks: an untouched baseline block (id present, not dirty) emits its exact
+ * baseline byte-slice; otherwise it is re-serialized. Between two blocks that
+ * were adjacent in the baseline, the exact baseline gap is reused; otherwise
+ * `opts.separator` is synthesized. No-op ⇒ baseline reproduced byte-for-byte.
  */
-export function writeBack(
+function reconcile(
   doc: PMNode,
   baseline: string,
   dirty: Set<string>,
-  flavor: FlavorProfile,
+  opts: ReconcileOpts,
   baselineDoc?: PMNode,
 ): string {
-  let base = baselineDoc;
-  if (!base) {
-    const r = buildLiveDoc(baseline);
-    if (!r.ok) throw new Error(`writeBack: baseline no longer parses (${r.reason})`);
-    base = r.doc;
-  }
+  const base = baselineDoc ?? opts.buildBaseline();
 
   const refs: BaselineRef[] = [];
   base.forEach((b, _off, index) => {
@@ -84,23 +85,22 @@ export function writeBack(
   const byId = new Map<string, BaselineRef>();
   for (const r of refs) byId.set(r.id, r);
 
-  // Doc-leading whitespace + trailing newline (empty baseline → whole string is prefix).
   const prefix = refs.length ? baseline.slice(0, refs[0].from) : baseline;
   const suffix = refs.length ? baseline.slice(refs[refs.length - 1].to) : '';
 
   const parts: string[] = [];
-  let prev: BaselineRef | null = null; // previous emitted block's baseline ref (null if it was new)
+  let prev: BaselineRef | null = null;
   let first = true;
   doc.forEach((block) => {
     const id = block.attrs.blockId as string;
     const ref = byId.get(id) ?? null;
     const isDirty = dirty.has(id);
-    const text = ref && !isDirty ? baseline.slice(ref.from, ref.to) : serializeBlock(block, flavor);
+    const text = ref && !isDirty ? baseline.slice(ref.from, ref.to) : opts.serialize(block);
     if (!first) {
       if (prev && ref && ref.index === prev.index + 1) {
-        parts.push(baseline.slice(prev.to, ref.from)); // reuse exact baseline gap (no beautify)
+        parts.push(baseline.slice(prev.to, ref.from));
       } else {
-        parts.push('\n\n'); // adjacency changed → synthesized separator
+        parts.push(opts.separator);
       }
     }
     parts.push(text);
@@ -109,4 +109,53 @@ export function writeBack(
   });
 
   return prefix + parts.join('') + suffix;
+}
+
+/** Markdown reconstruction write-back (unchanged behavior; now a reconcile wrapper). */
+export function writeBack(
+  doc: PMNode,
+  baseline: string,
+  dirty: Set<string>,
+  flavor: FlavorProfile,
+  baselineDoc?: PMNode,
+): string {
+  return reconcile(
+    doc,
+    baseline,
+    dirty,
+    {
+      serialize: (b) => serializeBlock(b, flavor),
+      separator: '\n\n',
+      buildBaseline: () => {
+        const r = buildLiveDoc(baseline);
+        if (!r.ok) throw new Error(`writeBack: baseline no longer parses (${r.reason})`);
+        return r.doc;
+      },
+    },
+    baselineDoc,
+  );
+}
+
+/** HTML reconstruction write-back — mirrors writeBack with the HTML serializer + a "\n" separator. */
+export function htmlWriteBack(
+  doc: PMNode,
+  baseline: string,
+  dirty: Set<string>,
+  baselineDoc?: PMNode,
+): string {
+  return reconcile(
+    doc,
+    baseline,
+    dirty,
+    {
+      serialize: serializeHtmlBlock,
+      separator: '\n',
+      buildBaseline: () => {
+        const r = toLiveHtml(baseline);
+        if (!r.ok) throw new Error(`htmlWriteBack: baseline no longer parses (${r.reason})`);
+        return r.doc;
+      },
+    },
+    baselineDoc,
+  );
 }
