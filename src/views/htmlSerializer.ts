@@ -112,6 +112,7 @@ export function serializeHtmlBlock(node: PMNode): string {
       return `<li${attrs()}>${serializeChildren(node)}</li>`;
     }
     case 'codeBlock': return `<pre${attrs()}><code>${escapeText(node.textContent)}</code></pre>`;
+    case 'horizontalRule': return '<hr>';
     case 'verbatim': return node.attrs.raw as string;
     default: throw new HtmlSerializeError(`unknown block: ${node.type.name}`);
   }

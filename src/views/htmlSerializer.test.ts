@@ -183,3 +183,10 @@ describe('schema exhaustiveness', () => {
     }
   });
 });
+
+describe('horizontalRule serialization', () => {
+  it('serializes horizontalRule as <hr>', () => {
+    const hr = htmlSchema.nodes.horizontalRule.create();
+    expect(serializeHtmlBlock(hr)).toBe('<hr>');
+  });
+});

@@ -116,3 +116,16 @@ describe('toLiveHtml image displaySrc (local-<img> render fix)', () => {
     expect(findImage(res.doc).attrs.displaySrc).toBeNull();
   });
 });
+
+describe('horizontalRule model mapping', () => {
+  it('maps a source <hr> to a horizontalRule block with a range', () => {
+    const res = toLiveHtml('<html><body><p>a</p><hr><p>b</p></body></html>');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const types: string[] = [];
+    res.doc.forEach((n) => types.push(n.type.name));
+    expect(types).toEqual(['paragraph', 'horizontalRule', 'paragraph']);
+    const hr = res.doc.child(1);
+    expect(hr.attrs.srcTo).toBeGreaterThan(hr.attrs.srcFrom); // real range, not 0/0
+  });
+});

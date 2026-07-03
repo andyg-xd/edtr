@@ -82,6 +82,12 @@ const nodes: Record<string, NodeSpec> = {
     toDOM: (n) => ['pre', domAttrs(n), ['code', 0]],
   },
 
+  horizontalRule: {
+    group: 'block',
+    attrs: { ...rangeAttrs },
+    toDOM: () => ['hr'],
+  },
+
   // Block escape hatch: renders exact raw HTML (read-only). For tables/unknown/
   // content-model mismatches. `parseDOM`-free; render via a template fragment.
   verbatim: {

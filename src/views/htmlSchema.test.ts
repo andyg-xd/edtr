@@ -82,4 +82,10 @@ describe('htmlSchema', () => {
       expect(dom2[1].src).toBe('pic.png');
     });
   });
+
+  it('horizontalRule renders as <hr>', () => {
+    const hr = htmlSchema.nodes.horizontalRule.create();
+    const dom = hr.type.spec.toDOM!(hr) as [string];
+    expect(dom[0]).toBe('hr');
+  });
 });

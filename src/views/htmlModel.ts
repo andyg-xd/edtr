@@ -70,7 +70,7 @@ function buildInline(node: SourceNode, marks: readonly Mark[], docPath: string |
 // verbatim catch-all instead of falling through to the bare-inline path
 // (which would wrap it as an inlineVerbatim inside a synthetic paragraph).
 const BLOCK_TAGS = new Set([
-  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'div', 'ul', 'ol', 'li', 'pre', 'table',
+  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'div', 'ul', 'ol', 'li', 'pre', 'table', 'hr',
 ]);
 const isBlockElement = (n: SourceNode) => n.type !== '#text' && BLOCK_TAGS.has(n.type);
 
@@ -86,6 +86,7 @@ function buildBlock(node: SourceNode, range: object, docPath: string | null): PM
   const verbatim = () => htmlSchema.node('verbatim', { raw: node.raw, ...range });
   const attrs = { htmlAttrs: attrsOf(node), ...range };
   try {
+    if (node.type === 'hr') return htmlSchema.node('horizontalRule', { ...range });
     if (node.type === 'p') return htmlSchema.node('paragraph', attrs, buildInline(node, [], docPath));
     if (HEADINGS[node.type])
       return htmlSchema.node('heading', { level: HEADINGS[node.type], ...attrs }, buildInline(node, [], docPath));
