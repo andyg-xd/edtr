@@ -162,4 +162,13 @@ describe('HtmlLiveView — editable (4b)', () => {
     act(() => { view.dispatch(view.state.tr.insertText('!', 2)); });
     expect(onEdit).toHaveBeenCalledTimes(1);
   });
+
+  it('accepts a docPath prop without error (editable)', () => {
+    const r = toLiveHtml('<html><body><p>hi</p></body></html>');
+    if (!r.ok) throw new Error('degraded');
+    const { container: c } = mount(
+      <HtmlLiveView doc={r.doc} styleText="" editable docPath="/docs/note.html" />,
+    );
+    expect(c.querySelector('.html-live-view')).toBeTruthy();
+  });
 });

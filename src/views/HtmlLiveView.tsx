@@ -10,8 +10,9 @@ import { safeAttrs } from './htmlSanitize';
 import { dirtyTrackingPlugin, getDirtyBlockIds } from './dirtyTracking';
 import { htmlStructureLockPlugin } from './htmlStructureLock';
 import {
-  toggleStrong, toggleEm, toggleUnderline, softBreak,
+  toggleStrong, toggleEm, toggleUnderline, softBreak, insertImage,
 } from '../commands/htmlInlineCommands';
+import { writeImageIntoAssets, resolveImageDisplaySrc } from '../files/imageAssets';
 
 interface HtmlLiveViewProps {
   doc: PMNode;
@@ -19,6 +20,7 @@ interface HtmlLiveViewProps {
   bodyAttrs?: Record<string, string>;
   rootAttrs?: Record<string, string>;
   editable?: boolean;
+  docPath?: string | null;
   onEdit?: (doc: PMNode, dirtyIds: Set<string>) => void;
   onViewReady?: (view: EditorView | null) => void;
   onStateChange?: (view: EditorView) => void;
@@ -34,13 +36,14 @@ interface HtmlLiveViewProps {
  */
 export function HtmlLiveView({
   doc, styleText, bodyAttrs = {}, rootAttrs = {},
-  editable = false, onEdit, onViewReady, onStateChange, onLinkShortcut,
+  editable = false, docPath = null, onEdit, onViewReady, onStateChange, onLinkShortcut,
 }: HtmlLiveViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const onEditRef = useRef(onEdit); onEditRef.current = onEdit;
   const onViewReadyRef = useRef(onViewReady); onViewReadyRef.current = onViewReady;
   const onStateChangeRef = useRef(onStateChange); onStateChangeRef.current = onStateChange;
   const onLinkShortcutRef = useRef(onLinkShortcut); onLinkShortcutRef.current = onLinkShortcut;
+  const docPathRef = useRef(docPath); docPathRef.current = docPath;
 
   useEffect(() => {
     if (!host.current) return;
@@ -80,6 +83,29 @@ export function HtmlLiveView({
     const view = new EditorView(bodyEl, {
       state: EditorState.create({ doc, schema: htmlSchema, plugins }),
       editable: () => editable,
+      handlePaste: (view, event) => {
+        if (!editable || !docPathRef.current) return false;
+        const items = event.clipboardData?.items;
+        if (!items) return false;
+        for (const item of items) {
+          if (item.kind === 'file' && item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (!file) continue;
+            const dp = docPathRef.current;
+            const ext = (item.type.split('/')[1] || 'png').split('+')[0]; // image/svg+xml -> svg
+            file.arrayBuffer()
+              .then((buf) => writeImageIntoAssets(dp, Array.from(new Uint8Array(buf)), ext))
+              .then((rel) => {
+                if (view.isDestroyed) return;
+                const display = resolveImageDisplaySrc(rel, dp);
+                insertImage(rel, null, display)(view.state, view.dispatch);
+              })
+              .catch(() => { /* paste failure surfaced by the caller's onError path in EditorWindow */ });
+            return true;
+          }
+        }
+        return false;
+      },
       dispatchTransaction(tr) {
         const prev = view.state;
         const next = prev.apply(tr);
