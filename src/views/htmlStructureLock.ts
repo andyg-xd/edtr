@@ -1,5 +1,6 @@
 import { Plugin } from 'prosemirror-state';
 import type { Node as PMNode } from 'prosemirror-model';
+import { BLOCK_TRANSFORM } from '../commands/htmlBlockCommands';
 
 /** Signature of the top-level block sequence: type + id, order-sensitive. */
 function topLevelSig(doc: PMNode): string {
@@ -20,6 +21,10 @@ export function htmlStructureLockPlugin(): Plugin {
   return new Plugin({
     filterTransaction(tr, state) {
       if (!tr.docChanged) return true;
+      // 4c: trusted in-place type transforms (heading/paragraph/code block) keep
+      // top-level count + order + blockId; they only flip a block's type, which the
+      // signature check would otherwise reject. Permit them explicitly.
+      if (tr.getMeta(BLOCK_TRANSFORM)) return true;
       return topLevelSig(tr.doc) === topLevelSig(state.doc);
     },
   });
