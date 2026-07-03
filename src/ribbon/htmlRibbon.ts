@@ -9,6 +9,7 @@ import {
   currentBlockType, canTransform,
   setHeading, setParagraph, toggleCodeBlock,
 } from '../commands/htmlBlockCommands';
+import { insertHorizontalRule } from '../commands/htmlStructureCommands';
 
 const { strong, em, underline, strike, code, link } = htmlSchema.marks;
 const { image } = htmlSchema.nodes;
@@ -63,5 +64,10 @@ export const htmlRibbon: RibbonControl[] = [
     id: 'codeBlock', label: '{ }', ariaLabel: 'Code block',
     isActive: (s) => currentBlockType(s) === 'codeBlock', isEnabled: (s) => canTransform(s),
     action: { kind: 'command', run: toggleCodeBlock },
+  },
+  {
+    id: 'horizontalRule', label: '―', ariaLabel: 'Horizontal rule',
+    isActive: () => false, isEnabled: (s) => insertHorizontalRule(s),
+    action: { kind: 'command', run: insertHorizontalRule },
   },
 ];

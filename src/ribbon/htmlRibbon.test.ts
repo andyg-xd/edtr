@@ -13,7 +13,9 @@ function selState(src: string, from: number, to: number) {
 
 describe('htmlRibbon', () => {
   it('exposes the inline controls followed by block controls in order', () => {
-    expect(htmlRibbon.map((c) => c.id)).toEqual(['bold', 'italic', 'underline', 'strike', 'code', 'link', 'image', 'heading', 'codeBlock']);
+    expect(htmlRibbon.map((c) => c.id)).toEqual(
+      ['bold', 'italic', 'underline', 'strike', 'code', 'link', 'image', 'heading', 'codeBlock', 'horizontalRule'],
+    );
   });
 
   it('bold isActive reflects the strong mark at the selection', () => {
@@ -46,6 +48,11 @@ describe('htmlRibbon — 4c block controls', () => {
   it('includes a code-block toggle command', () => {
     const cb = htmlRibbon.find((c) => c.id === 'codeBlock');
     expect(cb?.action.kind).toBe('command');
+  });
+
+  it('includes a horizontal-rule command control', () => {
+    const hr = htmlRibbon.find((c) => c.id === 'horizontalRule');
+    expect(hr?.action.kind).toBe('command');
   });
 
   it('includes an image popover control', () => {
