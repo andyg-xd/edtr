@@ -5,6 +5,10 @@ import {
   toggleStrong, toggleEm, toggleUnderline, toggleStrike, toggleCode,
   canLink, applyLink, removeLink,
 } from '../commands/htmlInlineCommands';
+import {
+  currentBlockType, canTransform,
+  setHeading, setParagraph, toggleCodeBlock,
+} from '../commands/htmlBlockCommands';
 
 const { strong, em, underline, strike, code, link } = htmlSchema.marks;
 
@@ -31,4 +35,24 @@ export const htmlRibbon: RibbonControl[] = [
       buildCommand: ({ text, url }) => applyLink(url, text),
       whenActiveRun: removeLink,
     } },
+  {
+    id: 'heading', label: 'Paragraph', ariaLabel: 'Text style',
+    isActive: () => false, isEnabled: (s) => canTransform(s),
+    action: {
+      kind: 'dropdown',
+      options: [
+        { label: 'Paragraph', value: 'paragraph' },
+        { label: 'Heading 1', value: 'h1' }, { label: 'Heading 2', value: 'h2' },
+        { label: 'Heading 3', value: 'h3' }, { label: 'Heading 4', value: 'h4' },
+        { label: 'Heading 5', value: 'h5' }, { label: 'Heading 6', value: 'h6' },
+      ],
+      getValue: (s) => { const t = currentBlockType(s); return t.startsWith('h') || t === 'paragraph' ? t : 'paragraph'; },
+      run: (v) => (v === 'paragraph' ? setParagraph : setHeading(Number(v[1]))),
+    },
+  },
+  {
+    id: 'codeBlock', label: '{ }', ariaLabel: 'Code block',
+    isActive: (s) => currentBlockType(s) === 'codeBlock', isEnabled: (s) => canTransform(s),
+    action: { kind: 'command', run: toggleCodeBlock },
+  },
 ];

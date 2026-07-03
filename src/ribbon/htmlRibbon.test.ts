@@ -12,8 +12,8 @@ function selState(src: string, from: number, to: number) {
 }
 
 describe('htmlRibbon', () => {
-  it('exposes exactly the six inline controls in order', () => {
-    expect(htmlRibbon.map((c) => c.id)).toEqual(['bold', 'italic', 'underline', 'strike', 'code', 'link']);
+  it('exposes the inline controls followed by block controls in order', () => {
+    expect(htmlRibbon.map((c) => c.id)).toEqual(['bold', 'italic', 'underline', 'strike', 'code', 'link', 'heading', 'codeBlock']);
   });
 
   it('bold isActive reflects the strong mark at the selection', () => {
@@ -30,5 +30,21 @@ describe('htmlRibbon', () => {
     expect(link.action.kind).toBe('popover');
     expect((link.action as any).popover).toBe('link');
     expect((link.action as any).whenActiveRun).toBeTypeOf('function');
+  });
+});
+
+describe('htmlRibbon — 4c block controls', () => {
+  it('includes a heading dropdown with Paragraph + H1–H6', () => {
+    const heading = htmlRibbon.find((c) => c.id === 'heading');
+    expect(heading?.action.kind).toBe('dropdown');
+    if (heading?.action.kind === 'dropdown') {
+      expect(heading.action.options.map((o) => o.value)).toEqual(
+        ['paragraph', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
+      );
+    }
+  });
+  it('includes a code-block toggle command', () => {
+    const cb = htmlRibbon.find((c) => c.id === 'codeBlock');
+    expect(cb?.action.kind).toBe('command');
   });
 });
