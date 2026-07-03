@@ -35,8 +35,8 @@ function buildInline(node: SourceNode, marks: readonly Mark[]): PMNode[] {
       if (t) out.push(htmlSchema.text(t, marks));
       continue;
     }
-    if (child.type === 'br') { out.push(htmlSchema.node('hardBreak')); continue; }
-    if (child.type === 'img') { out.push(htmlSchema.node('image', { htmlAttrs: attrsOf(child) })); continue; }
+    if (child.type === 'br') { out.push(htmlSchema.node('hardBreak', undefined, undefined, marks)); continue; }
+    if (child.type === 'img') { out.push(htmlSchema.node('image', { htmlAttrs: attrsOf(child) }, undefined, marks)); continue; }
     if (INLINE_MARK[child.type]) {
       const mark = htmlSchema.marks[INLINE_MARK[child.type]].create();
       out.push(...buildInline(child, mark.addToSet(marks as Mark[])));

@@ -78,9 +78,19 @@ describe('serializeHtmlBlock — per construct', () => {
     expect(serializeHtmlBlock(doc.child(0))).toBe('<ul><li>one</li><li>two</li></ul>');
   });
 
+  it('keeps a genuine <li><p class="x">…</p></li> wrapped (attrs would be lost by unwrapping)', () => {
+    const doc = build('<html><body><ul><li><p class="x">hi</p></li></ul></body></html>');
+    expect(serializeHtmlBlock(doc.child(0))).toBe('<ul><li><p class="x">hi</p></li></ul>');
+  });
+
   it('serializes an existing <img> from htmlAttrs (no displaySrc)', () => {
     const doc = build('<html><body><p><img src="pic.png" alt="a"></p></body></html>');
     expect(serializeHtmlBlock(doc.child(0))).toBe('<p><img src="pic.png" alt="a"></p>');
+  });
+
+  it('round-trips a linked image — the <a> wraps the <img> (marked atom)', () => {
+    const doc = build('<html><body><p><a href="x"><img src="y"></a></p></body></html>');
+    expect(serializeHtmlBlock(doc.child(0))).toBe('<p><a href="x"><img src="y"></a></p>');
   });
 
   it('escapes text and attribute values for round-trip', () => {
@@ -117,6 +127,25 @@ describe('no-beautify via toSource + serializeHtmlDirty', () => {
     expect(out).toContain('<style>p{color:red}</style>');                 // head untouched
     expect(out).toContain('<p>Changed</p>');                              // block re-serialized
     expect(out).not.toContain('bold');                                    // old content gone
+  });
+
+  it('a clean block with non-canonical source formatting is byte-sliced, not re-serialized', () => {
+    // SRC above is already in canonical form, so a hypothetical bug where
+    // serializeHtmlDirty ignores `dirty` and always re-serializes would still
+    // pass the two goldens above (re-serializing canonical bytes reproduces
+    // the same bytes). This golden uses non-canonical formatting (double
+    // space, single-quoted attr) so a dirty-gating regression is detectable:
+    // re-serializing would canonicalize it, changing the bytes.
+    const nonCanonicalSrc = `<html><body><h1  class='title'>Hi</h1></body></html>`;
+    const doc = build(nonCanonicalSrc);
+    const h1 = doc.child(0);
+    // Sanity check: prove re-serialization WOULD differ from the source slice,
+    // so a regression to "always re-serialize" is actually caught below.
+    expect(serializeHtmlBlock(h1)).not.toBe(
+      nonCanonicalSrc.slice(h1.attrs.srcFrom as number, h1.attrs.srcTo as number),
+    );
+    const out = toSource(doc, nonCanonicalSrc, serializeHtmlDirty(new Set()));
+    expect(out).toBe(nonCanonicalSrc);
   });
 
   it('a verbatim table stays byte-identical when a sibling is edited', () => {

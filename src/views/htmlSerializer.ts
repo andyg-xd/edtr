@@ -53,7 +53,13 @@ function serializeLeaf(node: PMNode): string {
   }
 }
 
-/** Text + marks, coalescing adjacent same-mark runs via an open/close stack. */
+/**
+ * Text + marks, coalescing adjacent same-mark runs via an open/close stack.
+ * Atoms (image/hardBreak/inlineVerbatim) go through the same open/close-stack
+ * logic as text, keyed off their own `marks` — so a marked atom (e.g. an
+ * `<img>` wrapped in `<a href>`) keeps its wrapping tag(s) instead of having
+ * every mark force-closed before it emits.
+ */
 function serializeInline(node: PMNode): string {
   let out = '';
   const active: Mark[] = []; // open marks, outermost-first
@@ -62,17 +68,12 @@ function serializeInline(node: PMNode): string {
     active.length = i;
   };
   node.forEach((child) => {
-    if (child.isText) {
-      const wanted = orderMarks(child.marks);
-      let common = 0;
-      while (common < active.length && common < wanted.length && active[common].eq(wanted[common])) common++;
-      closeFrom(common);
-      for (let k = common; k < wanted.length; k++) { out += openTag(wanted[k]); active.push(wanted[k]); }
-      out += escapeText(child.text ?? '');
-    } else {
-      closeFrom(0);
-      out += serializeLeaf(child);
-    }
+    const wanted = orderMarks(child.marks);
+    let common = 0;
+    while (common < active.length && common < wanted.length && active[common].eq(wanted[common])) common++;
+    closeFrom(common);
+    for (let k = common; k < wanted.length; k++) { out += openTag(wanted[k]); active.push(wanted[k]); }
+    out += child.isText ? escapeText(child.text ?? '') : serializeLeaf(child);
   });
   closeFrom(0);
   return out;
@@ -94,13 +95,22 @@ export function serializeHtmlBlock(node: PMNode): string {
     case 'div': return `<div${attrs()}>${serializeChildren(node)}</div>`;
     case 'bulletList': return `<ul${attrs()}>${serializeChildren(node)}</ul>`;
     case 'orderedList': return `<ol${attrs()}>${serializeChildren(node)}</ol>`;
-    case 'listItem':
-      // A single-paragraph item round-trips as `<li>inline</li>` (common form);
-      // a multi-block item keeps its block children.
-      if (node.childCount === 1 && node.firstChild?.type.name === 'paragraph') {
-        return `<li${attrs()}>${serializeInline(node.firstChild)}</li>`;
+    case 'listItem': {
+      // A single-paragraph item round-trips as `<li>inline</li>` (common form)
+      // ONLY when that paragraph is htmlModel's synthetic zero-attrs wrapper
+      // (built for a bare `<li>text</li>`, see htmlModel.ts `listItems`) — a
+      // genuine `<li><p class="x">…</p></li>` has attrs on the <p> and MUST
+      // keep it wrapped, or those attrs (e.g. `class="x"`) are silently lost.
+      const first = node.firstChild;
+      const isSyntheticParagraphWrapper =
+        node.childCount === 1 &&
+        first?.type.name === 'paragraph' &&
+        Object.keys((first.attrs.htmlAttrs as Record<string, string> | undefined) ?? {}).length === 0;
+      if (isSyntheticParagraphWrapper) {
+        return `<li${attrs()}>${serializeInline(first)}</li>`;
       }
       return `<li${attrs()}>${serializeChildren(node)}</li>`;
+    }
     case 'codeBlock': return `<pre${attrs()}><code>${escapeText(node.textContent)}</code></pre>`;
     case 'verbatim': return node.attrs.raw as string;
     default: throw new HtmlSerializeError(`unknown block: ${node.type.name}`);
