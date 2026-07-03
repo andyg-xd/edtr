@@ -98,9 +98,9 @@ function reconcile(
     const text = ref && !isDirty ? baseline.slice(ref.from, ref.to) : opts.serialize(block);
     if (!first) {
       if (prev && ref && ref.index === prev.index + 1) {
-        parts.push(baseline.slice(prev.to, ref.from));
+        parts.push(baseline.slice(prev.to, ref.from)); // reuse exact baseline gap (no beautify)
       } else {
-        parts.push(opts.separator);
+        parts.push(opts.separator); // adjacency changed → synthesized separator
       }
     }
     parts.push(text);

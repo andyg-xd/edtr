@@ -11,7 +11,8 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
 }));
 
-// Guards the exact wiring EditorWindow's HTML flush uses: toSource + serializeHtmlDirty.
+// Exercises the retained toSource + serializeHtmlDirty primitive (still used by 4c golden tests).
+// The adjacent htmlWriteBack round-trips test is the guard for what the HTML flush now uses.
 describe('HTML flush wiring', () => {
   it('writes back only the dirty block, byte-identical elsewhere', () => {
     const SRC = `<html><body><h1>T</h1><p>old</p></body></html>`;
