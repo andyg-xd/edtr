@@ -39,8 +39,10 @@ describe('HTML structural write-back (no-beautify)', () => {
     state = state.apply(state.tr.setSelection(TextSelection.near(state.doc.resolve(startOfTwo))));
     joinBackward(state, (tr) => { state = state.apply(tr); });
     const out = htmlWriteBack(state.doc, src, getDirtyBlockIds(state), baselineDoc);
-    expect(out).toContain('<p>onetwo</p>');
-    expect(out).toContain('<p>three</p>'); // untouched tail survives
+    // adjacency: no stray whitespace / no reordering between the merged block and the untouched tail
+    expect(out).toContain('<p>onetwo</p>\n<p>three</p>');
+    expect(out.startsWith('<!doctype html>\n')).toBe(true);
+    expect(out.endsWith('</body>\n</html>\n')).toBe(true);
   });
 
   it('inserting <hr> writes it between blocks; neighbors byte-identical', () => {
@@ -49,8 +51,8 @@ describe('HTML structural write-back (no-beautify)', () => {
     state = state.apply(state.tr.setSelection(TextSelection.near(state.doc.resolve(2)))); // in block 0
     insertHorizontalRule(state, (tr) => { state = state.apply(tr); });
     const out = htmlWriteBack(state.doc, src, getDirtyBlockIds(state), baselineDoc);
-    expect(out).toContain('<hr>');
-    expect(out).toContain('<p>b</p>'); // untouched block survives
+    // adjacency + order: a, then the new <hr>, then the command's new empty paragraph, then untouched b
+    expect(out).toContain('<p>a</p>\n<hr>\n<p></p>\n<p>b</p>');
     expect(out.startsWith('<!doctype html>\n')).toBe(true);
   });
 
