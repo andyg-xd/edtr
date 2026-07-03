@@ -24,6 +24,7 @@ import { detectFlavor } from '../doc/flavor';
 import { useTheme } from '../settings/useTheme';
 import { copyImageIntoAssets, resolveImageDisplaySrc, IMAGE_EXTS } from '../files/imageAssets';
 import { insertImage } from '../commands/markdownInlineCommands';
+import { insertImage as htmlInsertImage } from '../commands/htmlInlineCommands';
 
 export function EditorWindow() {
   const [session, setSession] = useState<DocumentSession | null>(null);
@@ -87,7 +88,7 @@ export function EditorWindow() {
   const liveHtml = useMemo<HtmlLiveResult | null>(() => {
     if (!session || session.format !== 'html') return null;
     try {
-      return toLiveHtml(session.text);
+      return toLiveHtml(session.text, session?.path ?? null);
     } catch (e) {
       return { ok: false as const, degrade: true as const, reason: String(e) };
     }
@@ -128,6 +129,8 @@ export function EditorWindow() {
   showLiveRef.current = showLive;
   const dropDocPathRef = useRef<string | null>(session?.path ?? null);
   dropDocPathRef.current = session?.path ?? null;
+  const dropFormatRef = useRef(session?.format ?? null);
+  dropFormatRef.current = session?.format ?? null;
 
   // Local-image drag-drop. Registered ONCE for the window's lifetime; the
   // handler reads the current view/path/mode via refs, so repeated Live<->Code
@@ -154,7 +157,11 @@ export function EditorWindow() {
             const rel = await copyImageIntoAssets(docPath, path);
             if (disposed || view.isDestroyed) return;
             const display = resolveImageDisplaySrc(rel, docPath);
-            insertImage(rel, null, null, display)(view.state, view.dispatch);
+            if (dropFormatRef.current === 'html') {
+              htmlInsertImage(rel, null, display)(view.state, view.dispatch);
+            } else {
+              insertImage(rel, null, null, display)(view.state, view.dispatch);
+            }
           } catch (err) {
             if (!disposed) setError(`Could not insert the dropped image. ${String(err)}`);
           }
@@ -266,6 +273,7 @@ export function EditorWindow() {
                 view={liveView}
                 controls={htmlRibbon}
                 linkRequest={linkRequest}
+                docPath={session?.path ?? null}
                 onError={setError}
               />
             )}
@@ -276,6 +284,7 @@ export function EditorWindow() {
               bodyAttrs={liveHtml.bodyAttrs}
               rootAttrs={liveHtml.rootAttrs}
               editable
+              docPath={session?.path ?? null}
               onEdit={handleLiveEdit}
               onViewReady={setLiveView}
               onStateChange={bumpRibbon}
