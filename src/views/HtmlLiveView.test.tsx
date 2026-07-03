@@ -44,12 +44,30 @@ describe('HtmlLiveView', () => {
     );
     const host = c.querySelector('.html-live-view') as HTMLElement;
     const shadow = host.shadowRoot!;
-    // Structural assertions: this is what makes `body.dark{}` / `html.h{}` /
-    // `:root{}` selectors match in a real browser. jsdom doesn't fully compute
-    // the cascade, so the actual color application is verified in manual GUI QA.
+    // Structural assertions: this is what makes `body.dark{}` / `html.h{}`
+    // selectors match in a real browser. (`:root` doesn't match inside a shadow
+    // tree — those rules are rewritten to `:host`; see the next test.) jsdom
+    // doesn't fully compute the cascade, so actual color application is verified
+    // in manual GUI QA.
     expect(shadow.querySelector('style')?.textContent).toContain('body.dark{color:red}');
     expect(shadow.querySelector('html.h')).toBeTruthy();
     expect(shadow.querySelector('body.dark')).toBeTruthy();
     expect(shadow.querySelector('body.dark p')?.textContent).toBe('x');
+  });
+
+  it('rewrites :root selectors to :host so page custom properties apply in the shadow tree', async () => {
+    const res = toLiveHtml('<html><body><p>x</p></body></html>');
+    if (!res.ok) throw new Error('expected ok');
+    const c = await render(
+      <HtmlLiveView doc={res.doc} styleText=":root{--accent:red} body{color:var(--accent)}" />,
+    );
+    const host = c.querySelector('.html-live-view') as HTMLElement;
+    const css = host.shadowRoot!.querySelector('style')?.textContent ?? '';
+    // The rewrite must happen: `:root` never matches inside a shadow tree, but
+    // `:host` (the shadow host) does, and custom properties declared there
+    // inherit down into html/body/content. The computed-cascade effect (var()
+    // resolving to red) is GUI-verified; jsdom can't compute var().
+    expect(css).toContain(':host{--accent:red}');
+    expect(css).not.toContain(':root');
   });
 });

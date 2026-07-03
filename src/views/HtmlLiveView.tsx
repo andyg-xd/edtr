@@ -18,9 +18,12 @@ interface HtmlLiveViewProps {
  * browser while staying encapsulated from the app chrome. No editing (4b).
  *
  * The shadow tree reconstructs an <html>/<body> scaffold (with the source's
- * own attributes, sanitized) so body/html/:root-scoped CSS — page colors,
- * container borders, custom properties defined on body/html — actually
- * matches something and applies, instead of being silently dropped.
+ * own attributes, sanitized) so `html`/`body`/class-scoped CSS — page colors,
+ * container borders, base styles defined on body/html — actually matches
+ * something and applies, instead of being silently dropped. `:root` selectors
+ * (which never match inside a shadow tree) are rewritten to `:host` before the
+ * CSS is injected, so custom properties / inherited props declared there flow
+ * down into the html/body/content we render.
  */
 export function HtmlLiveView({ doc, styleText, bodyAttrs = {}, rootAttrs = {} }: HtmlLiveViewProps) {
   const host = useRef<HTMLDivElement>(null);
@@ -31,7 +34,12 @@ export function HtmlLiveView({ doc, styleText, bodyAttrs = {}, rootAttrs = {} }:
     // reset any prior content (remount safety)
     shadow.innerHTML = '';
     const style = document.createElement('style');
-    style.textContent = styleText;
+    // `:root` never matches inside a shadow tree (it only matches the real
+    // document root), so page CSS that defines custom properties / base styles
+    // on `:root` would be dropped. Rewrite it to `:host` (the shadow host):
+    // custom properties + inherited props declared there flow down into the
+    // html/body/content we render below.
+    style.textContent = styleText.replace(/:root\b/g, ':host');
     shadow.appendChild(style);
 
     const applyAttrs = (el: Element, attrs: Record<string, string>) => {
