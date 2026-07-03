@@ -1,12 +1,13 @@
 import { toggleMark } from 'prosemirror-commands';
 import type { Command } from 'prosemirror-state';
 import { htmlSchema } from '../views/htmlSchema';
-import { markActive, getMarkRange } from './markdownInlineCommands';
+import { markActive, getMarkRange, canInsert } from './markdownInlineCommands';
 
-// Re-export the schema-generic helper so ribbon/consumers import from one place.
-export { markActive };
+// Re-export the schema-generic helpers so ribbon/consumers import from one place.
+export { markActive, canInsert };
 
 const { strong, em, underline, strike, code, link } = htmlSchema.marks;
+const { image } = htmlSchema.nodes;
 
 export const toggleStrong: Command = toggleMark(strong);
 export const toggleEm: Command = toggleMark(em);
@@ -46,3 +47,22 @@ export const softBreak: Command = (state, dispatch) => {
   if (dispatch) dispatch(state.tr.replaceSelectionWith(br).scrollIntoView());
   return true;
 };
+
+/**
+ * Insert an inline <img> at the selection. `src` is the verbatim (relative)
+ * path written to source; `displaySrc` is render-only (asset-protocol URL).
+ */
+export function insertImage(
+  src: string,
+  alt: string | null = null,
+  displaySrc: string | null = null,
+): Command {
+  return (state, dispatch) => {
+    if (!src || !canInsert(state, image)) return false;
+    const htmlAttrs: Record<string, string> = alt ? { src, alt } : { src };
+    if (dispatch) {
+      dispatch(state.tr.replaceSelectionWith(image.create({ htmlAttrs, displaySrc })).scrollIntoView());
+    }
+    return true;
+  };
+}

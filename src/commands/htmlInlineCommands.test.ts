@@ -3,7 +3,7 @@ import { EditorState, TextSelection } from 'prosemirror-state';
 import { htmlSchema } from '../views/htmlSchema';
 import { toLiveHtml } from '../views/htmlModel';
 import {
-  toggleStrong, toggleUnderline, applyLink, removeLink, softBreak, markActive,
+  toggleStrong, toggleUnderline, applyLink, removeLink, softBreak, markActive, insertImage,
 } from './htmlInlineCommands';
 
 function stateWithSelection(src: string, from: number, to: number) {
@@ -55,5 +55,30 @@ describe('htmlInlineCommands', () => {
     let found = false;
     next!.doc.child(0).forEach((n) => { if (n.type.name === 'hardBreak') found = true; });
     expect(found).toBe(true);
+  });
+});
+
+function stateAt(html: string): EditorState {
+  const res = toLiveHtml(html);
+  if (!res.ok) throw new Error('degraded');
+  let state = EditorState.create({ doc: res.doc, schema: htmlSchema });
+  return state.apply(state.tr.setSelection(TextSelection.near(res.doc.resolve(1))));
+}
+
+describe('htmlInlineCommands.insertImage', () => {
+  it('inserts an inline image with a verbatim src + render-only displaySrc', () => {
+    const s = stateAt('<html><body><p>hi</p></body></html>');
+    let after = s;
+    const ok = insertImage('pics/a.png', 'alt text', 'asset://x/a.png')(s, (tr) => { after = s.apply(tr); });
+    expect(ok).toBe(true);
+    let img: import('prosemirror-model').Node | null = null;
+    after.doc.descendants((n) => { if (n.type.name === 'image') img = n; });
+    expect(img!.attrs.htmlAttrs).toEqual({ src: 'pics/a.png', alt: 'alt text' });
+    expect(img!.attrs.displaySrc).toBe('asset://x/a.png');
+  });
+
+  it('returns false inside a code block', () => {
+    const s = stateAt('<html><body><pre><code>x</code></pre></body></html>');
+    expect(insertImage('a.png')(s, () => {})).toBe(false);
   });
 });
