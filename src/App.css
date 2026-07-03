@@ -169,6 +169,11 @@ body,
 
 .live-view { flex: 1; overflow: auto; padding: 16px 24px; }
 .live-view .ProseMirror { outline: none; max-width: 60rem; }
+
+/* Like .code-view/.live-view: scroll the rendered page internally so the
+   window chrome + ribbon stay pinned. No padding — the HTML page controls
+   its own margins via its injected stylesheet. */
+.html-live-view { flex: 1; overflow: auto; }
 .live-view .ProseMirror:focus { outline: none; }
 .md-verbatim {
   background: var(--surface-2); border: 1px dashed var(--verbatim-border); border-radius: 4px;
