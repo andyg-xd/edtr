@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach } from 'vitest';
+import {
+  describe, it, expect, afterEach, vi,
+} from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import type { ReactElement } from 'react';
@@ -72,15 +74,28 @@ describe('HtmlLiveView', () => {
   });
 });
 
+type MountedRoot = { container: HTMLDivElement; root: ReturnType<typeof createRoot> };
+const mounted: MountedRoot[] = [];
+
 function mount(ui: ReactElement) {
   const c = document.createElement('div');
   document.body.appendChild(c);
   const root = createRoot(c);
   act(() => { root.render(ui); });
+  mounted.push({ container: c, root });
   return { container: c, root };
 }
 
 describe('HtmlLiveView — editable (4b)', () => {
+  afterEach(() => {
+    // Each test mounts a live ProseMirror EditorView + shadow root via
+    // mount(); unmount + detach so they don't leak across tests.
+    for (const { container: c, root } of mounted.splice(0)) {
+      act(() => { root.unmount(); });
+      c.remove();
+    }
+  });
+
   it('mounts an editable ProseMirror view inside the shadow root', () => {
     const r = toLiveHtml('<html><body><p>hi</p></body></html>');
     if (!r.ok) throw new Error(r.reason);
@@ -121,5 +136,30 @@ describe('HtmlLiveView — editable (4b)', () => {
     const firstSize = view.state.doc.child(0).nodeSize;
     act(() => { view.dispatch(view.state.tr.delete(0, firstSize)); });
     expect(view.state.doc.childCount).toBe(2); // rejected → still two blocks
+  });
+
+  it('does not fire onEdit for a lock-rejected transaction, but does for an in-block edit', () => {
+    const r = toLiveHtml('<html><body><p>a</p><p>b</p></body></html>');
+    if (!r.ok) throw new Error(r.reason);
+    let view: any = null;
+    const onEdit = vi.fn();
+    mount(
+      <HtmlLiveView
+        doc={r.doc} styleText={r.styleText} editable
+        onViewReady={(v) => { view = v; }}
+        onEdit={onEdit}
+      />,
+    );
+
+    // Structural edit: deletes the whole first block — rejected by the
+    // structure lock. Must NOT report an edit (the doc is unchanged).
+    const firstSize = view.state.doc.child(0).nodeSize;
+    act(() => { view.dispatch(view.state.tr.delete(0, firstSize)); });
+    expect(view.state.doc.childCount).toBe(2); // confirms rejection took effect
+    expect(onEdit).not.toHaveBeenCalled();
+
+    // Within-block text edit: allowed by the lock — must report an edit.
+    act(() => { view.dispatch(view.state.tr.insertText('!', 2)); });
+    expect(onEdit).toHaveBeenCalledTimes(1);
   });
 });
