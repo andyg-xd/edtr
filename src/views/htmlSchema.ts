@@ -104,8 +104,12 @@ const nodes: Record<string, NodeSpec> = {
     group: 'inline',
     inline: true,
     atom: true,
-    attrs: { ...attrBag },
-    toDOM: (n) => ['img', domAttrs(n)],
+    attrs: { ...attrBag, displaySrc: { default: null } },
+    toDOM: (n) => {
+      const a = domAttrs(n); // safeAttrs(htmlAttrs) — the source `src` stays verbatim
+      if (n.attrs.displaySrc) a.src = n.attrs.displaySrc as string; // render via asset protocol
+      return ['img', a];
+    },
   },
 
   hardBreak: {

@@ -69,4 +69,17 @@ describe('htmlSchema', () => {
     expect(n.attrs.raw).toContain('onerror');
     expect(n.attrs.raw).toContain('iframe');
   });
+
+  describe('htmlSchema image displaySrc', () => {
+    it('toDOM uses displaySrc when set, htmlAttrs.src otherwise', () => {
+      const withD = htmlSchema.nodes.image.create({ htmlAttrs: { src: 'pic.png', alt: 'a' }, displaySrc: 'asset://x/pic.png' });
+      const dom = withD.type.spec.toDOM!(withD) as [string, Record<string, string>];
+      expect(dom[1].src).toBe('asset://x/pic.png');
+      expect(dom[1].alt).toBe('a');
+
+      const raw = htmlSchema.nodes.image.create({ htmlAttrs: { src: 'pic.png' } });
+      const dom2 = raw.type.spec.toDOM!(raw) as [string, Record<string, string>];
+      expect(dom2[1].src).toBe('pic.png');
+    });
+  });
 });

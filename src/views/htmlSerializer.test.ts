@@ -159,6 +159,16 @@ describe('no-beautify via toSource + serializeHtmlDirty', () => {
   });
 });
 
+describe('htmlSerializer image — displaySrc never leaks', () => {
+  it('serializes an image from htmlAttrs only, ignoring displaySrc', () => {
+    const img = htmlSchema.nodes.image.create({ htmlAttrs: { src: 'pic.png', alt: 'a' }, displaySrc: 'asset://x/pic.png' });
+    const p = htmlSchema.nodes.paragraph.create({ htmlAttrs: {}, blockId: 'h0', srcFrom: 0, srcTo: 0 }, img);
+    const out = serializeHtmlBlock(p);
+    expect(out).toContain('src="pic.png"');
+    expect(out).not.toContain('asset://');
+  });
+});
+
 describe('schema exhaustiveness', () => {
   it('every block-group node has a serializer arm', () => {
     for (const name of Object.keys(htmlSchema.nodes)) {
