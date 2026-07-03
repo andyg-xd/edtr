@@ -14,8 +14,7 @@ import { RibbonView } from '../ribbon/RibbonView';
 import { markdownRibbon } from '../ribbon/markdownRibbon';
 import { markdownTableRibbon } from '../ribbon/markdownTableRibbon';
 import { isInTable } from '../commands/markdownTableCommands';
-import { toLive, writeBack, toSource } from '../views/ViewSync';
-import { serializeHtmlDirty } from '../views/htmlSerializer';
+import { toLive, writeBack, htmlWriteBack } from '../views/ViewSync';
 import { htmlRibbon } from '../ribbon/htmlRibbon';
 import { openViaDialog, saveSession } from '../files/fileController';
 import { DocumentSession } from '../files/documentSession';
@@ -190,7 +189,12 @@ export function EditorWindow() {
     try {
       const newSource =
         session.format === 'html'
-          ? toSource(liveDocRef.current, liveBaselineRef.current, serializeHtmlDirty(liveDirtyRef.current))
+          ? htmlWriteBack(
+              liveDocRef.current,
+              liveBaselineRef.current,
+              liveDirtyRef.current,
+              liveBaselineDocRef.current ?? undefined,
+            )
           : writeBack(
               liveDocRef.current,
               liveBaselineRef.current,
