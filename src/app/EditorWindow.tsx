@@ -14,7 +14,9 @@ import { RibbonView } from '../ribbon/RibbonView';
 import { markdownRibbon } from '../ribbon/markdownRibbon';
 import { markdownTableRibbon } from '../ribbon/markdownTableRibbon';
 import { isInTable } from '../commands/markdownTableCommands';
-import { toLive, writeBack } from '../views/ViewSync';
+import { toLive, writeBack, toSource } from '../views/ViewSync';
+import { serializeHtmlDirty } from '../views/htmlSerializer';
+import { htmlRibbon } from '../ribbon/htmlRibbon';
 import { openViaDialog, saveSession } from '../files/fileController';
 import { DocumentSession } from '../files/documentSession';
 import { basename } from '../files/fileTypes';
@@ -105,10 +107,12 @@ export function EditorWindow() {
 
   // Capture the baseline source whenever we (re)enter Live with a fresh doc.
   useEffect(() => {
-    if (showLive && live && live.ok) {
+    const active =
+      session?.format === 'html' ? liveHtml : session?.format === 'markdown' ? live : null;
+    if (showLive && active && active.ok) {
       liveBaselineRef.current = session!.text;
-      liveBaselineDocRef.current = live.doc;   // stash baseline doc for writeBack
-      liveDocRef.current = live.doc;
+      liveBaselineDocRef.current = active.doc;   // stash baseline doc for writeBack
+      liveDocRef.current = active.doc;
       liveDirtyRef.current = new Set();
       setLiveHasEdits(false);
     }
@@ -176,15 +180,17 @@ export function EditorWindow() {
 
   const flushLiveToSource = useCallback((): boolean => {
     if (!session || !liveDocRef.current || liveDirtyRef.current.size === 0) return true;
-    const flavor = detectFlavor(liveBaselineRef.current, 'markdown');
     try {
-      const newSource = writeBack(
-        liveDocRef.current,
-        liveBaselineRef.current,
-        liveDirtyRef.current,
-        flavor,
-        liveBaselineDocRef.current ?? undefined,
-      );
+      const newSource =
+        session.format === 'html'
+          ? toSource(liveDocRef.current, liveBaselineRef.current, serializeHtmlDirty(liveDirtyRef.current))
+          : writeBack(
+              liveDocRef.current,
+              liveBaselineRef.current,
+              liveDirtyRef.current,
+              detectFlavor(liveBaselineRef.current, 'markdown'),
+              liveBaselineDocRef.current ?? undefined,
+            );
       session.setCurrentText(newSource);
       liveDirtyRef.current = new Set();
       setLiveHasEdits(false);
@@ -194,7 +200,7 @@ export function EditorWindow() {
       // Never corrupt or lose work: keep the live edits, surface a non-destructive
       // error, stay editable, and report failure so callers don't proceed.
       setError(
-        `Edtr couldn't safely convert one of your edits back to Markdown. ` +
+        `Edtr couldn't safely convert one of your edits back to ${session.format === 'html' ? 'HTML' : 'Markdown'}. ` +
           `Your work is still here in Live view. Please adjust that edit and try again. ${String(e)}`,
       );
       return false;
@@ -254,13 +260,28 @@ export function EditorWindow() {
       )}
       {session ? (
         showLive && session.format === 'html' && liveHtml && liveHtml.ok ? (
-          <HtmlLiveView
-            key={`htmllive-${openCount}`}
-            doc={liveHtml.doc}
-            styleText={liveHtml.styleText}
-            bodyAttrs={liveHtml.bodyAttrs}
-            rootAttrs={liveHtml.rootAttrs}
-          />
+          <>
+            {liveView && (
+              <RibbonView
+                view={liveView}
+                controls={htmlRibbon}
+                linkRequest={linkRequest}
+                onError={setError}
+              />
+            )}
+            <HtmlLiveView
+              key={`htmllive-${openCount}`}
+              doc={liveHtml.doc}
+              styleText={liveHtml.styleText}
+              bodyAttrs={liveHtml.bodyAttrs}
+              rootAttrs={liveHtml.rootAttrs}
+              editable
+              onEdit={handleLiveEdit}
+              onViewReady={setLiveView}
+              onStateChange={bumpRibbon}
+              onLinkShortcut={bumpLinkRequest}
+            />
+          </>
         ) : showLive && live && live.ok ? (
           <>
             {liveView && (
