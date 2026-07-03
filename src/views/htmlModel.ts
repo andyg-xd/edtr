@@ -4,7 +4,13 @@ import type { SourceNode } from '../doc/types';
 import { htmlSchema } from './htmlSchema';
 
 export type HtmlLiveResult =
-  | { ok: true; doc: PMNode; styleText: string }
+  | {
+      ok: true;
+      doc: PMNode;
+      styleText: string;
+      bodyAttrs: Record<string, string>;
+      rootAttrs: Record<string, string>;
+    }
   | { ok: false; degrade: true; reason: string };
 
 class DegradeError extends Error {}
@@ -149,6 +155,9 @@ export function toLiveHtml(source: string): HtmlLiveResult {
     const root = parse(source, 'html');
     const body = findFirst(root, 'body');
     if (!body) throw new DegradeError('no <body> element');
+    const bodyAttrs = attrsOf(body);
+    const htmlEl = findFirst(root, 'html');
+    const rootAttrs = htmlEl ? attrsOf(htmlEl) : {};
     const styleText = collectStyles(root);
     let counter = 0;
     const blocks: PMNode[] = [];
@@ -168,7 +177,7 @@ export function toLiveHtml(source: string): HtmlLiveResult {
       ? htmlSchema.node('doc', null, blocks)
       : htmlSchema.node('doc', null, [htmlSchema.node('paragraph', { htmlAttrs: {} })]);
     doc.check();
-    return { ok: true, doc, styleText };
+    return { ok: true, doc, styleText, bodyAttrs, rootAttrs };
   } catch (e) {
     if (e instanceof DegradeError) return { ok: false, degrade: true, reason: e.message };
     return { ok: false, degrade: true, reason: String(e) };

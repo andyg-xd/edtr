@@ -73,4 +73,12 @@ describe('toLiveHtml', () => {
     expect(first.attrs.srcTo).toBeGreaterThan(first.attrs.srcFrom);
     expect(src.slice(first.attrs.srcFrom, first.attrs.srcTo)).toContain('hello');
   });
+
+  it('captures body and html attrs so body/html-scoped CSS can be reconstructed', () => {
+    const res = toLiveHtml('<html class="h"><body class="dark" id="pg"><p>x</p></body></html>');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.bodyAttrs).toEqual({ class: 'dark', id: 'pg' });
+    expect(res.rootAttrs).toEqual({ class: 'h' });
+  });
 });

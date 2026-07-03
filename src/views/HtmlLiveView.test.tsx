@@ -26,7 +26,30 @@ describe('HtmlLiveView', () => {
     expect(host.shadowRoot).toBeTruthy();
     const shadow = host.shadowRoot!;
     expect(shadow.querySelector('style')?.textContent).toContain('.lead{color:red}');
-    // the paragraph rendered with its class, inside the shadow root
+    // the paragraph rendered with its class, inside the shadow root (now nested
+    // under the reconstructed html/body scaffold — descendant selector still finds it)
     expect(shadow.querySelector('p.lead')?.textContent).toBe('hi');
+  });
+
+  it('reconstructs an html/body scaffold (with source attrs) so body/html-scoped CSS matches', async () => {
+    const res = toLiveHtml('<html class="h"><body class="dark" id="pg"><p>x</p></body></html>');
+    if (!res.ok) throw new Error('expected ok');
+    const c = await render(
+      <HtmlLiveView
+        doc={res.doc}
+        styleText="body.dark{color:red}"
+        bodyAttrs={res.bodyAttrs}
+        rootAttrs={res.rootAttrs}
+      />,
+    );
+    const host = c.querySelector('.html-live-view') as HTMLElement;
+    const shadow = host.shadowRoot!;
+    // Structural assertions: this is what makes `body.dark{}` / `html.h{}` /
+    // `:root{}` selectors match in a real browser. jsdom doesn't fully compute
+    // the cascade, so the actual color application is verified in manual GUI QA.
+    expect(shadow.querySelector('style')?.textContent).toContain('body.dark{color:red}');
+    expect(shadow.querySelector('html.h')).toBeTruthy();
+    expect(shadow.querySelector('body.dark')).toBeTruthy();
+    expect(shadow.querySelector('body.dark p')?.textContent).toBe('x');
   });
 });

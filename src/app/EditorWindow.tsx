@@ -254,7 +254,13 @@ export function EditorWindow() {
       )}
       {session ? (
         showLive && session.format === 'html' && liveHtml && liveHtml.ok ? (
-          <HtmlLiveView key={`htmllive-${openCount}`} doc={liveHtml.doc} styleText={liveHtml.styleText} />
+          <HtmlLiveView
+            key={`htmllive-${openCount}`}
+            doc={liveHtml.doc}
+            styleText={liveHtml.styleText}
+            bodyAttrs={liveHtml.bodyAttrs}
+            rootAttrs={liveHtml.rootAttrs}
+          />
         ) : showLive && live && live.ok ? (
           <>
             {liveView && (
