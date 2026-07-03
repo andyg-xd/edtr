@@ -289,6 +289,7 @@ export function EditorWindow() {
               onViewReady={setLiveView}
               onStateChange={bumpRibbon}
               onLinkShortcut={bumpLinkRequest}
+              onError={setError}
             />
           </>
         ) : showLive && live && live.ok ? (

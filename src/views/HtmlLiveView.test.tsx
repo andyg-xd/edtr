@@ -171,4 +171,16 @@ describe('HtmlLiveView — editable (4b)', () => {
     );
     expect(c.querySelector('.html-live-view')).toBeTruthy();
   });
+
+  it('accepts an onError prop without error (editable)', () => {
+    // The async paste-write-failure path itself is GUI-validated (jsdom has no
+    // real clipboard/file IO); this just proves the prop is wired and mounting
+    // with it doesn't throw — parity with LiveView's onError prop.
+    const r = toLiveHtml('<html><body><p>hi</p></body></html>');
+    if (!r.ok) throw new Error('degraded');
+    const { container: c } = mount(
+      <HtmlLiveView doc={r.doc} styleText="" editable docPath="/docs/note.html" onError={() => {}} />,
+    );
+    expect(c.querySelector('.html-live-view')).toBeTruthy();
+  });
 });

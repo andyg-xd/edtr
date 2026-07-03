@@ -25,6 +25,8 @@ interface HtmlLiveViewProps {
   onViewReady?: (view: EditorView | null) => void;
   onStateChange?: (view: EditorView) => void;
   onLinkShortcut?: () => void;
+  /** Surface a non-destructive error to the consumer (e.g. a pasted-image write failure). */
+  onError?: (message: string) => void;
 }
 
 /**
@@ -36,7 +38,7 @@ interface HtmlLiveViewProps {
  */
 export function HtmlLiveView({
   doc, styleText, bodyAttrs = {}, rootAttrs = {},
-  editable = false, docPath = null, onEdit, onViewReady, onStateChange, onLinkShortcut,
+  editable = false, docPath = null, onEdit, onViewReady, onStateChange, onLinkShortcut, onError,
 }: HtmlLiveViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const onEditRef = useRef(onEdit); onEditRef.current = onEdit;
@@ -44,6 +46,7 @@ export function HtmlLiveView({
   const onStateChangeRef = useRef(onStateChange); onStateChangeRef.current = onStateChange;
   const onLinkShortcutRef = useRef(onLinkShortcut); onLinkShortcutRef.current = onLinkShortcut;
   const docPathRef = useRef(docPath); docPathRef.current = docPath;
+  const onErrorRef = useRef(onError); onErrorRef.current = onError;
 
   useEffect(() => {
     if (!host.current) return;
@@ -100,7 +103,9 @@ export function HtmlLiveView({
                 const display = resolveImageDisplaySrc(rel, dp);
                 insertImage(rel, null, display)(view.state, view.dispatch);
               })
-              .catch(() => { /* paste failure surfaced by the caller's onError path in EditorWindow */ });
+              .catch((err) => {
+                onErrorRef.current?.(`Edtr couldn't paste that image. ${String(err)}`);
+              });
             return true;
           }
         }
