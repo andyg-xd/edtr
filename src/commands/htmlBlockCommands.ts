@@ -1,10 +1,10 @@
-import { type Command, type EditorState, type Transaction } from 'prosemirror-state';
+import { type Command, type EditorState, type Transaction, TextSelection } from 'prosemirror-state';
 import type { NodeType, Node as PMNode } from 'prosemirror-model';
 import { findWrapping, liftTarget } from 'prosemirror-transform';
+import { wrapInList, liftListItem } from 'prosemirror-schema-list';
 import { htmlSchema } from '../views/htmlSchema';
 
-const { paragraph, heading, codeBlock } = htmlSchema.nodes;
-const { blockquote } = htmlSchema.nodes;
+const { paragraph, heading, codeBlock, blockquote, bulletList, orderedList, listItem } = htmlSchema.nodes;
 
 function topBlock(state: EditorState): PMNode {
   const { $from } = state.selection;
@@ -121,3 +121,26 @@ export const toggleBlockquote: Command = (state, dispatch) => {
   if (dispatch) dispatch(state.tr.wrap(range, wrapping).scrollIntoView());
   return true;
 };
+
+/** Dissolve the cursor's top-level list: select across all items, then liftListItem. */
+function unwrapList(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+  const index = state.selection.$from.index(0);
+  const list = state.doc.child(index);
+  const start = blockStart(state, index);
+  const $from = state.doc.resolve(start + 1);
+  const $to = state.doc.resolve(start + list.nodeSize - 1);
+  const expanded = state.apply(state.tr.setSelection(TextSelection.between($from, $to)));
+  return liftListItem(listItem)(expanded, dispatch);
+}
+
+/** Wrap the selected top-level block(s) into ONE list (N items), or dissolve if already that type. */
+function toggleListCmd(listType: NodeType, isType: (s: EditorState) => boolean): Command {
+  return (state, dispatch) => {
+    if (!canWrap(state)) return false;
+    if (isType(state)) return unwrapList(state, dispatch);
+    return wrapInList(listType, rangeAttrs(topBlock(state)))(state, dispatch);
+  };
+}
+
+export const toggleBulletList: Command = toggleListCmd(bulletList, (s) => currentBlockType(s) === 'bulletList');
+export const toggleOrderedList: Command = toggleListCmd(orderedList, (s) => currentBlockType(s) === 'orderedList');

@@ -6,6 +6,7 @@ import { toLiveHtml } from '../views/htmlModel';
 import { htmlSchema } from '../views/htmlSchema';
 import {
   currentBlockType, canTransform, canWrap, setHeading, setParagraph, toggleCodeBlock, toggleBlockquote,
+  toggleBulletList, toggleOrderedList,
 } from './htmlBlockCommands';
 
 function stateAt(html: string, blockIndex = 0): EditorState {
@@ -117,6 +118,34 @@ describe('toggleBlockquote (4d-ii)', () => {
     const s = stateAt('<html><body><blockquote><p>a</p><p>b</p></blockquote></body></html>', 0);
     let after = s;
     expect(toggleBlockquote(s, (tr) => { after = s.apply(tr); })).toBe(true);
+    expect(after.doc.child(0).type.name).toBe('paragraph');
+    expect(after.doc.child(1).type.name).toBe('paragraph');
+  });
+});
+
+describe('toggle lists (4d-ii)', () => {
+  it('wraps the cursor block into a one-item bullet list', () => {
+    const s = stateAt('<html><body><p>a</p></body></html>', 0);
+    let after = s;
+    expect(toggleBulletList(s, (tr) => { after = s.apply(tr); })).toBe(true);
+    expect(after.doc.child(0).type.name).toBe('bulletList');
+    expect(after.doc.child(0).childCount).toBe(1);
+    expect(after.doc.child(0).firstChild!.type.name).toBe('listItem');
+  });
+
+  it('groups a two-block selection into ONE ordered list with two items', () => {
+    const s = selectAcross('<html><body><p>a</p><p>b</p></body></html>', 0, 1);
+    let after = s;
+    toggleOrderedList(s, (tr) => { after = s.apply(tr); });
+    expect(after.doc.childCount).toBe(1);
+    expect(after.doc.child(0).type.name).toBe('orderedList');
+    expect(after.doc.child(0).childCount).toBe(2);
+  });
+
+  it('dissolves a bullet list when toggled again', () => {
+    const s = stateAt('<html><body><ul><li>a</li><li>b</li></ul></body></html>', 0);
+    let after = s;
+    expect(toggleBulletList(s, (tr) => { after = s.apply(tr); })).toBe(true);
     expect(after.doc.child(0).type.name).toBe('paragraph');
     expect(after.doc.child(1).type.name).toBe('paragraph');
   });
