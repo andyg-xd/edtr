@@ -10,6 +10,7 @@ import { safeAttrs } from './htmlSanitize';
 import { dirtyTrackingPlugin, getDirtyBlockIds } from './dirtyTracking';
 import { blockIdentityPlugin } from './blockIdentity';
 import { splitCommand, softBreakCommand } from '../commands/htmlStructureCommands';
+import { sinkListItemCmd, liftListItemCmd } from '../commands/htmlBlockCommands';
 import {
   toggleStrong, toggleEm, toggleUnderline, insertImage,
 } from '../commands/htmlInlineCommands';
@@ -35,6 +36,7 @@ interface HtmlLiveViewProps {
  * view inside a shadow root and injects the file's CSS (`:root`→`:host`) plus
  * an <html>/<body> scaffold so document-scoped CSS applies. When editable,
  * wires history + mark shortcuts + Enter→split / Shift-Enter→soft-break +
+ * Tab/Shift-Tab list indent/outdent (4d-ii; falls through outside a list) +
  * block-identity tracking (structural editing, 4d) + dirty tracking; edits
  * are reported via onEdit (no write-back happens here).
  */
@@ -74,7 +76,12 @@ export function HtmlLiveView({
     const plugins = editable
       ? [
           history(),
-          keymap({ Enter: splitCommand, 'Shift-Enter': softBreakCommand }),
+          keymap({
+            Enter: splitCommand,
+            'Shift-Enter': softBreakCommand,
+            Tab: sinkListItemCmd,
+            'Shift-Tab': liftListItemCmd,
+          }),
           keymap({
             'Mod-b': toggleStrong, 'Mod-i': toggleEm, 'Mod-u': toggleUnderline,
             'Mod-k': linkShortcut, 'Mod-z': undo, 'Mod-y': redo, 'Shift-Mod-z': redo,

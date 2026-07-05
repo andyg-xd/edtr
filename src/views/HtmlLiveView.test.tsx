@@ -11,6 +11,7 @@ import { toLiveHtml } from './htmlModel';
 import { htmlSchema } from './htmlSchema';
 import { blockIdentityPlugin } from './blockIdentity';
 import { splitCommand } from '../commands/htmlStructureCommands';
+import { sinkListItemCmd } from '../commands/htmlBlockCommands';
 
 let container: HTMLDivElement | null = null;
 afterEach(() => { container?.remove(); container = null; });
@@ -217,6 +218,20 @@ describe('HtmlLiveView — editable (4b)', () => {
       <HtmlLiveView doc={r.doc} styleText="" editable docPath="/docs/note.html" onError={() => {}} />,
     );
     expect(c.querySelector('.html-live-view')).toBeTruthy();
+  });
+
+  it('Tab sinks a list item into a nested sublist through the mounted view', () => {
+    const r = toLiveHtml('<html><body><ul><li>one</li><li>two</li></ul></body></html>');
+    if (!r.ok) throw new Error(r.reason);
+    let view: any = null;
+    mount(<HtmlLiveView doc={r.doc} styleText={r.styleText} editable onViewReady={(v) => { view = v; }} />);
+    // cursor inside the SECOND list item
+    const list = view.state.doc.child(0);
+    const secondItemInner = 1 + list.firstChild.nodeSize + 1;
+    act(() => { view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(secondItemInner)))); });
+    act(() => { sinkListItemCmd(view.state, view.dispatch); });
+    // the first item now holds its own paragraph + a nested list
+    expect(view.state.doc.child(0).firstChild.childCount).toBe(2);
   });
 });
 
