@@ -75,6 +75,7 @@ describe('HTML grouping write-back (no-beautify)', () => {
     let { state, baselineDoc } = editable(src);
     state = cursorIn(state, 0);
     toggleBlockquote(state, (tr) => { state = state.apply(tr); }); // wrap
+    expect(state.doc.child(0).type.name).toBe('blockquote'); // the wrap actually fired
     // cursor is now inside the new blockquote (block 0) → toggle dissolves it
     state = cursorIn(state, 0);
     toggleBlockquote(state, (tr) => { state = state.apply(tr); }); // unwrap
@@ -104,6 +105,7 @@ describe('HTML grouping write-back (no-beautify)', () => {
     const secondItemInner = 1 + list.firstChild!.nodeSize + 1;
     state = state.apply(state.tr.setSelection(TextSelection.near(state.doc.resolve(secondItemInner))));
     sinkListItemCmd(state, (tr) => { state = state.apply(tr); });
+    expect(state.doc.child(0).firstChild!.childCount).toBe(2); // the sink actually nested a sublist
     // re-place the cursor in the now-nested "two" item and lift it back out
     state = state.apply(state.tr.setSelection(TextSelection.near(state.doc.resolve(state.selection.from))));
     liftListItemCmd(state, (tr) => { state = state.apply(tr); });
