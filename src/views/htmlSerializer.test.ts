@@ -190,3 +190,13 @@ describe('horizontalRule serialization', () => {
     expect(serializeHtmlBlock(hr)).toBe('<hr>');
   });
 });
+
+describe('container serialization', () => {
+  it('serializes a container by its tag, recursively', () => {
+    const node = htmlSchema.nodes.container.create(
+      { tag: 'section', htmlAttrs: { class: 'hero' } },
+      htmlSchema.nodes.paragraph.create({ htmlAttrs: {} }, [htmlSchema.text('hi')]),
+    );
+    expect(serializeHtmlBlock(node)).toBe('<section class="hero"><p>hi</p></section>');
+  });
+});

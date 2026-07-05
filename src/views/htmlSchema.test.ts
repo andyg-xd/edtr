@@ -88,4 +88,13 @@ describe('htmlSchema', () => {
     const dom = hr.type.spec.toDOM!(hr) as [string];
     expect(dom[0]).toBe('hr');
   });
+
+  it('renders a container by its tag attr with its html attributes', () => {
+    const n = htmlSchema.nodes.container.create({ tag: 'section', htmlAttrs: { class: 'x' } }, [
+      htmlSchema.nodes.paragraph.create({ htmlAttrs: {} }, [htmlSchema.text('t')]),
+    ]);
+    const spec = htmlSchema.nodes.container.spec.toDOM!(n) as [string, Record<string, string>, number];
+    expect(spec[0]).toBe('section');
+    expect(spec[1]).toEqual({ class: 'x' });
+  });
 });

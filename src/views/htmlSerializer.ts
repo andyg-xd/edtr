@@ -93,6 +93,7 @@ export function serializeHtmlBlock(node: PMNode): string {
     case 'heading': { const l = node.attrs.level; return `<h${l}${attrs()}>${serializeInline(node)}</h${l}>`; }
     case 'blockquote': return `<blockquote${attrs()}>${serializeChildren(node)}</blockquote>`;
     case 'div': return `<div${attrs()}>${serializeChildren(node)}</div>`;
+    case 'container': return `<${node.attrs.tag}${attrs()}>${serializeChildren(node)}</${node.attrs.tag}>`;
     case 'bulletList': return `<ul${attrs()}>${serializeChildren(node)}</ul>`;
     case 'orderedList': return `<ol${attrs()}>${serializeChildren(node)}</ol>`;
     case 'listItem': {

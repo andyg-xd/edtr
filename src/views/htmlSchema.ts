@@ -52,6 +52,13 @@ const nodes: Record<string, NodeSpec> = {
     toDOM: (n) => ['div', domAttrs(n), 0],
   },
 
+  container: {
+    group: 'block',
+    content: 'block+',
+    attrs: { tag: { default: 'div' }, ...attrBag, ...rangeAttrs },
+    toDOM: (n) => [n.attrs.tag as string, domAttrs(n), 0],
+  },
+
   bulletList: {
     group: 'block',
     content: 'listItem+',
