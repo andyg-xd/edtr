@@ -119,6 +119,22 @@ describe('HTML grouping write-back (no-beautify)', () => {
     expect(out).toBe(src);
   });
 
+  it('grouping with a trailing untouched neighbor keeps the neighbor byte-identical', () => {
+    const src = '<!doctype html>\n<html>\n<body>\n<p>a</p>\n<p>b</p>\n<p>c</p>\n</body>\n</html>\n';
+    let { state, baselineDoc } = editable(src);
+    state = selectAcross(state, 0, 1);
+    toggleBlockquote(state, (tr) => { state = state.apply(tr); });
+    expect(state.doc.child(0).type.name).toBe('blockquote'); // the group actually fired
+    const out = htmlWriteBack(state.doc, src, getDirtyBlockIds(state), baselineDoc);
+    // the grouped region re-serializes canonically…
+    expect(out).toContain('<blockquote><p>a</p><p>b</p></blockquote>');
+    // …and the trailing untouched block's CONTENT stays byte-identical…
+    expect(out).toContain('<p>c</p>');
+    // …with the document edges intact.
+    expect(out.startsWith('<!doctype html>\n')).toBe(true);
+    expect(out.endsWith('</body>\n</html>\n')).toBe(true);
+  });
+
   it('no-op flush reproduces the source byte-for-byte', () => {
     const src = '<!doctype html>\n<html>\n<body>\n<blockquote><p>q</p></blockquote>\n<ul><li>a</li></ul>\n</body>\n</html>\n';
     const { state, baselineDoc } = editable(src);
