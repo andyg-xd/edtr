@@ -221,3 +221,28 @@ describe('mixed inline+block content wrapping (4d-iii)', () => {
     expect(div.child(0).textContent).toBe('a b'); // the space between the two <strong>s is preserved
   });
 });
+
+describe('list item content (4d-iii childBlocks ripple)', () => {
+  it('models a mixed <li> (loose text + block child) as separate paragraphs', () => {
+    const res = toLiveHtml('<html><body><ul><li>text<p>a</p></li></ul></body></html>');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const li = res.doc.child(0).firstChild!; // ul → first listItem
+    expect(li.type.name).toBe('listItem');
+    expect(li.childCount).toBe(2);
+    expect(li.child(0).type.name).toBe('paragraph');
+    expect(li.child(0).textContent).toBe('text');
+    expect(li.child(1).type.name).toBe('paragraph');
+    expect(li.child(1).textContent).toBe('a');
+  });
+
+  it('keeps a plain bare-inline <li> as a single synthetic paragraph (unchanged)', () => {
+    const res = toLiveHtml('<html><body><ul><li>only</li></ul></body></html>');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const li = res.doc.child(0).firstChild!;
+    expect(li.childCount).toBe(1);
+    expect(li.firstChild!.type.name).toBe('paragraph');
+    expect(li.firstChild!.textContent).toBe('only');
+  });
+});
