@@ -6,8 +6,9 @@ import {
   canLink, applyLink, removeLink, insertImage,
 } from '../commands/htmlInlineCommands';
 import {
-  currentBlockType, canTransform,
+  currentBlockType, canTransform, canWrap,
   setHeading, setParagraph, toggleCodeBlock,
+  toggleBlockquote, toggleBulletList, toggleOrderedList,
 } from '../commands/htmlBlockCommands';
 import { insertHorizontalRule } from '../commands/htmlStructureCommands';
 
@@ -65,6 +66,15 @@ export const htmlRibbon: RibbonControl[] = [
     isActive: (s) => currentBlockType(s) === 'codeBlock', isEnabled: (s) => canTransform(s),
     action: { kind: 'command', run: toggleCodeBlock },
   },
+  { id: 'blockquote', label: '❝', ariaLabel: 'Blockquote',
+    isActive: (s) => currentBlockType(s) === 'blockquote', isEnabled: (s) => canWrap(s),
+    action: { kind: 'command', run: toggleBlockquote } },
+  { id: 'bulletList', label: '•', ariaLabel: 'Bullet list',
+    isActive: (s) => currentBlockType(s) === 'bulletList', isEnabled: (s) => canWrap(s),
+    action: { kind: 'command', run: toggleBulletList } },
+  { id: 'orderedList', label: '1.', ariaLabel: 'Numbered list',
+    isActive: (s) => currentBlockType(s) === 'orderedList', isEnabled: (s) => canWrap(s),
+    action: { kind: 'command', run: toggleOrderedList } },
   {
     id: 'horizontalRule', label: '―', ariaLabel: 'Horizontal rule',
     isActive: () => false, isEnabled: (s) => insertHorizontalRule(s),

@@ -14,7 +14,7 @@ function selState(src: string, from: number, to: number) {
 describe('htmlRibbon', () => {
   it('exposes the inline controls followed by block controls in order', () => {
     expect(htmlRibbon.map((c) => c.id)).toEqual(
-      ['bold', 'italic', 'underline', 'strike', 'code', 'link', 'image', 'heading', 'codeBlock', 'horizontalRule'],
+      ['bold', 'italic', 'underline', 'strike', 'code', 'link', 'image', 'heading', 'codeBlock', 'blockquote', 'bulletList', 'orderedList', 'horizontalRule'],
     );
   });
 
@@ -59,5 +59,34 @@ describe('htmlRibbon — 4c block controls', () => {
     const img = htmlRibbon.find((c) => c.id === 'image');
     expect(img?.action.kind).toBe('popover');
     if (img?.action.kind === 'popover') expect(img.action.popover).toBe('image');
+  });
+});
+
+describe('htmlRibbon — 4d-ii blockquote/list controls', () => {
+  it('exposes blockquote / bulletList / orderedList command controls', () => {
+    for (const id of ['blockquote', 'bulletList', 'orderedList']) {
+      const c = htmlRibbon.find((x) => x.id === id);
+      expect(c, id).toBeTruthy();
+      expect(c!.action.kind).toBe('command');
+    }
+  });
+
+  it('blockquote control is enabled on a paragraph and active inside a blockquote', () => {
+    const bq = htmlRibbon.find((x) => x.id === 'blockquote')!;
+    expect(bq.isEnabled(selState('<html><body><p>x</p></body></html>', 1, 1))).toBe(true);
+    expect(bq.isActive(selState('<html><body><blockquote><p>q</p></blockquote></body></html>', 1, 1))).toBe(true);
+    expect(bq.isActive(selState('<html><body><p>x</p></body></html>', 1, 1))).toBe(false);
+  });
+
+  it('bulletList control is enabled on a paragraph and active inside a bullet list', () => {
+    const b = htmlRibbon.find((x) => x.id === 'bulletList')!;
+    expect(b.isEnabled(selState('<html><body><p>x</p></body></html>', 1, 1))).toBe(true);
+    expect(b.isActive(selState('<html><body><ul><li><p>i</p></li></ul></body></html>', 1, 1))).toBe(true);
+  });
+
+  it('orderedList control is enabled on a paragraph and active inside an ordered list', () => {
+    const o = htmlRibbon.find((x) => x.id === 'orderedList')!;
+    expect(o.isEnabled(selState('<html><body><p>x</p></body></html>', 1, 1))).toBe(true);
+    expect(o.isActive(selState('<html><body><ol><li><p>i</p></li></ol></body></html>', 1, 1))).toBe(true);
   });
 });
