@@ -81,10 +81,10 @@ const CONTAINER_TAGS = new Set([
 ]);
 const isBlockElement = (n: SourceNode) => n.type !== '#text' && BLOCK_TAGS.has(n.type);
 
-// Text + known-inline elements. Everything else (incl. unknown containers like
-// <section>/<main>/<article>) routes through buildBlock, which types known
-// blocks and block-verbatims the rest — so unknown top-level containers render
-// as a faithful BLOCK verbatim rather than being squashed into a paragraph.
+// Text + known-inline elements. Semantic containers (section/main/article/etc.)
+// in CONTAINER_TAGS are typed nodes. Everything else routes through buildBlock,
+// which types known blocks and block-verbatims the rest — unknown top-level
+// containers render as a faithful BLOCK verbatim rather than being squashed into a paragraph.
 const INLINE_TAGS = new Set([...Object.keys(INLINE_MARK), 'a', 'span', 'img', 'br']);
 const isInlineChild = (n: SourceNode) => n.type === '#text' || INLINE_TAGS.has(n.type);
 
@@ -116,14 +116,26 @@ function buildBlock(node: SourceNode, range: object, docPath: string | null): PM
   }
 }
 
-// blockquote/div children must all be block elements (whitespace-only text ignored); else null → caller verbatims.
+// blockquote/div/container children: block elements pass through; each maximal
+// run of loose inline nodes is wrapped in a synthetic zero-attr paragraph;
+// whitespace-only text between blocks is ignored (matches the untouched
+// byte-slice — an edited container canonicalizes). Returns null (→ caller
+// verbatims) only when nothing modelable is found.
 function childBlocks(node: SourceNode, docPath: string | null): PMNode[] | null {
   const out: PMNode[] = [];
+  let run: SourceNode[] = [];
+  const flush = () => {
+    if (!run.length) return;
+    const inline = buildInline({ ...node, children: run }, [], docPath);
+    run = [];
+    if (inline.length) out.push(htmlSchema.node('paragraph', { htmlAttrs: {} }, inline));
+  };
   for (const c of node.children ?? []) {
+    if (isBlockElement(c)) { flush(); out.push(buildBlock(c, {}, docPath)); continue; }
     if (isWhitespaceText(c)) continue;
-    if (!isBlockElement(c)) return null;
-    out.push(buildBlock(c, {}, docPath));
+    run.push(c);
   }
+  flush();
   return out.length ? out : null;
 }
 

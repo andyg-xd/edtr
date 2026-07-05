@@ -162,3 +162,48 @@ describe('semantic containers (4d-iii)', () => {
     expect(res.doc.child(0).attrs.htmlAttrs).toEqual({ class: 'hero' });
   });
 });
+
+describe('mixed inline+block content wrapping (4d-iii)', () => {
+  it('wraps loose text in a mixed <div> as a synthetic paragraph', () => {
+    const res = toLiveHtml('<html><body><div>text<p>a</p></div></body></html>');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const div = res.doc.child(0);
+    expect(div.type.name).toBe('div');
+    expect(div.childCount).toBe(2);
+    expect(div.child(0).type.name).toBe('paragraph');
+    expect(div.child(0).textContent).toBe('text');
+    expect(div.child(1).type.name).toBe('paragraph');
+    expect(div.child(1).textContent).toBe('a');
+  });
+
+  it('makes a bare-inline <blockquote> editable (one synthetic paragraph)', () => {
+    const res = toLiveHtml('<html><body><blockquote>quote</blockquote></body></html>');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const bq = res.doc.child(0);
+    expect(bq.type.name).toBe('blockquote');
+    expect(bq.childCount).toBe(1);
+    expect(bq.firstChild!.type.name).toBe('paragraph');
+    expect(bq.firstChild!.textContent).toBe('quote');
+  });
+
+  it('does not create whitespace-only paragraphs between block children', () => {
+    const res = toLiveHtml('<html><body><section>\n  <p>a</p>\n  <p>b</p>\n</section></body></html>');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const section = res.doc.child(0);
+    expect(section.childCount).toBe(2); // exactly [p, p] — no whitespace paragraphs
+    expect(section.child(0).type.name).toBe('paragraph');
+    expect(section.child(1).type.name).toBe('paragraph');
+  });
+
+  it('preserves inline marks inside a wrapped run', () => {
+    const res = toLiveHtml('<html><body><div>a <strong>b</strong> c<p>tail</p></div></body></html>');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const div = res.doc.child(0);
+    expect(div.child(0).type.name).toBe('paragraph');
+    expect(div.child(0).textContent).toBe('a b c');
+  });
+});
