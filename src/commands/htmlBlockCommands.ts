@@ -187,9 +187,15 @@ function wrapIntoList(state: EditorState, listType: NodeType, dispatch?: (tr: Tr
 function toggleListCmd(listType: NodeType, thisType: string, otherType: string): Command {
   return (state, dispatch) => {
     if (!canWrap(state)) return false;
+    const { $from, $to } = state.selection;
+    const singleBlock = $from.index(0) === $to.index(0);
     const cbt = currentBlockType(state);
-    if (cbt === thisType) return unwrapList(state, dispatch);
-    if (cbt === otherType) return convertList(state, listType, dispatch);
+    // Dissolve / convert act on the ONE list the cursor is in — only when the
+    // selection stays within that single top-level block. A selection spanning
+    // into sibling blocks means "group these", so it falls through to wrapIntoList
+    // (otherwise convert/dissolve would silently ignore the rest of the selection).
+    if (singleBlock && cbt === thisType) return unwrapList(state, dispatch);
+    if (singleBlock && cbt === otherType) return convertList(state, listType, dispatch);
     return wrapIntoList(state, listType, dispatch);
   };
 }

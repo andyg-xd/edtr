@@ -233,4 +233,19 @@ describe('4d-ii bug fixes: nested-container blockquote + list-type switch', () =
     expect(s.doc.child(0).firstChild!.firstChild!.type.name).toBe('div'); // …item wraps the div
     expect(currentBlockType(s)).toBe('bulletList');                 // so re-toggle can dissolve it
   });
+
+  // A selection spanning a list INTO a sibling block groups (wrapIntoList), rather
+  // than the convert branch silently converting only the list and dropping the rest.
+  it('toggleOrderedList on a selection spanning a <ul> into a trailing <p> groups both (non-destructive)', () => {
+    const res = toLiveHtml('<html><body><ul><li>a</li></ul><p>tail</p></body></html>');
+    if (!res.ok) throw new Error('degraded');
+    let s = EditorState.create({ doc: res.doc, schema: htmlSchema });
+    const ulSize = res.doc.child(0).nodeSize;
+    s = s.apply(s.tr.setSelection(TextSelection.between(res.doc.resolve(3), res.doc.resolve(ulSize + 2))));
+    expect(toggleOrderedList(s, (tr) => { s = s.apply(tr); })).toBe(true);
+    expect(s.doc.childCount).toBe(1);
+    expect(s.doc.child(0).type.name).toBe('orderedList');   // grouped, not a silent list-only convert
+    expect(s.doc.textContent).toContain('a');               // no content dropped…
+    expect(s.doc.textContent).toContain('tail');            // …the trailing paragraph is included
+  });
 });
