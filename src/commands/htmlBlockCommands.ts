@@ -1,8 +1,10 @@
-import { type Command, type EditorState } from 'prosemirror-state';
+import { type Command, type EditorState, type Transaction } from 'prosemirror-state';
 import type { NodeType, Node as PMNode } from 'prosemirror-model';
+import { findWrapping, liftTarget } from 'prosemirror-transform';
 import { htmlSchema } from '../views/htmlSchema';
 
 const { paragraph, heading, codeBlock } = htmlSchema.nodes;
+const { blockquote } = htmlSchema.nodes;
 
 function topBlock(state: EditorState): PMNode {
   const { $from } = state.selection;
@@ -81,4 +83,41 @@ export const setParagraph: Command = setType(paragraph, {});
 export const toggleCodeBlock: Command = (state, dispatch) => {
   if (currentBlockType(state) === 'codeBlock') return setParagraph(state, dispatch);
   return setType(codeBlock, {})(state, dispatch);
+};
+
+// ─── Wrap / unwrap (blockquote + lists, multi-block grouping) ─────────────────
+
+/** Start position of the top-level block at `index`. */
+function blockStart(state: EditorState, index: number): number {
+  let pos = 0;
+  for (let i = 0; i < index; i++) pos += state.doc.child(i).nodeSize;
+  return pos;
+}
+
+/** Dissolve the cursor's top-level blockquote: lift ALL its children back to top level. */
+function unwrapBlockquote(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+  const index = state.selection.$from.index(0);
+  const bq = state.doc.child(index);
+  const start = blockStart(state, index);
+  const $start = state.doc.resolve(start + 2);              // inside the first child
+  const $end = state.doc.resolve(start + bq.nodeSize - 2);  // inside the last child
+  const range = $start.blockRange($end);
+  if (!range) return false;
+  const target = liftTarget(range);
+  if (target == null) return false;
+  if (dispatch) dispatch(state.tr.lift(range, target).scrollIntoView());
+  return true;
+}
+
+/** Wrap the selected top-level block(s) into ONE blockquote (all N as children), or dissolve if already one. */
+export const toggleBlockquote: Command = (state, dispatch) => {
+  if (!canWrap(state)) return false;
+  if (currentBlockType(state) === 'blockquote') return unwrapBlockquote(state, dispatch);
+  const { $from, $to } = state.selection;
+  const range = $from.blockRange($to);
+  if (!range) return false;
+  const wrapping = findWrapping(range, blockquote, rangeAttrs(topBlock(state)));
+  if (!wrapping) return false;
+  if (dispatch) dispatch(state.tr.wrap(range, wrapping).scrollIntoView());
+  return true;
 };

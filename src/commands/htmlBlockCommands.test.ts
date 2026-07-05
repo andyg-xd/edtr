@@ -5,7 +5,7 @@ import { EditorState, NodeSelection, TextSelection } from 'prosemirror-state';
 import { toLiveHtml } from '../views/htmlModel';
 import { htmlSchema } from '../views/htmlSchema';
 import {
-  currentBlockType, canTransform, canWrap, setHeading, setParagraph, toggleCodeBlock,
+  currentBlockType, canTransform, canWrap, setHeading, setParagraph, toggleCodeBlock, toggleBlockquote,
 } from './htmlBlockCommands';
 
 function stateAt(html: string, blockIndex = 0): EditorState {
@@ -15,6 +15,19 @@ function stateAt(html: string, blockIndex = 0): EditorState {
   for (let i = 0; i < blockIndex; i++) pos += res.doc.child(i).nodeSize;
   let state = EditorState.create({ doc: res.doc, schema: htmlSchema });
   state = state.apply(state.tr.setSelection(TextSelection.near(res.doc.resolve(pos + 1))));
+  return state;
+}
+
+// helper: select from inside block `fromIdx` to inside block `toIdx` (top level)
+function selectAcross(html: string, fromIdx: number, toIdx: number): EditorState {
+  const res = toLiveHtml(html);
+  if (!res.ok) throw new Error('degraded');
+  let a = 0; for (let i = 0; i < fromIdx; i++) a += res.doc.child(i).nodeSize;
+  let b = 0; for (let i = 0; i < toIdx; i++) b += res.doc.child(i).nodeSize;
+  let state = EditorState.create({ doc: res.doc, schema: htmlSchema });
+  state = state.apply(state.tr.setSelection(
+    TextSelection.between(res.doc.resolve(a + 1), res.doc.resolve(b + 1)),
+  ));
   return state;
 }
 
@@ -78,5 +91,33 @@ describe('currentBlockType + canWrap (4d-ii)', () => {
     let state = EditorState.create({ doc: res.doc, schema: htmlSchema });
     state = state.apply(state.tr.setSelection(NodeSelection.create(res.doc, 0)));
     expect(canWrap(state)).toBe(false);
+  });
+});
+
+describe('toggleBlockquote (4d-ii)', () => {
+  it('wraps the cursor block into a blockquote', () => {
+    const s = stateAt('<html><body><p>a</p><p>b</p></body></html>', 0);
+    let after = s;
+    expect(toggleBlockquote(s, (tr) => { after = s.apply(tr); })).toBe(true);
+    expect(after.doc.child(0).type.name).toBe('blockquote');
+    expect(after.doc.child(0).firstChild!.type.name).toBe('paragraph');
+    expect(after.doc.child(1).type.name).toBe('paragraph'); // second block untouched
+  });
+
+  it('groups a two-block selection into ONE blockquote with both children', () => {
+    const s = selectAcross('<html><body><p>a</p><p>b</p></body></html>', 0, 1);
+    let after = s;
+    toggleBlockquote(s, (tr) => { after = s.apply(tr); });
+    expect(after.doc.childCount).toBe(1);
+    expect(after.doc.child(0).type.name).toBe('blockquote');
+    expect(after.doc.child(0).childCount).toBe(2);
+  });
+
+  it('dissolves a blockquote when toggled again', () => {
+    const s = stateAt('<html><body><blockquote><p>a</p><p>b</p></blockquote></body></html>', 0);
+    let after = s;
+    expect(toggleBlockquote(s, (tr) => { after = s.apply(tr); })).toBe(true);
+    expect(after.doc.child(0).type.name).toBe('paragraph');
+    expect(after.doc.child(1).type.name).toBe('paragraph');
   });
 });
