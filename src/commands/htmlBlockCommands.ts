@@ -1,7 +1,7 @@
 import { type Command, type EditorState, type Transaction, TextSelection } from 'prosemirror-state';
 import type { NodeType, Node as PMNode } from 'prosemirror-model';
 import { findWrapping, liftTarget } from 'prosemirror-transform';
-import { wrapInList, liftListItem } from 'prosemirror-schema-list';
+import { wrapInList, liftListItem, sinkListItem } from 'prosemirror-schema-list';
 import { htmlSchema } from '../views/htmlSchema';
 
 const { paragraph, heading, codeBlock, blockquote, bulletList, orderedList, listItem } = htmlSchema.nodes;
@@ -144,3 +144,7 @@ function toggleListCmd(listType: NodeType, isType: (s: EditorState) => boolean):
 
 export const toggleBulletList: Command = toggleListCmd(bulletList, (s) => currentBlockType(s) === 'bulletList');
 export const toggleOrderedList: Command = toggleListCmd(orderedList, (s) => currentBlockType(s) === 'orderedList');
+
+// ─── List indent / outdent (keyboard: Tab / Shift-Tab, wired in HtmlLiveView) ──
+export const sinkListItemCmd: Command = sinkListItem(listItem);
+export const liftListItemCmd: Command = liftListItem(listItem);

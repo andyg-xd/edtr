@@ -6,7 +6,7 @@ import { toLiveHtml } from '../views/htmlModel';
 import { htmlSchema } from '../views/htmlSchema';
 import {
   currentBlockType, canTransform, canWrap, setHeading, setParagraph, toggleCodeBlock, toggleBlockquote,
-  toggleBulletList, toggleOrderedList,
+  toggleBulletList, toggleOrderedList, sinkListItemCmd, liftListItemCmd,
 } from './htmlBlockCommands';
 
 function stateAt(html: string, blockIndex = 0): EditorState {
@@ -148,5 +148,29 @@ describe('toggle lists (4d-ii)', () => {
     expect(toggleBulletList(s, (tr) => { after = s.apply(tr); })).toBe(true);
     expect(after.doc.child(0).type.name).toBe('paragraph');
     expect(after.doc.child(1).type.name).toBe('paragraph');
+  });
+});
+
+describe('list indent/outdent (4d-ii)', () => {
+  it('sinkListItemCmd returns false when not in a list', () => {
+    const s = stateAt('<html><body><p>a</p></body></html>', 0);
+    expect(sinkListItemCmd(s)).toBe(false);
+  });
+
+  it('sinkListItemCmd nests the second item under the first', () => {
+    const s = stateAt('<html><body><ul><li>one</li><li>two</li></ul></body></html>', 0);
+    // put the cursor inside the SECOND list item
+    const list = s.doc.child(0);
+    const secondItemInner = 1 /* into list */ + list.firstChild!.nodeSize + 1;
+    let cur = s.apply(s.tr.setSelection(TextSelection.near(s.doc.resolve(secondItemInner))));
+    let after = cur;
+    expect(sinkListItemCmd(cur, (tr) => { after = cur.apply(tr); })).toBe(true);
+    // first item now contains its paragraph + a nested list
+    expect(after.doc.child(0).firstChild!.childCount).toBe(2);
+  });
+
+  it('liftListItemCmd returns false when not in a list', () => {
+    const s = stateAt('<html><body><p>a</p></body></html>', 0);
+    expect(liftListItemCmd(s)).toBe(false);
   });
 });
