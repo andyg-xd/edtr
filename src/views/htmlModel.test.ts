@@ -205,5 +205,19 @@ describe('mixed inline+block content wrapping (4d-iii)', () => {
     const div = res.doc.child(0);
     expect(div.child(0).type.name).toBe('paragraph');
     expect(div.child(0).textContent).toBe('a b c');
+    let bHasStrong = false;
+    div.child(0).descendants((n: any) => {
+      if (n.isText && n.text === 'b' && n.marks.some((m: any) => m.type.name === 'strong')) bHasStrong = true;
+    });
+    expect(bHasStrong).toBe(true);
+  });
+
+  it('keeps whitespace between adjacent inline elements in a wrapped run', () => {
+    const res = toLiveHtml('<html><body><div><strong>a</strong> <strong>b</strong></div></body></html>');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const div = res.doc.child(0);
+    expect(div.child(0).type.name).toBe('paragraph');
+    expect(div.child(0).textContent).toBe('a b'); // the space between the two <strong>s is preserved
   });
 });

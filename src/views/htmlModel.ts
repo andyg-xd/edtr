@@ -117,10 +117,11 @@ function buildBlock(node: SourceNode, range: object, docPath: string | null): PM
 }
 
 // blockquote/div/container children: block elements pass through; each maximal
-// run of loose inline nodes is wrapped in a synthetic zero-attr paragraph;
-// whitespace-only text between blocks is ignored (matches the untouched
-// byte-slice — an edited container canonicalizes). Returns null (→ caller
-// verbatims) only when nothing modelable is found.
+// run of loose inline nodes is wrapped in a synthetic zero-attr paragraph.
+// Whitespace-only text is pushed into the run (so a space BETWEEN inline
+// elements is preserved) but a run that is ENTIRELY whitespace — inter-block
+// formatting indentation — is dropped at flush, so no empty paragraphs appear.
+// Returns null (→ caller verbatims) only when nothing modelable is found.
 function childBlocks(node: SourceNode, docPath: string | null): PMNode[] | null {
   const out: PMNode[] = [];
   let run: SourceNode[] = [];
@@ -128,12 +129,12 @@ function childBlocks(node: SourceNode, docPath: string | null): PMNode[] | null 
     if (!run.length) return;
     const inline = buildInline({ ...node, children: run }, [], docPath);
     run = [];
-    if (inline.length) out.push(htmlSchema.node('paragraph', { htmlAttrs: {} }, inline));
+    const hasContent = inline.some((n) => !n.isText || (n.text ?? '').trim() !== '');
+    if (hasContent) out.push(htmlSchema.node('paragraph', { htmlAttrs: {} }, inline));
   };
   for (const c of node.children ?? []) {
     if (isBlockElement(c)) { flush(); out.push(buildBlock(c, {}, docPath)); continue; }
-    if (isWhitespaceText(c)) continue;
-    run.push(c);
+    run.push(c); // inline node OR whitespace text; a whitespace-only run is dropped at flush
   }
   flush();
   return out.length ? out : null;
