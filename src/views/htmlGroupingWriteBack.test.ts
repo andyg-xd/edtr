@@ -126,10 +126,8 @@ describe('HTML grouping write-back (no-beautify)', () => {
     toggleBlockquote(state, (tr) => { state = state.apply(tr); });
     expect(state.doc.child(0).type.name).toBe('blockquote'); // the group actually fired
     const out = htmlWriteBack(state.doc, src, getDirtyBlockIds(state), baselineDoc);
-    // the grouped region re-serializes canonically…
-    expect(out).toContain('<blockquote><p>a</p><p>b</p></blockquote>');
-    // …and the trailing untouched block's CONTENT stays byte-identical…
-    expect(out).toContain('<p>c</p>');
+    // the grouped region re-serializes canonically, separated from the trailing block by a newline
+    expect(out).toContain('<blockquote><p>a</p><p>b</p></blockquote>\n<p>c</p>');
     // …with the document edges intact.
     expect(out.startsWith('<!doctype html>\n')).toBe(true);
     expect(out.endsWith('</body>\n</html>\n')).toBe(true);
@@ -140,4 +138,30 @@ describe('HTML grouping write-back (no-beautify)', () => {
     const { state, baselineDoc } = editable(src);
     expect(htmlWriteBack(state.doc, src, getDirtyBlockIds(state), baselineDoc)).toBe(src);
   });
+
+  it('convert bullet → ordered re-serializes only that block; the neighbor is byte-identical', () => {
+    const src = '<!doctype html>\n<html>\n<body>\n<ul>\n<li>a</li>\n<li>b</li>\n</ul>\n<p>tail</p>\n</body>\n</html>\n';
+    let { state, baselineDoc } = editable(src);
+    state = cursorIn(state, 0); // inside the list
+    toggleOrderedList(state, (tr) => { state = state.apply(tr); });
+    expect(state.doc.child(0).type.name).toBe('orderedList'); // converted in place
+    const out = htmlWriteBack(state.doc, src, getDirtyBlockIds(state), baselineDoc);
+    expect(out).toContain('<ol><li>a</li><li>b</li></ol>'); // canonical re-serialize of the converted block
+    expect(out).toContain('</ol>\n<p>tail</p>');            // untouched neighbor byte-identical
+    expect(out.endsWith('</body>\n</html>\n')).toBe(true);
+  });
+
+  it('wrap a nested-container block → blockquote wraps the top-level container; neighbor byte-identical', () => {
+    const src = '<!doctype html>\n<html>\n<body>\n<div>\n<p>x</p>\n</div>\n<p>tail</p>\n</body>\n</html>\n';
+    let { state, baselineDoc } = editable(src);
+    // cursor inside the inner <p> of the <div>
+    state = state.apply(state.tr.setSelection(TextSelection.near(state.doc.resolve(3))));
+    toggleBlockquote(state, (tr) => { state = state.apply(tr); });
+    expect(state.doc.child(0).type.name).toBe('blockquote'); // wrapped the div at top level
+    const out = htmlWriteBack(state.doc, src, getDirtyBlockIds(state), baselineDoc);
+    expect(out).toContain('<blockquote><div><p>x</p></div></blockquote>');
+    expect(out).toContain('<p>tail</p>'); // untouched neighbor present + byte-identical
+    expect(out.endsWith('</body>\n</html>\n')).toBe(true);
+  });
+
 });

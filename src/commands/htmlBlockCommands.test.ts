@@ -174,3 +174,63 @@ describe('list indent/outdent (4d-ii)', () => {
     expect(liftListItemCmd(s)).toBe(false);
   });
 });
+
+describe('4d-ii bug fixes: nested-container blockquote + list-type switch', () => {
+  // Bug B: cursor inside a paragraph nested in a <div>. The wrap must target the
+  // TOP-LEVEL block (the div), not nest a blockquote inside it — otherwise the
+  // top-level-only toggle-off never detects it and clicks nest infinitely.
+  it('toggleBlockquote wraps the TOP-LEVEL container (never nests inside a <div>)', () => {
+    const res = toLiveHtml('<html><body><div><p>x</p></div></body></html>');
+    if (!res.ok) throw new Error('degraded');
+    let s = EditorState.create({ doc: res.doc, schema: htmlSchema });
+    s = s.apply(s.tr.setSelection(TextSelection.near(res.doc.resolve(3)))); // inside inner <p>
+    expect(currentBlockType(s)).toBe('other'); // top-level is the div
+    toggleBlockquote(s, (tr) => { s = s.apply(tr); });
+    expect(s.doc.child(0).type.name).toBe('blockquote');        // top-level blockquote…
+    expect(s.doc.child(0).firstChild!.type.name).toBe('div');   // …wrapping the div (not nested inside it)
+    expect(currentBlockType(s)).toBe('blockquote');
+  });
+
+  it('toggleBlockquote is toggleable on nested-container content (re-toggle dissolves, no infinite nesting)', () => {
+    const res = toLiveHtml('<html><body><div><p>x</p></div></body></html>');
+    if (!res.ok) throw new Error('degraded');
+    let s = EditorState.create({ doc: res.doc, schema: htmlSchema });
+    s = s.apply(s.tr.setSelection(TextSelection.near(res.doc.resolve(3))));
+    toggleBlockquote(s, (tr) => { s = s.apply(tr); }); // wrap
+    s = s.apply(s.tr.setSelection(TextSelection.near(s.doc.resolve(3)))); // back inside
+    toggleBlockquote(s, (tr) => { s = s.apply(tr); }); // dissolve
+    expect(s.doc.child(0).type.name).toBe('div'); // back to the div…
+    expect(s.doc.child(0).firstChild!.type.name).toBe('paragraph'); // …directly holding the <p> (NO nested blockquote)
+    expect(s.doc.childCount).toBe(1);
+  });
+
+  // Bug A: switching list types directly (no dissolve-first).
+  it('toggleOrderedList converts a bullet list to ordered in place, preserving items', () => {
+    const s = stateAt('<html><body><ul><li>a</li><li>b</li></ul></body></html>', 0);
+    let after = s;
+    expect(toggleOrderedList(s, (tr) => { after = s.apply(tr); })).toBe(true);
+    expect(after.doc.child(0).type.name).toBe('orderedList');
+    expect(after.doc.child(0).childCount).toBe(2); // both items preserved
+    expect(after.doc.child(0).attrs.blockId).toBe(s.doc.child(0).attrs.blockId); // same block (rides reconciler)
+  });
+
+  it('toggleBulletList converts an ordered list to bullet in place', () => {
+    const s = stateAt('<html><body><ol><li>a</li></ol></body></html>', 0);
+    let after = s;
+    expect(toggleBulletList(s, (tr) => { after = s.apply(tr); })).toBe(true);
+    expect(after.doc.child(0).type.name).toBe('bulletList');
+  });
+
+  // Same nested-container class as blockquote: a list wrap on content nested in a
+  // <div> must target the TOP-LEVEL container, not nest a list inside it.
+  it('toggleBulletList wraps the TOP-LEVEL container (never nests a list inside a <div>)', () => {
+    const res = toLiveHtml('<html><body><div><p>x</p></div></body></html>');
+    if (!res.ok) throw new Error('degraded');
+    let s = EditorState.create({ doc: res.doc, schema: htmlSchema });
+    s = s.apply(s.tr.setSelection(TextSelection.near(res.doc.resolve(3)))); // inside inner <p>
+    toggleBulletList(s, (tr) => { s = s.apply(tr); });
+    expect(s.doc.child(0).type.name).toBe('bulletList');            // top-level list…
+    expect(s.doc.child(0).firstChild!.firstChild!.type.name).toBe('div'); // …item wraps the div
+    expect(currentBlockType(s)).toBe('bulletList');                 // so re-toggle can dissolve it
+  });
+});

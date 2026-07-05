@@ -94,13 +94,31 @@ function blockStart(state: EditorState, index: number): number {
   return pos;
 }
 
-/** Dissolve the cursor's top-level blockquote: lift ALL its children back to top level. */
+/**
+ * Node range over the TOP-LEVEL block(s) the selection spans (its parent is the
+ * doc). Constraining the range's parent to the doc keeps wrapping at the SAME
+ * level as detection/dissolve: wrapping a paragraph nested in a container (e.g.
+ * a <div>) wraps the top-level container, never nesting a blockquote inside it —
+ * which the top-level-only toggle-off could not detect, so re-clicking would
+ * nest another blockquote forever.
+ */
+function topLevelRange(state: EditorState) {
+  const { $from, $to } = state.selection;
+  return $from.blockRange($to, (node) => node.type === state.doc.type);
+}
+
+/** Dissolve the cursor's top-level blockquote: lift ALL its direct children back to top level. */
 function unwrapBlockquote(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
   const index = state.selection.$from.index(0);
   const bq = state.doc.child(index);
   const start = blockStart(state, index);
-  const $start = state.doc.resolve(start + 2);              // inside the first child
-  const $end = state.doc.resolve(start + bq.nodeSize - 2);  // inside the last child
+  // Positions at the blockquote's OWN content level (just inside its open/close),
+  // so blockRange's parent is the blockquote and its members are every direct
+  // child — regardless of whether those children are textblocks or containers
+  // (a `+2`/`-2` offset would descend into a container child, e.g. a <div>, and
+  // lift the wrong level).
+  const $start = state.doc.resolve(start + 1);
+  const $end = state.doc.resolve(start + bq.nodeSize - 1);
   const range = $start.blockRange($end);
   if (!range) return false;
   const target = liftTarget(range);
@@ -113,8 +131,7 @@ function unwrapBlockquote(state: EditorState, dispatch?: (tr: Transaction) => vo
 export const toggleBlockquote: Command = (state, dispatch) => {
   if (!canWrap(state)) return false;
   if (currentBlockType(state) === 'blockquote') return unwrapBlockquote(state, dispatch);
-  const { $from, $to } = state.selection;
-  const range = $from.blockRange($to);
+  const range = topLevelRange(state);
   if (!range) return false;
   const wrapping = findWrapping(range, blockquote, rangeAttrs(topBlock(state)));
   if (!wrapping) return false;
@@ -133,17 +150,52 @@ function unwrapList(state: EditorState, dispatch?: (tr: Transaction) => void): b
   return liftListItem(listItem)(expanded, dispatch);
 }
 
-/** Wrap the selected top-level block(s) into ONE list (N items), or dissolve if already that type. */
-function toggleListCmd(listType: NodeType, isType: (s: EditorState) => boolean): Command {
+/** Convert the cursor's top-level list to `listType` in place (bullet ↔ ordered), preserving items + attrs (incl. blockId → rides the reconciler). */
+function convertList(state: EditorState, listType: NodeType, dispatch?: (tr: Transaction) => void): boolean {
+  const index = state.selection.$from.index(0);
+  const list = state.doc.child(index);
+  const pos = blockStart(state, index);
+  if (dispatch) dispatch(state.tr.setNodeMarkup(pos, listType, { ...list.attrs }).scrollIntoView());
+  return true;
+}
+
+/**
+ * Wrap the selection's top-level block(s) into ONE list. A multi-block selection
+ * groups into N items via wrapInList (already top-level — the blocks are doc
+ * siblings). A single top-level block is wrapped at the TOP level via findWrapping
+ * (one item), so wrapping a paragraph nested in a container (e.g. a <div>) wraps
+ * the container rather than nesting a list inside it — which the top-level-only
+ * toggle-off could not dissolve, causing infinite nesting.
+ */
+function wrapIntoList(state: EditorState, listType: NodeType, dispatch?: (tr: Transaction) => void): boolean {
+  const { $from, $to } = state.selection;
+  if ($from.index(0) !== $to.index(0)) {
+    return wrapInList(listType, rangeAttrs(topBlock(state)))(state, dispatch);
+  }
+  const range = topLevelRange(state);
+  if (!range) return false;
+  const wrapping = findWrapping(range, listType, rangeAttrs(topBlock(state)));
+  if (!wrapping) return false;
+  if (dispatch) dispatch(state.tr.wrap(range, wrapping).scrollIntoView());
+  return true;
+}
+
+/**
+ * Toggle the selected top-level block(s) to a list: dissolve if already `thisType`,
+ * convert in place if currently the other list type, else wrap into ONE list.
+ */
+function toggleListCmd(listType: NodeType, thisType: string, otherType: string): Command {
   return (state, dispatch) => {
     if (!canWrap(state)) return false;
-    if (isType(state)) return unwrapList(state, dispatch);
-    return wrapInList(listType, rangeAttrs(topBlock(state)))(state, dispatch);
+    const cbt = currentBlockType(state);
+    if (cbt === thisType) return unwrapList(state, dispatch);
+    if (cbt === otherType) return convertList(state, listType, dispatch);
+    return wrapIntoList(state, listType, dispatch);
   };
 }
 
-export const toggleBulletList: Command = toggleListCmd(bulletList, (s) => currentBlockType(s) === 'bulletList');
-export const toggleOrderedList: Command = toggleListCmd(orderedList, (s) => currentBlockType(s) === 'orderedList');
+export const toggleBulletList: Command = toggleListCmd(bulletList, 'bulletList', 'orderedList');
+export const toggleOrderedList: Command = toggleListCmd(orderedList, 'orderedList', 'bulletList');
 
 // ─── List indent / outdent (keyboard: Tab / Shift-Tab, wired in HtmlLiveView) ──
 export const sinkListItemCmd: Command = sinkListItem(listItem);
