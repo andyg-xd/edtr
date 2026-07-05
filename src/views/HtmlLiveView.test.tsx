@@ -244,7 +244,8 @@ describe('HtmlLiveView — editable (4b)', () => {
     // type inside the section's paragraph (position 3 ≈ inside "hi")
     act(() => { view.dispatch(view.state.tr.insertText('!', 3)); });
     expect(onEdit).toHaveBeenCalled();
-    const dirty = onEdit.mock.calls.at(-1)![1] as Set<string>;
+    const calls = onEdit.mock.calls;
+    const dirty = calls[calls.length - 1][1] as Set<string>;
     expect(dirty.size).toBe(1); // the section (top-level container) is dirty
   });
 });
