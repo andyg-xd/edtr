@@ -5,7 +5,7 @@ import { EditorState, NodeSelection, TextSelection } from 'prosemirror-state';
 import { toLiveHtml } from '../views/htmlModel';
 import { htmlSchema } from '../views/htmlSchema';
 import {
-  currentBlockType, canTransform, setHeading, setParagraph, toggleCodeBlock,
+  currentBlockType, canTransform, canWrap, setHeading, setParagraph, toggleCodeBlock,
 } from './htmlBlockCommands';
 
 function stateAt(html: string, blockIndex = 0): EditorState {
@@ -53,5 +53,30 @@ describe('htmlBlockCommands', () => {
     state = state.apply(state.tr.setSelection(NodeSelection.create(res.doc, pos)));
     expect(currentBlockType(state)).toBe('other');
     expect(canTransform(state)).toBe(false);
+  });
+});
+
+describe('currentBlockType + canWrap (4d-ii)', () => {
+  it('reports blockquote / bulletList / orderedList for container blocks', () => {
+    const bq = stateAt('<html><body><blockquote><p>q</p></blockquote></body></html>', 0);
+    expect(currentBlockType(bq)).toBe('blockquote');
+    const ul = stateAt('<html><body><ul><li>a</li></ul></body></html>', 0);
+    expect(currentBlockType(ul)).toBe('bulletList');
+    const ol = stateAt('<html><body><ol><li>a</li></ol></body></html>', 0);
+    expect(currentBlockType(ol)).toBe('orderedList');
+  });
+
+  it('canWrap is true for a paragraph and for an existing blockquote/list', () => {
+    expect(canWrap(stateAt('<html><body><p>x</p></body></html>', 0))).toBe(true);
+    expect(canWrap(stateAt('<html><body><blockquote><p>q</p></blockquote></body></html>', 0))).toBe(true);
+    expect(canWrap(stateAt('<html><body><ul><li>a</li></ul></body></html>', 0))).toBe(true);
+  });
+
+  it('canWrap is false on a verbatim atom (table)', () => {
+    const res = toLiveHtml('<html><body><table><tr><td>c</td></tr></table></body></html>');
+    if (!res.ok) throw new Error('degraded');
+    let state = EditorState.create({ doc: res.doc, schema: htmlSchema });
+    state = state.apply(state.tr.setSelection(NodeSelection.create(res.doc, 0)));
+    expect(canWrap(state)).toBe(false);
   });
 });

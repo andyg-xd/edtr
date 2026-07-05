@@ -12,13 +12,16 @@ function rangeAttrs(node: PMNode) {
   return { srcFrom: node.attrs.srcFrom, srcTo: node.attrs.srcTo, blockId: node.attrs.blockId };
 }
 
-/** Type of the cursor's top-level block: 'h{n}' | 'paragraph' | 'codeBlock' | 'other'. */
+/** Type of the cursor's top-level block: 'h{n}' | 'paragraph' | 'codeBlock' | 'blockquote' | 'bulletList' | 'orderedList' | 'other'. */
 export function currentBlockType(state: EditorState): string {
   const node = topBlock(state);
   switch (node.type.name) {
     case 'heading': return `h${node.attrs.level as number}`;
     case 'paragraph': return 'paragraph';
     case 'codeBlock': return 'codeBlock';
+    case 'blockquote': return 'blockquote';
+    case 'bulletList': return 'bulletList';
+    case 'orderedList': return 'orderedList';
     default: return 'other';
   }
 }
@@ -27,6 +30,16 @@ export function currentBlockType(state: EditorState): string {
 export function canTransform(state: EditorState): boolean {
   const n = topBlock(state).type.name;
   return n === 'paragraph' || n === 'heading' || n === 'codeBlock';
+}
+
+/**
+ * Guard for the wrap/list toggles: true unless the cursor's top-level block is a
+ * read-only verbatim atom. Looser than `canTransform` (which allows only p/h/code)
+ * so that the toggle stays enabled inside an existing blockquote/list — needed to
+ * dissolve it.
+ */
+export function canWrap(state: EditorState): boolean {
+  return topBlock(state).type.name !== 'verbatim';
 }
 
 /**
