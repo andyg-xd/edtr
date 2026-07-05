@@ -61,12 +61,12 @@ describe('toLiveHtml', () => {
   });
 
   it('routes an unknown top-level container to a BLOCK verbatim (not squashed)', () => {
-    const res = toLiveHtml('<html><body><section><p>x</p></section></body></html>');
+    const res = toLiveHtml('<html><body><details><p>x</p></details></body></html>');
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     const top = res.doc.child(0);
     expect(top.type.name).toBe('verbatim');
-    expect(top.attrs.raw).toContain('<section');
+    expect(top.attrs.raw).toContain('<details');
   });
 
   it('bare top-level text carries its real (non-zero) range', () => {
@@ -127,5 +127,38 @@ describe('horizontalRule model mapping', () => {
     expect(types).toEqual(['paragraph', 'horizontalRule', 'paragraph']);
     const hr = res.doc.child(1);
     expect(hr.attrs.srcTo).toBeGreaterThan(hr.attrs.srcFrom); // real range, not 0/0
+  });
+});
+
+describe('semantic containers (4d-iii)', () => {
+  const TAGS = ['section', 'main', 'article', 'header', 'footer', 'nav', 'aside', 'figure', 'figcaption'];
+  for (const tag of TAGS) {
+    it(`types <${tag}> with block children as an editable container`, () => {
+      const res = toLiveHtml(`<html><body><${tag}><p>x</p></${tag}></body></html>`);
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      const top = res.doc.child(0);
+      expect(top.type.name).toBe('container');
+      expect(top.attrs.tag).toBe(tag);
+      expect(top.firstChild!.type.name).toBe('paragraph');
+      expect(top.attrs.srcFrom).toBeGreaterThan(0); // real top-level range (reconciler byte-slices it)
+    });
+  }
+
+  it('nests containers', () => {
+    const res = toLiveHtml('<html><body><section><div><p>x</p></div></section></body></html>');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const section = res.doc.child(0);
+    expect(section.type.name).toBe('container');
+    expect(section.firstChild!.type.name).toBe('div');
+    expect(section.firstChild!.firstChild!.type.name).toBe('paragraph');
+  });
+
+  it('preserves a container class attr', () => {
+    const res = toLiveHtml('<html><body><section class="hero"><p>x</p></section></body></html>');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.doc.child(0).attrs.htmlAttrs).toEqual({ class: 'hero' });
   });
 });

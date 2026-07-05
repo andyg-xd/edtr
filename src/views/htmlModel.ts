@@ -71,6 +71,13 @@ function buildInline(node: SourceNode, marks: readonly Mark[], docPath: string |
 // (which would wrap it as an inlineVerbatim inside a synthetic paragraph).
 const BLOCK_TAGS = new Set([
   'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'div', 'ul', 'ol', 'li', 'pre', 'table', 'hr',
+  'section', 'main', 'article', 'header', 'footer', 'nav', 'aside', 'figure', 'figcaption',
+]);
+
+// Semantic containers → the generic `container` node (editable). NOT in this set
+// (e.g. <details>, <dl>, custom elements) → read-only verbatim.
+const CONTAINER_TAGS = new Set([
+  'section', 'main', 'article', 'header', 'footer', 'nav', 'aside', 'figure', 'figcaption',
 ]);
 const isBlockElement = (n: SourceNode) => n.type !== '#text' && BLOCK_TAGS.has(n.type);
 
@@ -98,6 +105,10 @@ function buildBlock(node: SourceNode, range: object, docPath: string | null): PM
     if (node.type === 'ul' || node.type === 'ol') {
       const items = listItems(node, docPath);
       return items ? htmlSchema.node(node.type === 'ul' ? 'bulletList' : 'orderedList', attrs, items) : verbatim();
+    }
+    if (CONTAINER_TAGS.has(node.type)) {
+      const kids = childBlocks(node, docPath);
+      return kids ? htmlSchema.node('container', { ...attrs, tag: node.type }, kids) : verbatim();
     }
     return verbatim(); // table + anything else
   } catch {
