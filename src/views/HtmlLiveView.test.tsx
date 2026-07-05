@@ -233,6 +233,20 @@ describe('HtmlLiveView — editable (4b)', () => {
     // the first item now holds its own paragraph + a nested list
     expect(view.state.doc.child(0).firstChild.childCount).toBe(2);
   });
+
+  it('renders a <section> as editable and reports edits inside it via onEdit', () => {
+    const r = toLiveHtml('<html><body><section><p>hi</p></section></body></html>');
+    if (!r.ok) throw new Error(r.reason);
+    let view: any = null;
+    const onEdit = vi.fn();
+    mount(<HtmlLiveView doc={r.doc} styleText={r.styleText} editable onViewReady={(v) => { view = v; }} onEdit={onEdit} />);
+    expect(view.state.doc.child(0).type.name).toBe('container'); // section is editable, not verbatim
+    // type inside the section's paragraph (position 3 ≈ inside "hi")
+    act(() => { view.dispatch(view.state.tr.insertText('!', 3)); });
+    expect(onEdit).toHaveBeenCalled();
+    const dirty = onEdit.mock.calls.at(-1)![1] as Set<string>;
+    expect(dirty.size).toBe(1); // the section (top-level container) is dirty
+  });
 });
 
 // Structural editing: a split through a state with blockIdentityPlugin yields
