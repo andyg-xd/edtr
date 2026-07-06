@@ -11,6 +11,7 @@ import { dirtyTrackingPlugin, getDirtyBlockIds } from './dirtyTracking';
 import { blockIdentityPlugin } from './blockIdentity';
 import { splitCommand, softBreakCommand } from '../commands/htmlStructureCommands';
 import { sinkListItemCmd, liftListItemCmd } from '../commands/htmlBlockCommands';
+import { goToNextCell, arrowVertical } from '../commands/htmlTableCommands';
 import {
   toggleStrong, toggleEm, toggleUnderline, insertImage,
 } from '../commands/htmlInlineCommands';
@@ -82,6 +83,11 @@ export function HtmlLiveView({
             Tab: sinkListItemCmd,
             'Shift-Tab': liftListItemCmd,
           }),
+          // Table grid nav. Ordered AFTER the list keymap so list indent still
+          // works inside a cell that holds a list; goToNextCell returns false
+          // outside a table, so Tab falls through to normal handling.
+          keymap({ Tab: goToNextCell(1), 'Shift-Tab': goToNextCell(-1) }),
+          keymap({ ArrowUp: arrowVertical('up'), ArrowDown: arrowVertical('down') }),
           keymap({
             'Mod-b': toggleStrong, 'Mod-i': toggleEm, 'Mod-u': toggleUnderline,
             'Mod-k': linkShortcut, 'Mod-z': undo, 'Mod-y': redo, 'Shift-Mod-z': redo,

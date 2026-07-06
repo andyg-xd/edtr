@@ -12,6 +12,7 @@ import { htmlSchema } from './htmlSchema';
 import { blockIdentityPlugin } from './blockIdentity';
 import { splitCommand } from '../commands/htmlStructureCommands';
 import { sinkListItemCmd } from '../commands/htmlBlockCommands';
+import { goToNextCell } from '../commands/htmlTableCommands';
 
 let container: HTMLDivElement | null = null;
 afterEach(() => { container?.remove(); container = null; });
@@ -247,6 +248,24 @@ describe('HtmlLiveView — editable (4b)', () => {
     const calls = onEdit.mock.calls;
     const dirty = calls[calls.length - 1][1] as Set<string>;
     expect(dirty.size).toBe(1); // the section (top-level container) is dirty
+  });
+
+  it('renders a plain <table> as editable and Tab moves between cells (mounted view)', () => {
+    const r = toLiveHtml('<html><body><table><tr><td>a</td><td>b</td></tr></table></body></html>');
+    if (!r.ok) throw new Error(r.reason);
+    let view: any = null;
+    mount(<HtmlLiveView doc={r.doc} styleText={r.styleText} editable onViewReady={(v) => { view = v; }} />);
+    expect(view.state.doc.child(0).type.name).toBe('table'); // editable, not verbatim
+    // cursor into the first cell ("a" ≈ pos 4), then Tab via the command
+    act(() => { view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(4)))); });
+    act(() => { goToNextCell(1)(view.state, view.dispatch); });
+    // walk up from the selection to confirm we're now in column 1
+    let colIndex = -1;
+    const $f = view.state.selection.$from;
+    for (let d = $f.depth; d > 0; d--) {
+      if ($f.node(d).type.name === 'tableCell') { colIndex = $f.index(d - 1); break; }
+    }
+    expect(colIndex).toBe(1);
   });
 });
 
