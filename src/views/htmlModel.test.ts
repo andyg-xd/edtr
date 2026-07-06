@@ -31,8 +31,8 @@ describe('toLiveHtml', () => {
     expect(res.styleText).toContain('.x{color:red}');
   });
 
-  it('falls back to verbatim for a table', () => {
-    const res = toLiveHtml('<html><body><table><tr><td>c</td></tr></table></body></html>');
+  it('falls back to verbatim for a table with merged cells (rowspan/colspan)', () => {
+    const res = toLiveHtml('<html><body><table><tr><td colspan="2">c</td></tr></table></body></html>');
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     const v = find(res.doc, 'verbatim');
@@ -244,5 +244,77 @@ describe('list item content (4d-iii childBlocks ripple)', () => {
     expect(li.childCount).toBe(1);
     expect(li.firstChild!.type.name).toBe('paragraph');
     expect(li.firstChild!.textContent).toBe('only');
+  });
+});
+
+describe('table model (4d-iv-a)', () => {
+  const buildDoc = (bodyHtml: string) => {
+    const r = toLiveHtml(`<html><body>${bodyHtml}</body></html>`);
+    if (!r.ok) throw new Error(`degraded: ${r.reason}`);
+    return r.doc;
+  };
+
+  it('builds a plain table as an editable table node, flattening thead/tbody', () => {
+    const t = buildDoc('<table><thead><tr><th>H</th></tr></thead><tbody><tr><td>c</td></tr></tbody></table>').child(0);
+    expect(t.type.name).toBe('table');
+    expect(t.childCount).toBe(2);                     // header row + body row (wrappers flattened)
+    expect(t.child(0).child(0).attrs.header).toBe(true);
+    expect(t.child(1).child(0).attrs.header).toBe(false);
+    expect(t.attrs.srcFrom as number).toBeGreaterThan(0); // real top-level range → reconciler byte-slices it
+  });
+
+  it('wraps bare-inline cell content in a synthetic paragraph', () => {
+    const cell = buildDoc('<table><tr><td>hi</td></tr></table>').child(0).child(0).child(0);
+    expect(cell.firstChild!.type.name).toBe('paragraph');
+    expect(cell.textContent).toBe('hi');
+  });
+
+  it('models block content inside a cell (Q2)', () => {
+    const cell = buildDoc('<table><tr><td><p>a</p><ul><li>b</li></ul></td></tr></table>').child(0).child(0).child(0);
+    const kinds: string[] = [];
+    cell.forEach((n) => kinds.push(n.type.name));
+    expect(kinds).toEqual(['paragraph', 'bulletList']);
+  });
+
+  it('preserves per-cell <th> (row headers), not just row 0', () => {
+    const row = buildDoc('<table><tr><th>k</th><td>v</td></tr></table>').child(0).child(0);
+    expect(row.child(0).attrs.header).toBe(true);
+    expect(row.child(1).attrs.header).toBe(false);
+  });
+
+  it('preserves <tr>/<td> attrs in htmlAttrs', () => {
+    const row = buildDoc('<table><tr class="r"><td class="c">x</td></tr></table>').child(0).child(0);
+    expect(row.attrs.htmlAttrs).toEqual({ class: 'r' });
+    expect(row.child(0).attrs.htmlAttrs).toEqual({ class: 'c' });
+  });
+
+  const gate = (label: string, bodyHtml: string) =>
+    it(`degrades to verbatim: ${label}`, () => {
+      const doc = buildDoc(bodyHtml);
+      const t: any[] = [];
+      doc.descendants((n: any) => { if (n.type.name === 'table') t.push(n); });
+      expect(t.length).toBe(0);
+      const v: any[] = [];
+      doc.descendants((n: any) => { if (n.type.name === 'verbatim') v.push(n); });
+      expect(v.length).toBeGreaterThan(0);
+    });
+
+  gate('colspan', '<table><tr><td colspan="2">x</td></tr></table>');
+  gate('rowspan', '<table><tr><td rowspan="2">x</td></tr><tr><td>y</td></tr></table>');
+  gate('caption', '<table><caption>t</caption><tr><td>x</td></tr></table>');
+  gate('colgroup', '<table><colgroup><col></colgroup><tr><td>x</td></tr></table>');
+  gate('tfoot', '<table><tbody><tr><td>x</td></tr></tbody><tfoot><tr><td>f</td></tr></tfoot></table>');
+  gate('ragged rows', '<table><tr><td>a</td><td>b</td></tr><tr><td>c</td></tr></table>');
+
+  it('a nested table in a cell → outer editable, nested is a read-only verbatim block child', () => {
+    const cell = buildDoc('<table><tr><td><table><tr><td>n</td></tr></table></td></tr></table>').child(0).child(0).child(0);
+    expect(cell.firstChild!.type.name).toBe('verbatim');
+    expect(cell.firstChild!.attrs.raw as string).toContain('<table>');
+  });
+
+  it('a table nested inside a container is editable', () => {
+    const section = buildDoc('<section><table><tr><td>x</td></tr></table></section>').child(0);
+    expect(section.type.name).toBe('container');
+    expect(section.firstChild!.type.name).toBe('table');
   });
 });

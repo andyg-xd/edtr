@@ -10,7 +10,7 @@ const SRC = `<!doctype html>
 <body>
 <h1 class="title">Hello</h1>
 <p>A <strong>bold</strong> and <em>italic</em> line.</p>
-<table><tr><td>x</td></tr></table>
+<table><tr><td colspan="2">x</td></tr></table>
 </body>
 </html>
 `;
@@ -35,7 +35,7 @@ describe('serializeHtmlBlock — per construct', () => {
 
   it('emits a verbatim atom raw, unescaped', () => {
     const doc = build(SRC);
-    expect(serializeHtmlBlock(doc.child(2))).toBe('<table><tr><td>x</td></tr></table>');
+    expect(serializeHtmlBlock(doc.child(2))).toBe('<table><tr><td colspan="2">x</td></tr></table>');
   });
 
   it('maps each mark to its canonical tag', () => {
@@ -123,7 +123,7 @@ describe('no-beautify via toSource + serializeHtmlDirty', () => {
     const doc2 = htmlSchema.node('doc', null, [doc.child(0), edited, doc.child(2)]);
     const out = toSource(doc2, SRC, serializeHtmlDirty(new Set([p.attrs.blockId as string])));
     expect(out).toContain('<h1 class="title">Hello</h1>');                 // sibling untouched
-    expect(out).toContain('<table><tr><td>x</td></tr></table>');          // verbatim untouched
+    expect(out).toContain('<table><tr><td colspan="2">x</td></tr></table>');          // verbatim untouched
     expect(out).toContain('<style>p{color:red}</style>');                 // head untouched
     expect(out).toContain('<p>Changed</p>');                              // block re-serialized
     expect(out).not.toContain('bold');                                    // old content gone

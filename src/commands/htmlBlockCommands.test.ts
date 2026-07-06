@@ -87,7 +87,7 @@ describe('currentBlockType + canWrap (4d-ii)', () => {
   });
 
   it('canWrap is false on a verbatim atom (table)', () => {
-    const res = toLiveHtml('<html><body><table><tr><td>c</td></tr></table></body></html>');
+    const res = toLiveHtml('<html><body><table><tr><td colspan="2">c</td></tr></table></body></html>');
     if (!res.ok) throw new Error('degraded');
     let state = EditorState.create({ doc: res.doc, schema: htmlSchema });
     state = state.apply(state.tr.setSelection(NodeSelection.create(res.doc, 0)));

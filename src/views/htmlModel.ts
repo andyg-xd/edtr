@@ -66,9 +66,10 @@ function buildInline(node: SourceNode, marks: readonly Mark[], docPath: string |
 }
 
 // ---- block ----
-// Includes 'table' so a top-level/nested <table> reaches buildBlock's
-// verbatim catch-all instead of falling through to the bare-inline path
-// (which would wrap it as an inlineVerbatim inside a synthetic paragraph).
+// Includes 'table' so a top-level/nested <table> reaches buildBlock's table
+// arm (buildTable, or its verbatim fallback) instead of falling through to
+// the bare-inline path (which would wrap it as an inlineVerbatim inside a
+// synthetic paragraph).
 const BLOCK_TAGS = new Set([
   'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'div', 'ul', 'ol', 'li', 'pre', 'table', 'hr',
   'section', 'main', 'article', 'header', 'footer', 'nav', 'aside', 'figure', 'figcaption',
@@ -88,8 +89,56 @@ const isBlockElement = (n: SourceNode) => n.type !== '#text' && BLOCK_TAGS.has(n
 const INLINE_TAGS = new Set([...Object.keys(INLINE_MARK), 'a', 'span', 'img', 'br']);
 const isInlineChild = (n: SourceNode) => n.type === '#text' || INLINE_TAGS.has(n.type);
 
+const hasSpan = (cell: SourceNode): boolean => {
+  const a = attrsOf(cell);
+  return Object.keys(a).some((k) => { const lk = k.toLowerCase(); return lk === 'colspan' || lk === 'rowspan'; });
+};
+
+// Rows come from direct <tr> or from <thead>/<tbody> wrappers ONLY. Any other
+// child (<tfoot>, <caption>, <colgroup>, <col>, …) → null (→ table verbatim).
+function collectTableRows(node: SourceNode): SourceNode[] | null {
+  const rows: SourceNode[] = [];
+  for (const c of node.children ?? []) {
+    if (isWhitespaceText(c)) continue;
+    if (c.type === 'tr') { rows.push(c); continue; }
+    if (c.type === 'thead' || c.type === 'tbody') {
+      for (const gc of c.children ?? []) {
+        if (isWhitespaceText(gc)) continue;
+        if (gc.type !== 'tr') return null;
+        rows.push(gc);
+      }
+      continue;
+    }
+    return null;
+  }
+  return rows.length ? rows : null;
+}
+
+/** A plain, span-free, rectangular <table> → an editable table node; else null (→ verbatim). */
+function buildTable(node: SourceNode, range: object, docPath: string | null): PMNode | null {
+  const srcRows = collectTableRows(node);
+  if (!srcRows) return null;
+  const rowCells: SourceNode[][] = [];
+  for (const row of srcRows) {
+    const cells = (row.children ?? []).filter((c) => !isWhitespaceText(c));
+    if (!cells.length || cells.some((c) => c.type !== 'td' && c.type !== 'th')) return null;
+    if (cells.some(hasSpan)) return null;
+    rowCells.push(cells);
+  }
+  const width = rowCells[0].length;
+  if (rowCells.some((cells) => cells.length !== width)) return null; // ragged
+  const rowNodes = srcRows.map((row, r) => {
+    const cellNodes = rowCells[r].map((cell) => {
+      const content = childBlocks(cell, docPath, false) ?? [htmlSchema.node('paragraph', { htmlAttrs: {} })];
+      return htmlSchema.node('tableCell', { header: cell.type === 'th', htmlAttrs: attrsOf(cell) }, content);
+    });
+    return htmlSchema.node('tableRow', { htmlAttrs: attrsOf(row) }, cellNodes);
+  });
+  return htmlSchema.node('table', { htmlAttrs: attrsOf(node), ...range }, rowNodes);
+}
+
 /** Build a block element into a typed node, or a verbatim atom if it doesn't fit. */
-function buildBlock(node: SourceNode, range: object, docPath: string | null): PMNode {
+function buildBlock(node: SourceNode, range: object, docPath: string | null, allowTable = true): PMNode {
   const verbatim = () => htmlSchema.node('verbatim', { raw: node.raw, ...range });
   const attrs = { htmlAttrs: attrsOf(node), ...range };
   try {
@@ -99,18 +148,19 @@ function buildBlock(node: SourceNode, range: object, docPath: string | null): PM
       return htmlSchema.node('heading', { level: HEADINGS[node.type], ...attrs }, buildInline(node, [], docPath));
     if (node.type === 'pre') return htmlSchema.node('codeBlock', attrs, textOf(node) ? [htmlSchema.text(textOf(node))] : []);
     if (node.type === 'blockquote' || node.type === 'div') {
-      const kids = childBlocks(node, docPath);
+      const kids = childBlocks(node, docPath, allowTable);
       return kids ? htmlSchema.node(node.type, attrs, kids) : verbatim();
     }
     if (node.type === 'ul' || node.type === 'ol') {
-      const items = listItems(node, docPath);
+      const items = listItems(node, docPath, allowTable);
       return items ? htmlSchema.node(node.type === 'ul' ? 'bulletList' : 'orderedList', attrs, items) : verbatim();
     }
     if (CONTAINER_TAGS.has(node.type)) {
-      const kids = childBlocks(node, docPath);
+      const kids = childBlocks(node, docPath, allowTable);
       return kids ? htmlSchema.node('container', { ...attrs, tag: node.type }, kids) : verbatim();
     }
-    return verbatim(); // table + anything else
+    if (node.type === 'table') return allowTable ? (buildTable(node, range, docPath) ?? verbatim()) : verbatim();
+    return verbatim(); // anything else
   } catch {
     return verbatim(); // any content-model rejection → render raw
   }
@@ -122,7 +172,7 @@ function buildBlock(node: SourceNode, range: object, docPath: string | null): PM
 // elements is preserved) but a run that is ENTIRELY whitespace — inter-block
 // formatting indentation — is dropped at flush, so no empty paragraphs appear.
 // Returns null (→ caller verbatims) only when nothing modelable is found.
-function childBlocks(node: SourceNode, docPath: string | null): PMNode[] | null {
+function childBlocks(node: SourceNode, docPath: string | null, allowTable = true): PMNode[] | null {
   const out: PMNode[] = [];
   let run: SourceNode[] = [];
   const flush = () => {
@@ -133,19 +183,19 @@ function childBlocks(node: SourceNode, docPath: string | null): PMNode[] | null 
     if (hasContent) out.push(htmlSchema.node('paragraph', { htmlAttrs: {} }, inline));
   };
   for (const c of node.children ?? []) {
-    if (isBlockElement(c)) { flush(); out.push(buildBlock(c, {}, docPath)); continue; }
+    if (isBlockElement(c)) { flush(); out.push(buildBlock(c, {}, docPath, allowTable)); continue; }
     run.push(c); // inline node OR whitespace text; a whitespace-only run is dropped at flush
   }
   flush();
   return out.length ? out : null;
 }
 
-function listItems(node: SourceNode, docPath: string | null): PMNode[] | null {
+function listItems(node: SourceNode, docPath: string | null, allowTable = true): PMNode[] | null {
   const out: PMNode[] = [];
   for (const c of node.children ?? []) {
     if (isWhitespaceText(c)) continue;
     if (c.type !== 'li') return null;
-    const kids = childBlocks(c, docPath);
+    const kids = childBlocks(c, docPath, allowTable);
     // A li with inline content (no block children) → wrap its inline in a paragraph.
     const content = kids ?? [htmlSchema.node('paragraph', { htmlAttrs: {} }, buildInline(c, [], docPath))];
     out.push(htmlSchema.node('listItem', { htmlAttrs: attrsOf(c) }, content));
