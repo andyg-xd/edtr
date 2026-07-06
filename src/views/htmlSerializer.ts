@@ -85,6 +85,47 @@ function serializeChildren(node: PMNode): string {
   return out;
 }
 
+/**
+ * A list item / table cell whose sole child is htmlModel's synthetic zero-attr
+ * <p> wrapper serializes its inline content unwrapped (`<li>text</li>` /
+ * `<td>text</td>`); otherwise its block children serialize in full. A genuine
+ * `<p class="x">` (non-empty htmlAttrs) is NOT the synthetic wrapper, so it
+ * stays wrapped (its attrs would be lost by unwrapping).
+ */
+function serializeItemLikeContent(node: PMNode): string {
+  const first = node.firstChild;
+  const isSyntheticParagraphWrapper =
+    node.childCount === 1 &&
+    first?.type.name === 'paragraph' &&
+    Object.keys((first.attrs.htmlAttrs as Record<string, string> | undefined) ?? {}).length === 0;
+  return isSyntheticParagraphWrapper ? serializeInline(first!) : serializeChildren(node);
+}
+
+/** Canonical HTML for a table node (edited-only; untouched tables byte-slice). */
+function serializeTable(node: PMNode): string {
+  const attrs = (n: PMNode) => serializeAttrs(n.attrs.htmlAttrs as Record<string, string>);
+  const isHeaderRow = (r: PMNode) => {
+    let all = r.childCount > 0;
+    r.forEach((c) => { if (!c.attrs.header) all = false; });
+    return all;
+  };
+  const rows: PMNode[] = [];
+  node.forEach((r) => rows.push(r));
+  let split = 0;
+  while (split < rows.length && isHeaderRow(rows[split])) split++;
+  const serializeRow = (r: PMNode) => {
+    let cells = '';
+    r.forEach((cell) => {
+      const tag = cell.attrs.header ? 'th' : 'td';
+      cells += `<${tag}${attrs(cell)}>${serializeItemLikeContent(cell)}</${tag}>`;
+    });
+    return `<tr${attrs(r)}>${cells}</tr>`;
+  };
+  const thead = split > 0 ? `<thead>${rows.slice(0, split).map(serializeRow).join('')}</thead>` : '';
+  const tbody = split < rows.length ? `<tbody>${rows.slice(split).map(serializeRow).join('')}</tbody>` : '';
+  return `<table${attrs(node)}>${thead}${tbody}</table>`;
+}
+
 /** A PM block node → HTML source string. Verbatim atoms emit `raw` untouched. */
 export function serializeHtmlBlock(node: PMNode): string {
   const attrs = () => serializeAttrs(node.attrs.htmlAttrs as Record<string, string>);
@@ -96,24 +137,10 @@ export function serializeHtmlBlock(node: PMNode): string {
     case 'container': return `<${node.attrs.tag}${attrs()}>${serializeChildren(node)}</${node.attrs.tag}>`;
     case 'bulletList': return `<ul${attrs()}>${serializeChildren(node)}</ul>`;
     case 'orderedList': return `<ol${attrs()}>${serializeChildren(node)}</ol>`;
-    case 'listItem': {
-      // A single-paragraph item round-trips as `<li>inline</li>` (common form)
-      // ONLY when that paragraph is htmlModel's synthetic zero-attrs wrapper
-      // (built for a bare `<li>text</li>`, see htmlModel.ts `listItems`) — a
-      // genuine `<li><p class="x">…</p></li>` has attrs on the <p> and MUST
-      // keep it wrapped, or those attrs (e.g. `class="x"`) are silently lost.
-      const first = node.firstChild;
-      const isSyntheticParagraphWrapper =
-        node.childCount === 1 &&
-        first?.type.name === 'paragraph' &&
-        Object.keys((first.attrs.htmlAttrs as Record<string, string> | undefined) ?? {}).length === 0;
-      if (isSyntheticParagraphWrapper) {
-        return `<li${attrs()}>${serializeInline(first)}</li>`;
-      }
-      return `<li${attrs()}>${serializeChildren(node)}</li>`;
-    }
+    case 'listItem': return `<li${attrs()}>${serializeItemLikeContent(node)}</li>`;
     case 'codeBlock': return `<pre${attrs()}><code>${escapeText(node.textContent)}</code></pre>`;
     case 'horizontalRule': return '<hr>';
+    case 'table': return serializeTable(node);
     case 'verbatim': return node.attrs.raw as string;
     default: throw new HtmlSerializeError(`unknown block: ${node.type.name}`);
   }

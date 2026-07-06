@@ -200,3 +200,44 @@ describe('container serialization', () => {
     expect(serializeHtmlBlock(node)).toBe('<section class="hero"><p>hi</p></section>');
   });
 });
+
+describe('table serialization (4d-iv-a)', () => {
+  const para = (text?: string) =>
+    htmlSchema.nodes.paragraph.create({ htmlAttrs: {} }, text ? [htmlSchema.text(text)] : []);
+  const cell = (header: boolean, text: string, htmlAttrs: Record<string, string> = {}) =>
+    htmlSchema.nodes.tableCell.create({ header, htmlAttrs }, para(text));
+  const row = (cells: any[], htmlAttrs: Record<string, string> = {}) =>
+    htmlSchema.nodes.tableRow.create({ htmlAttrs }, cells);
+  const table = (rows: any[], htmlAttrs: Record<string, string> = {}) =>
+    htmlSchema.nodes.table.create({ htmlAttrs, blockId: 'h0', srcFrom: 0, srcTo: 0 }, rows);
+
+  it('wraps leading all-<th> rows in <thead> and the rest in <tbody>; bare cells unwrap', () => {
+    const t = table([
+      row([cell(true, 'H1'), cell(true, 'H2')]),
+      row([cell(false, 'a'), cell(false, 'b')]),
+    ]);
+    expect(serializeHtmlBlock(t)).toBe(
+      '<table><thead><tr><th>H1</th><th>H2</th></tr></thead><tbody><tr><td>a</td><td>b</td></tr></tbody></table>',
+    );
+  });
+
+  it('emits only <tbody> when there is no leading header row', () => {
+    expect(serializeHtmlBlock(table([row([cell(false, 'a')])]))).toBe(
+      '<table><tbody><tr><td>a</td></tr></tbody></table>',
+    );
+  });
+
+  it('keeps multi-block cell content wrapped (no unwrap)', () => {
+    const c = htmlSchema.nodes.tableCell.create({ header: false, htmlAttrs: {} }, [para('a'), para('b')]);
+    expect(serializeHtmlBlock(table([row([c])]))).toBe(
+      '<table><tbody><tr><td><p>a</p><p>b</p></td></tr></tbody></table>',
+    );
+  });
+
+  it('preserves table / row / cell htmlAttrs verbatim', () => {
+    const t = table([row([cell(false, 'x', { class: 'c' })], { class: 'r' })], { class: 't' });
+    expect(serializeHtmlBlock(t)).toBe(
+      '<table class="t"><tbody><tr class="r"><td class="c">x</td></tr></tbody></table>',
+    );
+  });
+});

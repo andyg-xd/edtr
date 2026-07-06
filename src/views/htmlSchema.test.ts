@@ -97,4 +97,28 @@ describe('htmlSchema', () => {
     expect(spec[0]).toBe('section');
     expect(spec[1]).toEqual({ class: 'x' });
   });
+
+  it('renders a cell as <td> or <th> by the header attr, with its html attrs', () => {
+    const p = () => htmlSchema.nodes.paragraph.create({ htmlAttrs: {} }, [htmlSchema.text('x')]);
+    const td = htmlSchema.nodes.tableCell.create({ header: false, htmlAttrs: {} }, p());
+    const th = htmlSchema.nodes.tableCell.create({ header: true, htmlAttrs: { class: 'k' } }, p());
+    expect((htmlSchema.nodes.tableCell.spec.toDOM!(td) as [string])[0]).toBe('td');
+    const thSpec = htmlSchema.nodes.tableCell.spec.toDOM!(th) as [string, Record<string, string>, number];
+    expect(thSpec[0]).toBe('th');
+    expect(thSpec[1]).toEqual({ class: 'k' });
+  });
+
+  it('renders a row as <tr> and the table shell as <table> wrapping <tbody>', () => {
+    const row = htmlSchema.nodes.tableRow.create(
+      { htmlAttrs: { class: 'r' } },
+      htmlSchema.nodes.tableCell.create({ header: false, htmlAttrs: {} }, htmlSchema.nodes.paragraph.create({ htmlAttrs: {} })),
+    );
+    const rowSpec = htmlSchema.nodes.tableRow.spec.toDOM!(row) as [string, Record<string, string>, number];
+    expect(rowSpec[0]).toBe('tr');
+    expect(rowSpec[1]).toEqual({ class: 'r' });
+    const t = htmlSchema.nodes.table.createAndFill()!;
+    const tSpec = htmlSchema.nodes.table.spec.toDOM!(t) as [string, Record<string, string>, [string, number]];
+    expect(tSpec[0]).toBe('table');
+    expect(tSpec[2]).toEqual(['tbody', 0]);
+  });
 });

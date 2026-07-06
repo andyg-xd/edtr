@@ -59,6 +59,28 @@ const nodes: Record<string, NodeSpec> = {
     toDOM: (n) => [n.attrs.tag as string, domAttrs(n), 0],
   },
 
+  table: {
+    group: 'block',
+    content: 'tableRow+',
+    attrs: { ...attrBag, ...rangeAttrs },
+    toDOM: (n) => ['table', domAttrs(n), ['tbody', 0]],
+  },
+
+  tableRow: {
+    content: 'tableCell+',
+    attrs: { ...attrBag },
+    toDOM: (n) => ['tr', domAttrs(n), 0],
+  },
+
+  // Span-free, block-content cell. `header` → <th> vs <td>. No source range
+  // (never top-level; the enclosing `table` is the reconciled block).
+  tableCell: {
+    content: 'block+',
+    isolating: true,
+    attrs: { header: { default: false }, ...attrBag },
+    toDOM: (n) => [n.attrs.header ? 'th' : 'td', domAttrs(n), 0],
+  },
+
   bulletList: {
     group: 'block',
     content: 'listItem+',
