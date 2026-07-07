@@ -318,3 +318,33 @@ describe('table model (4d-iv-a)', () => {
     expect(section.firstChild!.type.name).toBe('table');
   });
 });
+
+function firstCell(doc: any): any {
+  let found: any = null;
+  doc.descendants((n: any) => { if (!found && n.type.name === 'tableCell') found = n; return !found; });
+  return found;
+}
+
+describe('buildTable — alignment extraction', () => {
+  it('extracts a legacy align attribute into the align node attr and drops it from htmlAttrs', () => {
+    const r = toLiveHtml('<html><body><table><tr><td align="center">a</td></tr></table></body></html>');
+    if (!r.ok) throw new Error('degraded');
+    const cell = firstCell(r.doc);
+    expect(cell.attrs.align).toBe('center');
+    expect(cell.attrs.htmlAttrs.align).toBeUndefined();
+  });
+
+  it('extracts text-align from an inline style, keeping other declarations', () => {
+    const r = toLiveHtml('<html><body><table><tr><td style="color:red;text-align:right">a</td></tr></table></body></html>');
+    if (!r.ok) throw new Error('degraded');
+    const cell = firstCell(r.doc);
+    expect(cell.attrs.align).toBe('right');
+    expect(cell.attrs.htmlAttrs.style).toBe('color:red');
+  });
+
+  it('leaves align null when the cell has no alignment', () => {
+    const r = toLiveHtml('<html><body><table><tr><td>a</td></tr></table></body></html>');
+    if (!r.ok) throw new Error('degraded');
+    expect(firstCell(r.doc).attrs.align).toBeNull();
+  });
+});

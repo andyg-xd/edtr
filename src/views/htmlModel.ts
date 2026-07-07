@@ -114,6 +114,34 @@ function collectTableRows(node: SourceNode): SourceNode[] | null {
   return rows.length ? rows : null;
 }
 
+type Align = 'left' | 'center' | 'right' | null;
+
+function normalizeAlign(v: string): Align {
+  const s = v.trim().toLowerCase();
+  return s === 'left' || s === 'center' || s === 'right' ? s : null;
+}
+
+/** Pull a cell's authored alignment (align attr or inline text-align) out of its attrs. */
+function splitAlign(attrs: Record<string, string>): { align: Align; rest: Record<string, string> } {
+  const rest: Record<string, string> = {};
+  let align: Align = null;
+  for (const [k, v] of Object.entries(attrs)) {
+    const lk = k.toLowerCase();
+    if (lk === 'align') { align = normalizeAlign(v); continue; } // drop from rest
+    if (lk === 'style') {
+      const m = /text-align\s*:\s*(left|center|right)/i.exec(v);
+      if (m) {
+        align = normalizeAlign(m[1]);
+        const stripped = v.split(';').map((s) => s.trim()).filter((s) => s && !/^text-align\s*:/i.test(s)).join('; ');
+        if (stripped) rest[k] = stripped; // keep other declarations
+        continue;
+      }
+    }
+    rest[k] = v;
+  }
+  return { align, rest };
+}
+
 /** A plain, span-free, rectangular <table> → an editable table node; else null (→ verbatim). */
 function buildTable(node: SourceNode, range: object, docPath: string | null): PMNode | null {
   const srcRows = collectTableRows(node);
@@ -130,7 +158,8 @@ function buildTable(node: SourceNode, range: object, docPath: string | null): PM
   const rowNodes = srcRows.map((row, r) => {
     const cellNodes = rowCells[r].map((cell) => {
       const content = childBlocks(cell, docPath, false) ?? [htmlSchema.node('paragraph', { htmlAttrs: {} })];
-      return htmlSchema.node('tableCell', { header: cell.type === 'th', htmlAttrs: attrsOf(cell) }, content);
+      const { align, rest } = splitAlign(attrsOf(cell));
+      return htmlSchema.node('tableCell', { header: cell.type === 'th', align, htmlAttrs: rest }, content);
     });
     return htmlSchema.node('tableRow', { htmlAttrs: attrsOf(row) }, cellNodes);
   });
