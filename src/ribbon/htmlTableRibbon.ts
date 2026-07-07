@@ -1,0 +1,47 @@
+import type { RibbonControl } from './RibbonModel';
+import {
+  isInTable,
+  addRow, deleteRow, canDeleteRow,
+  addColumn, deleteColumn, canDeleteColumn,
+  setColumnAlign, getColumnAlign,
+  toggleHeaderRow, headerRowActive,
+} from '../commands/htmlTableCommands';
+
+export const htmlTableRibbon: RibbonControl[] = [
+  { id: 'rowAbove', label: '+Row↑', ariaLabel: 'Insert row above',
+    isActive: () => false, isEnabled: (s) => isInTable(s),
+    action: { kind: 'command', run: addRow('above') } },
+  { id: 'rowBelow', label: '+Row↓', ariaLabel: 'Insert row below',
+    isActive: () => false, isEnabled: (s) => isInTable(s),
+    action: { kind: 'command', run: addRow('below') } },
+  { id: 'colLeft', label: '+Col←', ariaLabel: 'Insert column left',
+    isActive: () => false, isEnabled: (s) => isInTable(s),
+    action: { kind: 'command', run: addColumn('left') } },
+  { id: 'colRight', label: '+Col→', ariaLabel: 'Insert column right',
+    isActive: () => false, isEnabled: (s) => isInTable(s),
+    action: { kind: 'command', run: addColumn('right') } },
+  { id: 'delRow', label: '✕Row', ariaLabel: 'Delete row',
+    isActive: () => false, isEnabled: (s) => canDeleteRow(s),
+    action: { kind: 'command', run: deleteRow } },
+  { id: 'delCol', label: '✕Col', ariaLabel: 'Delete column',
+    isActive: () => false, isEnabled: (s) => canDeleteColumn(s),
+    action: { kind: 'command', run: deleteColumn } },
+  { id: 'headerRow', label: 'H.Row', ariaLabel: 'Toggle header row',
+    isActive: (s) => headerRowActive(s), isEnabled: (s) => isInTable(s),
+    action: { kind: 'command', run: toggleHeaderRow } },
+  {
+    id: 'columnAlign', label: 'Align', ariaLabel: 'Column alignment',
+    isActive: () => false, isEnabled: (s) => isInTable(s),
+    action: {
+      kind: 'dropdown',
+      options: [
+        { label: 'Default', value: '' },
+        { label: 'Left', value: 'left' },
+        { label: 'Center', value: 'center' },
+        { label: 'Right', value: 'right' },
+      ],
+      getValue: (s) => getColumnAlign(s) ?? '',
+      run: (v) => setColumnAlign(v === '' ? null : (v as 'left' | 'center' | 'right')),
+    },
+  },
+];

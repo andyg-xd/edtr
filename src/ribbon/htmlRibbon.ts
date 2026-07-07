@@ -11,6 +11,7 @@ import {
   toggleBlockquote, toggleBulletList, toggleOrderedList,
 } from '../commands/htmlBlockCommands';
 import { insertHorizontalRule } from '../commands/htmlStructureCommands';
+import { insertTable, canInsertTable } from '../commands/htmlTableCommands';
 
 const { strong, em, underline, strike, code, link } = htmlSchema.marks;
 const { image } = htmlSchema.nodes;
@@ -80,4 +81,7 @@ export const htmlRibbon: RibbonControl[] = [
     isActive: () => false, isEnabled: (s) => insertHorizontalRule(s),
     action: { kind: 'command', run: insertHorizontalRule },
   },
+  { id: 'insertTable', label: '⊞', ariaLabel: 'Insert table',
+    isActive: () => false, isEnabled: (s) => canInsertTable(s),
+    action: { kind: 'sizePicker', buildCommand: (rows, cols) => insertTable(rows, cols) } },
 ];

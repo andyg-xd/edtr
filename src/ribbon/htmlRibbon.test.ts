@@ -14,7 +14,7 @@ function selState(src: string, from: number, to: number) {
 describe('htmlRibbon', () => {
   it('exposes the inline controls followed by block controls in order', () => {
     expect(htmlRibbon.map((c) => c.id)).toEqual(
-      ['bold', 'italic', 'underline', 'strike', 'code', 'link', 'image', 'heading', 'codeBlock', 'blockquote', 'bulletList', 'orderedList', 'horizontalRule'],
+      ['bold', 'italic', 'underline', 'strike', 'code', 'link', 'image', 'heading', 'codeBlock', 'blockquote', 'bulletList', 'orderedList', 'horizontalRule', 'insertTable'],
     );
   });
 
