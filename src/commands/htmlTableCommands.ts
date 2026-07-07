@@ -176,7 +176,11 @@ export function addRow(dir: 'above' | 'below'): Command {
     const newRow = tableRow.create(null, columnAligns(ctx.table).map((a) => emptyCell(false, a)));
     const rows = rowsOf(ctx.table);
     rows.splice(at, 0, newRow);
-    if (dispatch) dispatch(replaceTableTr(state, ctx, table.create(ctx.table.attrs, rows), at, 0));
+    // Keep the cursor in the row/cell the user was editing (not the new empty
+    // row), so the reference point for the next op stays stable. Inserting
+    // above shifts the original row down by one.
+    const cursorRow = dir === 'above' ? ctx.rowIndex + 1 : ctx.rowIndex;
+    if (dispatch) dispatch(replaceTableTr(state, ctx, table.create(ctx.table.attrs, rows), cursorRow, ctx.colIndex));
     return true;
   };
 }
@@ -218,7 +222,11 @@ export function addColumn(dir: 'left' | 'right'): Command {
       cells.splice(at, 0, emptyCell(rowIsHeader(row), null));
       return tableRow.create(row.attrs, cells);
     });
-    if (dispatch) dispatch(replaceTableTr(state, ctx, table.create(ctx.table.attrs, rows), ctx.rowIndex, at));
+    // Keep the cursor in the cell the user was editing (not the new empty cell),
+    // so the reference point for the next op stays stable/visible. Inserting to
+    // the left shifts the original cell right by one.
+    const cursorCol = dir === 'left' ? ctx.colIndex + 1 : ctx.colIndex;
+    if (dispatch) dispatch(replaceTableTr(state, ctx, table.create(ctx.table.attrs, rows), ctx.rowIndex, cursorCol));
     return true;
   };
 }

@@ -216,3 +216,44 @@ describe('htmlTableCommands — insert table', () => {
     expect(insertTable(2, 2)(state, () => {})).toBe(false);
   });
 });
+
+// Regression: an add-op must leave the cursor in the cell the user was editing —
+// NOT the new empty cell. Landing in the (invisible) empty cell shifts the
+// reference point for the next toolbar op, which made +Col←/+Col→ appear to
+// pick a side sporadically.
+describe('htmlTableCommands — add-op keeps the cursor in the edited cell', () => {
+  it('addColumn("right"): cursor stays in the original cell, new empty column to its right', () => {
+    const state = cursorAt(stateFor('<table><tr><td>A</td><td>B</td><td>C</td></tr></table>'), 'B');
+    const next = run(state, addColumn('right'));
+    const ctx = findTable(next.selection.$from)!;
+    expect(ctx.table.child(0).child(ctx.colIndex).textContent).toBe('B');        // cursor still in B
+    expect(ctx.table.child(0).child(ctx.colIndex + 1).textContent).toBe('');     // new empty col to the RIGHT of B
+  });
+
+  it('addColumn("left"): cursor stays in the original cell, new empty column to its left', () => {
+    const state = cursorAt(stateFor('<table><tr><td>A</td><td>B</td></tr></table>'), 'B');
+    const next = run(state, addColumn('left'));
+    const ctx = findTable(next.selection.$from)!;
+    expect(ctx.table.child(0).child(ctx.colIndex).textContent).toBe('B');        // cursor still in B
+    expect(ctx.table.child(0).child(ctx.colIndex - 1).textContent).toBe('');     // new empty col to the LEFT of B
+  });
+
+  it('repeated addColumn("right") reliably adds to the right of the same cell (no side drift)', () => {
+    let state = cursorAt(stateFor('<table><tr><td>A</td><td>B</td></tr></table>'), 'B');
+    state = run(state, addColumn('right'));
+    state = run(state, addColumn('right'));
+    const ctx = findTable(state.selection.$from)!;
+    expect(ctx.colCount).toBe(4);
+    expect(ctx.table.child(0).child(ctx.colIndex).textContent).toBe('B');        // cursor never drifted off B
+    expect(ctx.table.child(0).child(ctx.colIndex + 1).textContent).toBe('');     // both inserts landed to B's right
+    expect(ctx.table.child(0).child(ctx.colIndex + 2).textContent).toBe('');
+  });
+
+  it('addRow("below"): cursor stays in the original row/cell', () => {
+    const state = cursorAt(stateFor('<table><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></table>'), 'B');
+    const next = run(state, addRow('below'));
+    const ctx = findTable(next.selection.$from)!;
+    expect(ctx.rowIndex).toBe(0);                                                    // still in the original (first) row
+    expect(ctx.table.child(ctx.rowIndex).child(ctx.colIndex).textContent).toBe('B'); // still in B
+  });
+});
