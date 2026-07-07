@@ -287,6 +287,29 @@ export const toggleHeaderRow: Command = (state, dispatch) => {
   return true;
 };
 
+export function headerColumnActive(state: EditorState): boolean {
+  const ctx = findTable(state.selection.$from);
+  if (!ctx || ctx.table.childCount === 0) return false;
+  let all = true;
+  ctx.table.forEach((row) => { if (!row.child(0).attrs.header) all = false; });
+  return all;
+}
+export const toggleHeaderColumn: Command = (state, dispatch) => {
+  const ctx = findTable(state.selection.$from);
+  if (!ctx) return false;
+  const makeHeader = !headerColumnActive(state);
+  const rows = rowsOf(ctx.table).map((row) => {
+    const cells = cellsOf(row);
+    cells[0] = withHeader(cells[0], makeHeader); // flip only column 0
+    return tableRow.create(row.attrs, cells);
+  });
+  const newTable = table.create(ctx.table.attrs, rows);
+  const row = Math.min(ctx.rowIndex, newTable.childCount - 1);
+  const col = Math.min(ctx.colIndex, ctx.colCount - 1);
+  if (dispatch) dispatch(replaceTableTr(state, ctx, newTable, row, col));
+  return true;
+};
+
 export type { Align };
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@ import { htmlSchema } from './htmlSchema';
 import { dirtyTrackingPlugin, getDirtyBlockIds } from './dirtyTracking';
 import { blockIdentityPlugin } from './blockIdentity';
 import { htmlWriteBack } from './ViewSync';
-import { addRow, setColumnAlign, toggleHeaderRow, insertTable } from '../commands/htmlTableCommands';
+import { addRow, setColumnAlign, toggleHeaderRow, toggleHeaderColumn, insertTable } from '../commands/htmlTableCommands';
 
 function editable(src: string) {
   const r = toLiveHtml(src);
@@ -120,5 +120,15 @@ describe('HTML table structural ops (no-beautify)', () => {
     const out = htmlWriteBack(edited.doc, src, getDirtyBlockIds(edited), baselineDoc);
     expect(out).toContain('<p>keep</p>\n<table><thead>');   // neighbor byte-identical AND new table follows it in order
     expect((out.match(/<td>/g) ?? []).length).toBe(2);        // 2×2 with 1 header row → 2 body cells
+  });
+
+  it('toggleHeaderColumn serializes column 0 as <th> row-headers (no <thead>); sibling byte-identical', () => {
+    const src = '<!doctype html>\n<html>\n<body>\n<table><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></table>\n<p>tail</p>\n</body>\n</html>\n';
+    const { state, baselineDoc } = editable(src);
+    const edited = runAt(state, 'a', toggleHeaderColumn);
+    const out = htmlWriteBack(edited.doc, src, getDirtyBlockIds(edited), baselineDoc);
+    expect(out).toContain('<tbody><tr><th>a</th><td>b</td></tr><tr><th>c</th><td>d</td></tr></tbody>'); // col 0 → <th>, in <tbody>
+    expect(out).not.toContain('<thead>');                     // no row is all-<th> → no thead
+    expect(out).toContain('</table>\n<p>tail</p>');            // untouched sibling byte-identical
   });
 });

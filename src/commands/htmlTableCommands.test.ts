@@ -8,6 +8,7 @@ import {
   addRow, deleteRow, canDeleteRow,
   addColumn, deleteColumn, canDeleteColumn,
   setColumnAlign, getColumnAlign, toggleHeaderRow, headerRowActive,
+  toggleHeaderColumn, headerColumnActive,
   buildEmptyTable, insertTable, canInsertTable,
 } from './htmlTableCommands';
 import type { Command } from 'prosemirror-state';
@@ -189,6 +190,36 @@ describe('htmlTableCommands — alignment + header toggle', () => {
     const off = run(on, toggleHeaderRow);
     const ctxOff = findTable(off.selection.$from)!;
     expect(ctxOff.table.child(0).child(0).attrs.header).toBe(false);
+  });
+});
+
+describe('htmlTableCommands — header column toggle', () => {
+  it('toggleHeaderColumn makes column 0 all <th> (every row) and toggles back', () => {
+    const state = cursorAt(stateFor('<table><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></table>'), 'a');
+    expect(headerColumnActive(state)).toBe(false);
+    const on = run(state, toggleHeaderColumn);
+    const ctx = findTable(on.selection.$from)!;
+    expect(ctx.table.child(0).child(0).attrs.header).toBe(true);   // row 0, col 0
+    expect(ctx.table.child(1).child(0).attrs.header).toBe(true);   // row 1, col 0
+    expect(ctx.table.child(0).child(1).attrs.header).toBe(false);  // col 1 untouched
+    expect(headerColumnActive(on)).toBe(true);
+    const off = run(on, toggleHeaderColumn);
+    expect(findTable(off.selection.$from)!.table.child(0).child(0).attrs.header).toBe(false);
+  });
+
+  it('targets column 0 regardless of the cursor column', () => {
+    const state = cursorAt(stateFor('<table><tr><td>a</td><td>b</td></tr></table>'), 'b'); // cursor in col 1
+    const on = run(state, toggleHeaderColumn);
+    const ctx = findTable(on.selection.$from)!;
+    expect(ctx.table.child(0).child(0).attrs.header).toBe(true);   // col 0 flipped
+    expect(ctx.table.child(0).child(1).attrs.header).toBe(false);  // the cursor's column untouched
+  });
+
+  it('preserves blockId (rides the reconciler)', () => {
+    const state = cursorAt(stateFor('<table><tr><td>a</td></tr></table>'), 'a');
+    const before = findTable(state.selection.$from)!.table.attrs.blockId;
+    const on = run(state, toggleHeaderColumn);
+    expect(findTable(on.selection.$from)!.table.attrs.blockId).toBe(before);
   });
 });
 
