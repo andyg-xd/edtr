@@ -1,49 +1,27 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import type { Node as PMNode } from 'prosemirror-model';
-import type { EditorView } from 'prosemirror-view';
+import { useCallback, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { WindowChrome, type ViewMode } from './WindowChrome';
+import { WindowChrome } from './WindowChrome';
 import { CloseGuard } from './CloseGuard';
 import { useShortcutsAndCloseGuard } from './MenuBridge';
-import { CodeView } from '../views/CodeView';
-import { LiveView } from '../views/LiveView';
-import { toLiveHtml, type HtmlLiveResult } from '../views/htmlModel';
-import { HtmlLiveView } from '../views/HtmlLiveView';
-import { RibbonView } from '../ribbon/RibbonView';
-import { markdownRibbon } from '../ribbon/markdownRibbon';
-import { markdownTableRibbon } from '../ribbon/markdownTableRibbon';
-import { isInTable } from '../commands/markdownTableCommands';
-import { toLive, writeBack, htmlWriteBack } from '../views/ViewSync';
-import { htmlRibbon } from '../ribbon/htmlRibbon';
-import { htmlTableRibbon } from '../ribbon/htmlTableRibbon';
-import { isInTable as isHtmlInTable } from '../commands/htmlTableCommands';
+import { DocumentView, type DocumentViewHandle } from './DocumentView';
 import { openViaDialog, saveSession } from '../files/fileController';
 import { DocumentSession } from '../files/documentSession';
 import { basename } from '../files/fileTypes';
-import { detectFlavor } from '../doc/flavor';
 import { useTheme } from '../settings/useTheme';
-import { copyImageIntoAssets, resolveImageDisplaySrc, IMAGE_EXTS } from '../files/imageAssets';
-import { insertImage } from '../commands/markdownInlineCommands';
-import { insertImage as htmlInsertImage } from '../commands/htmlInlineCommands';
+import type { OpenDoc, ViewMode } from '../files/openDocuments';
 
 export function EditorWindow() {
   const [session, setSession] = useState<DocumentSession | null>(null);
-  const [openCount, setOpenCount] = useState(0); // bumps CodeView's key per file
-  const [, tick] = useReducer((x: number) => x + 1, 0); // re-render on dirty change
+  const [openCount, setOpenCount] = useState(0);
+  const [viewMode, setViewMode] = useState<ViewMode>('code');
   const [error, setError] = useState<string | null>(null);
   const [showCloseGuard, setShowCloseGuard] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('code');
-
-  const liveBaselineRef = useRef<string>('');           // source when Live was entered
-  const liveBaselineDocRef = useRef<PMNode | null>(null); // live doc as of enter-Live
-  const liveDocRef = useRef<PMNode | null>(null);       // latest live doc
-  const liveDirtyRef = useRef<Set<string>>(new Set());
-  const [liveHasEdits, setLiveHasEdits] = useState(false);
-  const [liveView, setLiveView] = useState<EditorView | null>(null);
-  const [, bumpRibbon] = useReducer((x: number) => x + 1, 0); // re-render ribbon on selection change
-  const [linkRequest, bumpLinkRequest] = useReducer((x: number) => x + 1, 0); // ⌘K
+  const [activeDirty, setActiveDirty] = useState(false);
+  const [activeLiveAvailable, setActiveLiveAvailable] = useState(false);
   const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme();
+  const viewRef = useRef<DocumentViewHandle>(null);
+
+  const active: OpenDoc | null = session ? { id: String(openCount), session, viewMode } : null;
 
   const handleOpen = useCallback(async () => {
     try {
@@ -53,192 +31,29 @@ export function EditorWindow() {
         setOpenCount((n) => n + 1);
         setViewMode('code');
         setError(null);
-        setLiveHasEdits(false);
-        liveDocRef.current = null;
-        liveDirtyRef.current = new Set();
-        setLiveView(null);
+        setActiveDirty(false);
+        setActiveLiveAvailable(false);
       }
     } catch (e) {
       setError(`Could not open file: ${String(e)}`);
     }
   }, []);
 
-  const handleChange = useCallback(
-    (text: string) => {
-      if (!session) return;
-      session.setCurrentText(text);
-      tick();
-    },
-    [session],
-  );
-
-  // Build the Live doc only for a markdown session; guard against parse errors.
-  const live = useMemo(() => {
-    if (!session || session.format !== 'markdown') return null;
-    try {
-      return toLive(session.text, session?.path ?? null);
-    } catch (e) {
-      return { ok: false as const, degrade: true as const, reason: String(e) };
-    }
-    // Re-derive when the file changes (openCount) or the mode flips to live,
-    // or when session.text is mutated (tracked via version counter).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openCount, viewMode, session, session?.version]);
-
-  // Build the Live doc only for an HTML session; guard against parse errors.
-  const liveHtml = useMemo<HtmlLiveResult | null>(() => {
-    if (!session || session.format !== 'html') return null;
-    try {
-      return toLiveHtml(session.text, session?.path ?? null);
-    } catch (e) {
-      return { ok: false as const, degrade: true as const, reason: String(e) };
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openCount, viewMode, session, session?.version]);
-
-  const liveAvailable =
-    !!session &&
-    ((session.format === 'markdown' && !!live && live.ok) ||
-      (session.format === 'html' && !!liveHtml && liveHtml.ok));
-  const showLive = viewMode === 'live' && liveAvailable;
-  const degraded =
-    viewMode === 'live' &&
-    !!session &&
-    ((session.format === 'markdown' && !!live && !live.ok) ||
-      (session.format === 'html' && !!liveHtml && !liveHtml.ok));
-
-  // Capture the baseline source whenever we (re)enter Live with a fresh doc.
-  useEffect(() => {
-    const active =
-      session?.format === 'html' ? liveHtml : session?.format === 'markdown' ? live : null;
-    if (showLive && active && active.ok) {
-      liveBaselineRef.current = session!.text;
-      liveBaselineDocRef.current = active.doc;   // stash baseline doc for writeBack
-      liveDocRef.current = active.doc;
-      liveDirtyRef.current = new Set();
-      setLiveHasEdits(false);
-    }
-    // `session` is intentionally excluded: baseline is (re)captured only on
-    // enter-Live (showLive) or file-switch (openCount), never mid-edit.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showLive, openCount]);
-
-  // Kept current for the single, mount-once drag-drop listener below.
-  const liveViewRef = useRef(liveView);
-  liveViewRef.current = liveView;
-  const showLiveRef = useRef(showLive);
-  showLiveRef.current = showLive;
-  const dropDocPathRef = useRef<string | null>(session?.path ?? null);
-  dropDocPathRef.current = session?.path ?? null;
-  const dropFormatRef = useRef(session?.format ?? null);
-  dropFormatRef.current = session?.format ?? null;
-
-  // Local-image drag-drop. Registered ONCE for the window's lifetime; the
-  // handler reads the current view/path/mode via refs, so repeated Live<->Code
-  // toggles or file switches never accumulate duplicate listeners.
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    let disposed = false;
-    getCurrentWebview()
-      .onDragDropEvent(async (e) => {
-        if (e.payload.type !== 'drop') return;
-        const view = liveViewRef.current;
-        const docPath = dropDocPathRef.current;
-        if (!showLiveRef.current || !view || view.isDestroyed || !docPath) return;
-        const imgs = e.payload.paths.filter((p) =>
-          IMAGE_EXTS.includes((p.split('.').pop() ?? '').toLowerCase() as (typeof IMAGE_EXTS)[number]),
-        );
-        if (imgs.length === 0) return; // let non-image drops be
-        // Insert at the current cursor (same as paste). The WebView can't map a
-        // drop point to a reliable document position, so we don't use coordinates;
-        // the user places the cursor, then drops.
-        view.focus();
-        for (const path of imgs) {
-          try {
-            const rel = await copyImageIntoAssets(docPath, path);
-            if (disposed || view.isDestroyed) return;
-            const display = resolveImageDisplaySrc(rel, docPath);
-            if (dropFormatRef.current === 'html') {
-              htmlInsertImage(rel, null, display)(view.state, view.dispatch);
-            } else {
-              insertImage(rel, null, null, display)(view.state, view.dispatch);
-            }
-          } catch (err) {
-            if (!disposed) setError(`Could not insert the dropped image. ${String(err)}`);
-          }
-        }
-      })
-      .then((fn) => {
-        if (disposed) fn();
-        else unlisten = fn;
-      });
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-    // Registered once; the handler reads live values via refs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleLiveEdit = useCallback((doc: PMNode, dirtyIds: Set<string>) => {
-    liveDocRef.current = doc;
-    liveDirtyRef.current = dirtyIds;
-    setLiveHasEdits(dirtyIds.size > 0);
-  }, []);
-
-  const flushLiveToSource = useCallback((): boolean => {
-    if (!session || !liveDocRef.current || liveDirtyRef.current.size === 0) return true;
-    try {
-      const newSource =
-        session.format === 'html'
-          ? htmlWriteBack(
-              liveDocRef.current,
-              liveBaselineRef.current,
-              liveDirtyRef.current,
-              liveBaselineDocRef.current ?? undefined,
-            )
-          : writeBack(
-              liveDocRef.current,
-              liveBaselineRef.current,
-              liveDirtyRef.current,
-              detectFlavor(liveBaselineRef.current, 'markdown'),
-              liveBaselineDocRef.current ?? undefined,
-            );
-      session.setCurrentText(newSource);
-      liveDirtyRef.current = new Set();
-      setLiveHasEdits(false);
-      setError(null); // clear any prior serializer-error banner on success
-      return true;
-    } catch (e) {
-      // Never corrupt or lose work: keep the live edits, surface a non-destructive
-      // error, stay editable, and report failure so callers don't proceed.
-      setError(
-        `Edtr couldn't safely convert one of your edits back to ${session.format === 'html' ? 'HTML' : 'Markdown'}. ` +
-          `Your work is still here in Live view. Please adjust that edit and try again. ${String(e)}`,
-      );
-      return false;
-    }
-  }, [session]);
-
-  const dirty = (session?.isDirty() ?? false) || liveHasEdits;
-
   const handleSave = useCallback(async (): Promise<boolean> => {
-    if (showLive && !flushLiveToSource()) return false; // flush failed → do not save
-    if (!session || !session.isDirty()) {
-      setLiveHasEdits(false);
-      return true;
-    }
+    if (!active) return true;
+    if (active.viewMode === 'live' && viewRef.current && !viewRef.current.flushToSource()) return false;
+    if (!active.session.isDirty()) { setActiveDirty(false); return true; }
     try {
-      await saveSession(session);
-      setLiveHasEdits(false);
-      tick();
+      await saveSession(active.session);
+      setActiveDirty(false);
       return true;
     } catch (e) {
       setError(`Could not save — your changes are safe in the editor. ${String(e)}`);
       return false;
     }
-  }, [session, showLive, flushLiveToSource]);
+  }, [active]);
 
+  const dirty = active ? activeDirty : false;
   const requestClose = useCallback(() => {
     if (dirty) setShowCloseGuard(true);
     else getCurrentWindow().destroy();
@@ -246,16 +61,20 @@ export function EditorWindow() {
 
   useShortcutsAndCloseGuard({ onOpen: handleOpen, onSave: handleSave, onCloseRequest: requestClose });
 
+  const effectiveViewMode: ViewMode = active && active.viewMode === 'live' && activeLiveAvailable ? 'live' : 'code';
+  const degraded = !!active && active.viewMode === 'live' && !activeLiveAvailable;
+
   return (
     <div className="editor-window">
       <WindowChrome
-        name={session ? basename(session.path) : null}
+        name={active ? basename(active.session.path) : null}
         dirty={dirty}
-        viewMode={showLive ? 'live' : 'code'}
-        liveDisabled={!liveAvailable}
+        viewMode={effectiveViewMode}
+        liveDisabled={!activeLiveAvailable}
         onSetViewMode={(m) => {
-          if (m === 'live' && !liveAvailable) return;
-          if (m === 'code' && showLive && !flushLiveToSource()) return; // flush failed → stay in Live
+          if (!active) return;
+          if (m === 'live' && !activeLiveAvailable) return;
+          if (m === 'code' && active.viewMode === 'live' && viewRef.current && !viewRef.current.flushToSource()) return;
           setViewMode(m);
         }}
         themeMode={themeMode}
@@ -267,91 +86,18 @@ export function EditorWindow() {
         </div>
       )}
       {error && (
-        <div className="notice notice-error" role="alert">
-          {error}
-        </div>
+        <div className="notice notice-error" role="alert">{error}</div>
       )}
-      {session ? (
-        showLive && session.format === 'html' && liveHtml && liveHtml.ok ? (
-          <>
-            {liveView && (
-              <RibbonView
-                view={liveView}
-                controls={htmlRibbon}
-                linkRequest={linkRequest}
-                docPath={session?.path ?? null}
-                onError={setError}
-              />
-            )}
-            {liveView && isHtmlInTable(liveView.state) && (
-              <div className="ribbon-context">
-                <RibbonView
-                  view={liveView}
-                  controls={htmlTableRibbon}
-                  ariaLabel="Table tools"
-                  docPath={session?.path ?? null}
-                  onError={setError}
-                />
-              </div>
-            )}
-            <HtmlLiveView
-              key={`htmllive-${openCount}`}
-              doc={liveHtml.doc}
-              styleText={liveHtml.styleText}
-              bodyAttrs={liveHtml.bodyAttrs}
-              rootAttrs={liveHtml.rootAttrs}
-              editable
-              docPath={session?.path ?? null}
-              onEdit={handleLiveEdit}
-              onViewReady={setLiveView}
-              onStateChange={bumpRibbon}
-              onLinkShortcut={bumpLinkRequest}
-              onError={setError}
-            />
-          </>
-        ) : showLive && live && live.ok ? (
-          <>
-            {liveView && (
-              <RibbonView
-                view={liveView}
-                controls={markdownRibbon}
-                linkRequest={linkRequest}
-                docPath={session?.path ?? null}
-                onError={setError}
-              />
-            )}
-            {liveView && isInTable(liveView.state) && (
-              <div className="ribbon-context">
-                <RibbonView
-                  view={liveView}
-                  controls={markdownTableRibbon}
-                  ariaLabel="Table tools"
-                  docPath={session?.path ?? null}
-                  onError={setError}
-                />
-              </div>
-            )}
-            <LiveView
-              key={`live-${openCount}`}
-              doc={live.doc}
-              editable
-              onEdit={handleLiveEdit}
-              onViewReady={setLiveView}
-              onStateChange={bumpRibbon}
-              onLinkShortcut={bumpLinkRequest}
-              docPath={session?.path ?? null}
-              onError={setError}
-            />
-          </>
-        ) : (
-          <CodeView
-            key={openCount}
-            initialText={session.text}
-            format={session.format}
-            effectiveTheme={themeEffective}
-            onChange={handleChange}
-          />
-        )
+      {active ? (
+        <DocumentView
+          key={active.id}
+          ref={viewRef}
+          doc={active}
+          effectiveTheme={themeEffective}
+          onDirtyChange={setActiveDirty}
+          onLiveAvailableChange={setActiveLiveAvailable}
+          onError={setError}
+        />
       ) : (
         <div className="empty-state">
           <button onClick={handleOpen}>Open a file… (⌘O)</button>
@@ -361,15 +107,10 @@ export function EditorWindow() {
         <CloseGuard
           onSave={async () => {
             const saved = await handleSave();
-            if (!saved) {
-              setShowCloseGuard(false);
-              return;
-            }
             setShowCloseGuard(false);
-            getCurrentWindow().destroy();
+            if (saved) getCurrentWindow().destroy();
           }}
           onDiscard={() => {
-            setLiveHasEdits(false);
             setShowCloseGuard(false);
             getCurrentWindow().destroy();
           }}
