@@ -241,3 +241,21 @@ describe('table serialization (4d-iv-a)', () => {
     );
   });
 });
+
+describe('serializeTable — alignment', () => {
+  const { table: tableNode, tableRow, tableCell, paragraph } = htmlSchema.nodes;
+  const cell = (align: string | null, text: string, header = false) =>
+    tableCell.create({ header, align }, paragraph.create({ htmlAttrs: {} }, text ? [htmlSchema.text(text)] : undefined));
+
+  it('emits text-align via style for an aligned cell', () => {
+    const t = tableNode.create({ htmlAttrs: {}, blockId: 'h0', srcFrom: 0, srcTo: 0 }, [tableRow.create({ htmlAttrs: {} }, [cell('center', 'a')])]);
+    expect(serializeHtmlBlock(t)).toBe('<table><tbody><tr><td style="text-align:center">a</td></tr></tbody></table>');
+  });
+
+  it('merges text-align into an existing style, preserving other declarations', () => {
+    const c = tableCell.create({ header: false, align: 'right', htmlAttrs: { style: 'color:red' } },
+      paragraph.create({ htmlAttrs: {} }, [htmlSchema.text('b')]));
+    const t = tableNode.create({ htmlAttrs: {}, blockId: 'h0', srcFrom: 0, srcTo: 0 }, [tableRow.create({ htmlAttrs: {} }, [c])]);
+    expect(serializeHtmlBlock(t)).toBe('<table><tbody><tr><td style="color:red; text-align:right">b</td></tr></tbody></table>');
+  });
+});

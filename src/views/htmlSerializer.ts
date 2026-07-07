@@ -1,4 +1,5 @@
 import type { Node as PMNode, Mark } from 'prosemirror-model';
+import { mergeTextAlign } from './htmlSchema';
 
 /** Thrown when a node type has no serializer arm (schema-invariant guard). */
 export class HtmlSerializeError extends Error {}
@@ -113,11 +114,17 @@ function serializeTable(node: PMNode): string {
   node.forEach((r) => rows.push(r));
   let split = 0;
   while (split < rows.length && isHeaderRow(rows[split])) split++;
+  const cellAttrs = (cell: PMNode): string => {
+    const bag = { ...(cell.attrs.htmlAttrs as Record<string, string>) };
+    const align = cell.attrs.align as string | null;
+    if (align) bag.style = mergeTextAlign(bag.style, align);
+    return serializeAttrs(bag);
+  };
   const serializeRow = (r: PMNode) => {
     let cells = '';
     r.forEach((cell) => {
       const tag = cell.attrs.header ? 'th' : 'td';
-      cells += `<${tag}${attrs(cell)}>${serializeItemLikeContent(cell)}</${tag}>`;
+      cells += `<${tag}${cellAttrs(cell)}>${serializeItemLikeContent(cell)}</${tag}>`;
     });
     return `<tr${attrs(r)}>${cells}</tr>`;
   };
