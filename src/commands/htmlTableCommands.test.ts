@@ -3,7 +3,17 @@ import { describe, it, expect } from 'vitest';
 import { EditorState, TextSelection } from 'prosemirror-state';
 import { toLiveHtml } from '../views/htmlModel';
 import { htmlSchema } from '../views/htmlSchema';
-import { findTable, isInTable, goToNextCell, arrowVertical } from './htmlTableCommands';
+import {
+  findTable, isInTable, goToNextCell, arrowVertical,
+  addRow, deleteRow, canDeleteRow,
+} from './htmlTableCommands';
+import type { Command } from 'prosemirror-state';
+
+function run(state: EditorState, cmd: Command): EditorState {
+  let out = state;
+  cmd(state, (tr) => { out = state.apply(tr); });
+  return out;
+}
 
 function stateFor(bodyHtml: string) {
   const r = toLiveHtml(`<html><body>${bodyHtml}</body></html>`);
@@ -79,5 +89,40 @@ describe('htmlTableCommands — arrowVertical', () => {
   it('ArrowUp at the top row returns false (lets the cursor exit the table)', () => {
     const state = cursorAt(stateFor('<table><tr><td>a</td></tr></table>'), 'a');
     expect(arrowVertical('up')(state, () => {})).toBe(false);
+  });
+});
+
+describe('htmlTableCommands — row ops', () => {
+  it('addRow("below") inserts a body row of empty cells and preserves blockId', () => {
+    const state = cursorAt(stateFor('<table><tr><td>a</td><td>b</td></tr></table>'), 'a');
+    const before = findTable(state.selection.$from)!.table.attrs.blockId;
+    const next = run(state, addRow('below'));
+    const ctx = findTable(next.selection.$from)!;
+    expect(ctx.table.childCount).toBe(2);
+    expect(ctx.table.child(1).childCount).toBe(2);       // 2 columns
+    expect(ctx.table.child(1).child(0).attrs.header).toBe(false);
+    expect(ctx.table.child(1).child(0).type.name).toBe('tableCell');
+    expect(ctx.table.child(1).child(0).firstChild!.type.name).toBe('paragraph'); // block+ satisfied
+    expect(ctx.table.attrs.blockId).toBe(before);        // same block → reconciler re-serializes in place
+  });
+
+  it('addRow("above") inserts above the current row (allowed at row 0 in HTML)', () => {
+    const state = cursorAt(stateFor('<table><tr><td>a</td></tr></table>'), 'a');
+    const next = run(state, addRow('above'));
+    expect(findTable(next.selection.$from)!.table.childCount).toBe(2);
+  });
+
+  it('deleteRow removes the current row without promoting (min 1 row)', () => {
+    const state = cursorAt(stateFor('<table><tr><th>h</th></tr><tr><td>a</td></tr></table>'), 'a');
+    const next = run(state, deleteRow);
+    const ctx = findTable(next.selection.$from)!;
+    expect(ctx.table.childCount).toBe(1);
+    expect(ctx.table.child(0).child(0).attrs.header).toBe(true); // surviving header stays a header
+  });
+
+  it('canDeleteRow is false at a single-row table', () => {
+    const state = cursorAt(stateFor('<table><tr><td>a</td></tr></table>'), 'a');
+    expect(canDeleteRow(state)).toBe(false);
+    expect(deleteRow(state, () => {})).toBe(false);
   });
 });
