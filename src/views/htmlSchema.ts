@@ -21,6 +21,16 @@ const attrBag = { htmlAttrs: { default: {} as Record<string, string> } };
 const domAttrs = (n: { attrs: { htmlAttrs?: Record<string, string> } }) =>
   safeAttrs((n.attrs.htmlAttrs ?? {}) as Record<string, string>);
 
+/** Merge `text-align:<align>` into a style string: drop any existing text-align, append. */
+export function mergeTextAlign(style: string | undefined, align: string): string {
+  const decls = (style ?? '')
+    .split(';')
+    .map((d) => d.trim())
+    .filter((d) => d && !/^text-align\s*:/i.test(d));
+  decls.push(`text-align:${align}`);
+  return decls.join('; ');
+}
+
 const nodes: Record<string, NodeSpec> = {
   doc: { content: 'block+' },
 
@@ -72,13 +82,17 @@ const nodes: Record<string, NodeSpec> = {
     toDOM: (n) => ['tr', domAttrs(n), 0],
   },
 
-  // Span-free, block-content cell. `header` → <th> vs <td>. No source range
-  // (never top-level; the enclosing `table` is the reconciled block).
+  // Span-free, block-content cell. `header` → <th> vs <td>; `align` → text-align.
   tableCell: {
     content: 'block+',
     isolating: true,
-    attrs: { header: { default: false }, ...attrBag },
-    toDOM: (n) => [n.attrs.header ? 'th' : 'td', domAttrs(n), 0],
+    attrs: { header: { default: false }, align: { default: null }, ...attrBag },
+    toDOM: (n) => {
+      const tag = n.attrs.header ? 'th' : 'td';
+      const a = domAttrs(n);
+      if (n.attrs.align) a.style = mergeTextAlign(a.style, n.attrs.align as string);
+      return [tag, a, 0];
+    },
   },
 
   bulletList: {

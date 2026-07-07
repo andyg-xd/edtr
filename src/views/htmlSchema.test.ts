@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { htmlSchema } from './htmlSchema';
+import { htmlSchema, mergeTextAlign } from './htmlSchema';
 
 describe('htmlSchema', () => {
   it('renders a paragraph with its html attributes', () => {
@@ -120,5 +120,28 @@ describe('htmlSchema', () => {
     const tSpec = htmlSchema.nodes.table.spec.toDOM!(t) as [string, Record<string, string>, [string, number]];
     expect(tSpec[0]).toBe('table');
     expect(tSpec[2]).toEqual(['tbody', 0]);
+  });
+
+  describe('tableCell alignment', () => {
+    const { tableCell, paragraph } = htmlSchema.nodes;
+
+    it('toDOM renders text-align in the cell style when align is set', () => {
+      const cell = tableCell.create({ header: false, align: 'center' }, paragraph.create({ htmlAttrs: {} }));
+      const dom = tableCell.spec.toDOM!(cell) as [string, Record<string, string>, number];
+      expect(dom[0]).toBe('td');
+      expect(dom[1].style).toContain('text-align:center');
+    });
+
+    it('toDOM omits text-align when align is null', () => {
+      const cell = tableCell.create({ header: true, align: null }, paragraph.create({ htmlAttrs: {} }));
+      const dom = tableCell.spec.toDOM!(cell) as [string, Record<string, string>, number];
+      expect(dom[0]).toBe('th');
+      expect(dom[1].style ?? '').not.toContain('text-align');
+    });
+
+    it('mergeTextAlign appends onto an empty style and replaces an existing text-align', () => {
+      expect(mergeTextAlign(undefined, 'center')).toBe('text-align:center');
+      expect(mergeTextAlign('color:red; text-align:left', 'right')).toBe('color:red; text-align:right');
+    });
   });
 });
