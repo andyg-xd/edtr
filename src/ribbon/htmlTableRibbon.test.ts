@@ -19,7 +19,7 @@ describe('htmlTableRibbon', () => {
   it('exposes the row/col/align/header controls, enabled inside a table', () => {
     const state = cursorInCell();
     const ids = htmlTableRibbon.map((c) => c.id);
-    expect(ids).toEqual(expect.arrayContaining(['rowAbove', 'rowBelow', 'colLeft', 'colRight', 'delRow', 'delCol', 'columnAlign', 'headerRow']));
+    expect(ids).toEqual(expect.arrayContaining(['rowAbove', 'rowBelow', 'colLeft', 'colRight', 'delRow', 'delCol', 'columnAlign', 'headerRow', 'headerCol']));
     for (const c of htmlTableRibbon) expect(c.isEnabled(state)).toBe(true);
   });
 
@@ -28,6 +28,14 @@ describe('htmlTableRibbon', () => {
     const align = htmlTableRibbon.find((c) => c.id === 'columnAlign')!;
     expect(align.action.kind).toBe('dropdown');
     if (align.action.kind === 'dropdown') expect(align.action.getValue(state)).toBe(''); // default
+  });
+
+  it('exposes a header-column toggle enabled in a table, inactive when column 0 is not a header', () => {
+    const state = cursorInCell(); // <td> table → column 0 is not a header
+    const ctrl = htmlTableRibbon.find((c) => c.id === 'headerCol')!;
+    expect(ctrl).toBeTruthy();
+    expect(ctrl.isEnabled(state)).toBe(true);
+    expect(ctrl.isActive(state)).toBe(false);
   });
 });
 

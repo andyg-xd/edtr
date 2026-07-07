@@ -5,6 +5,7 @@ import {
   addColumn, deleteColumn, canDeleteColumn,
   setColumnAlign, getColumnAlign,
   toggleHeaderRow, headerRowActive,
+  toggleHeaderColumn, headerColumnActive,
 } from '../commands/htmlTableCommands';
 
 export const htmlTableRibbon: RibbonControl[] = [
@@ -29,6 +30,9 @@ export const htmlTableRibbon: RibbonControl[] = [
   { id: 'headerRow', label: 'H.Row', ariaLabel: 'Toggle header row',
     isActive: (s) => headerRowActive(s), isEnabled: (s) => isInTable(s),
     action: { kind: 'command', run: toggleHeaderRow } },
+  { id: 'headerCol', label: 'H.Col', ariaLabel: 'Toggle header column',
+    isActive: (s) => headerColumnActive(s), isEnabled: (s) => isInTable(s),
+    action: { kind: 'command', run: toggleHeaderColumn } },
   {
     id: 'columnAlign', label: 'Align', ariaLabel: 'Column alignment',
     isActive: () => false, isEnabled: (s) => isInTable(s),
