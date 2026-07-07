@@ -105,11 +105,12 @@ describe('HTML table structural ops (no-beautify)', () => {
   });
 
   it('toggleHeaderRow promotes row 0 into a canonical <thead>', () => {
-    const src = '<!doctype html>\n<html>\n<body>\n<table><tr><td>a</td></tr></table>\n</body>\n</html>\n';
+    const src = '<!doctype html>\n<html>\n<body>\n<table><tr><td>a</td></tr></table>\n<p>tail</p>\n</body>\n</html>\n';
     const { state, baselineDoc } = editable(src);
     const edited = runAt(state, 'a', toggleHeaderRow);
     const out = htmlWriteBack(edited.doc, src, getDirtyBlockIds(edited), baselineDoc);
     expect(out).toContain('<thead><tr><th>a</th></tr></thead>');
+    expect(out).toContain('</table>\n<p>tail</p>');   // untouched sibling byte-identical
   });
 
   it('inserting a table adds a canonical new block without disturbing neighbors', () => {
@@ -117,8 +118,7 @@ describe('HTML table structural ops (no-beautify)', () => {
     const { state, baselineDoc } = editable(src);
     const edited = runAt(state, 'keep', insertTable(2, 2));
     const out = htmlWriteBack(edited.doc, src, getDirtyBlockIds(edited), baselineDoc);
-    expect(out).toContain('<p>keep</p>');                     // untouched neighbor byte-identical
-    expect(out).toContain('<table><thead>');                  // new table, row 0 header
+    expect(out).toContain('<p>keep</p>\n<table><thead>');   // neighbor byte-identical AND new table follows it in order
     expect((out.match(/<td>/g) ?? []).length).toBe(2);        // 2×2 with 1 header row → 2 body cells
   });
 });
