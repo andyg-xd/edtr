@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import { EditorState, TextSelection } from 'prosemirror-state';
+import type { Command } from 'prosemirror-state';
 import { toLiveHtml } from './htmlModel';
 import { htmlSchema } from './htmlSchema';
 import { dirtyTrackingPlugin, getDirtyBlockIds } from './dirtyTracking';
 import { blockIdentityPlugin } from './blockIdentity';
 import { htmlWriteBack } from './ViewSync';
+import { addRow, setColumnAlign, toggleHeaderRow, insertTable } from '../commands/htmlTableCommands';
 
 function editable(src: string) {
   const r = toLiveHtml(src);
@@ -27,6 +29,15 @@ function posOfText(doc: any, needle: string): number {
 function typeAt(state: EditorState, needle: string, text: string): EditorState {
   const s = state.apply(state.tr.setSelection(TextSelection.near(state.doc.resolve(posOfText(state.doc, needle)))));
   return s.apply(s.tr.insertText(text, s.selection.from));
+}
+function cursorAt(state: EditorState, needle: string): EditorState {
+  return state.apply(state.tr.setSelection(TextSelection.near(state.doc.resolve(posOfText(state.doc, needle)))));
+}
+function runAt(state: EditorState, needle: string, cmd: Command): EditorState {
+  const s = cursorAt(state, needle);
+  let out = s;
+  cmd(s, (tr) => { out = s.apply(tr); });
+  return out;
 }
 
 describe('HTML table write-back (no-beautify)', () => {
@@ -70,5 +81,44 @@ describe('HTML table write-back (no-beautify)', () => {
     const out = htmlWriteBack(edited.doc, src, getDirtyBlockIds(edited), baselineDoc);
     expect(out).toContain('Y');
     expect(out).toContain('</section>\n<p>tail</p>'); // untouched sibling byte-identical
+  });
+});
+
+describe('HTML table structural ops (no-beautify)', () => {
+  it('adding a row re-serializes only the edited table; the sibling is byte-identical', () => {
+    const src = '<!doctype html>\n<html>\n<body>\n<table><tr><td>a</td><td>b</td></tr></table>\n<p>tail</p>\n</body>\n</html>\n';
+    const { state, baselineDoc } = editable(src);
+    const edited = runAt(state, 'a', addRow('below'));
+    const out = htmlWriteBack(edited.doc, src, getDirtyBlockIds(edited), baselineDoc);
+    expect(out).toContain('<tbody>');
+    expect(out).toContain('</table>\n<p>tail</p>');          // untouched sibling byte-identical
+    expect((out.match(/<tr>/g) ?? []).length).toBe(2);        // two rows now
+  });
+
+  it('setColumnAlign emits inline text-align on the edited table only', () => {
+    const src = '<!doctype html>\n<html>\n<body>\n<table><tr><td>a</td></tr></table>\n<p>t</p>\n</body>\n</html>\n';
+    const { state, baselineDoc } = editable(src);
+    const edited = runAt(state, 'a', setColumnAlign('center'));
+    const out = htmlWriteBack(edited.doc, src, getDirtyBlockIds(edited), baselineDoc);
+    expect(out).toContain('text-align:center');
+    expect(out).toContain('</table>\n<p>t</p>');
+  });
+
+  it('toggleHeaderRow promotes row 0 into a canonical <thead>', () => {
+    const src = '<!doctype html>\n<html>\n<body>\n<table><tr><td>a</td></tr></table>\n</body>\n</html>\n';
+    const { state, baselineDoc } = editable(src);
+    const edited = runAt(state, 'a', toggleHeaderRow);
+    const out = htmlWriteBack(edited.doc, src, getDirtyBlockIds(edited), baselineDoc);
+    expect(out).toContain('<thead><tr><th>a</th></tr></thead>');
+  });
+
+  it('inserting a table adds a canonical new block without disturbing neighbors', () => {
+    const src = '<!doctype html>\n<html>\n<body>\n<p>keep</p>\n</body>\n</html>\n';
+    const { state, baselineDoc } = editable(src);
+    const edited = runAt(state, 'keep', insertTable(2, 2));
+    const out = htmlWriteBack(edited.doc, src, getDirtyBlockIds(edited), baselineDoc);
+    expect(out).toContain('<p>keep</p>');                     // untouched neighbor byte-identical
+    expect(out).toContain('<table><thead>');                  // new table, row 0 header
+    expect((out.match(/<td>/g) ?? []).length).toBe(2);        // 2×2 with 1 header row → 2 body cells
   });
 });
