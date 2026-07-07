@@ -8,6 +8,7 @@ import {
   addRow, deleteRow, canDeleteRow,
   addColumn, deleteColumn, canDeleteColumn,
   setColumnAlign, getColumnAlign, toggleHeaderRow, headerRowActive,
+  buildEmptyTable, insertTable, canInsertTable,
 } from './htmlTableCommands';
 import type { Command } from 'prosemirror-state';
 
@@ -65,12 +66,14 @@ describe('htmlTableCommands — goToNextCell', () => {
     goToNextCell(-1)(state, (tr) => { next = state.apply(tr); });
     expect(findTable(next!.selection.$from)!.colIndex).toBe(0);
   });
-  it('Tab at the last cell consumes the key as a no-op (append is 4d-iv-b)', () => {
-    const state = cursorAt(stateFor('<table><tr><td>a</td></tr></table>'), 'a');
-    let dispatched: EditorState | null = null;
-    const handled = goToNextCell(1)(state, (tr) => { dispatched = state.apply(tr); });
-    expect(handled).toBe(true);       // consumed
-    expect(dispatched).toBeNull();    // no transaction — row NOT appended
+  it('Tab at the last cell appends a body row and lands in its first cell', () => {
+    const state = cursorAt(stateFor('<table><tr><td>a</td><td>b</td></tr></table>'), 'b');
+    const next = run(state, goToNextCell(1));
+    const ctx = findTable(next.selection.$from)!;
+    expect(ctx.table.childCount).toBe(2);           // row appended
+    expect(ctx.rowIndex).toBe(1);                   // cursor in the new row
+    expect(ctx.colIndex).toBe(0);
+    expect(ctx.table.child(1).child(0).attrs.header).toBe(false);
   });
   it('returns false outside a table so Tab falls through', () => {
     const state = cursorAt(stateFor('<p>x</p>'), 'x');
@@ -172,5 +175,30 @@ describe('htmlTableCommands — alignment + header toggle', () => {
     expect(headerRowActive(on)).toBe(true);
     const off = run(on, toggleHeaderRow);
     expect(findTable(off.selection.$from)!.table.child(0).child(0).attrs.header).toBe(false);
+  });
+});
+
+describe('htmlTableCommands — insert table', () => {
+  it('buildEmptyTable makes an R×C table with a header row and empty <p> cells', () => {
+    const t = buildEmptyTable(3, 2);
+    expect(t.childCount).toBe(3);
+    expect(t.child(0).childCount).toBe(2);
+    expect(t.child(0).child(0).attrs.header).toBe(true);   // row 0 = header
+    expect(t.child(1).child(0).attrs.header).toBe(false);  // body
+    expect(t.child(0).child(0).firstChild!.type.name).toBe('paragraph');
+    expect(t.attrs.blockId).toBe('');                      // default → blockIdentityPlugin assigns new-N
+  });
+
+  it('insertTable adds a new top-level table after the current block', () => {
+    const state = cursorAt(stateFor('<p>x</p>'), 'x');
+    const next = run(state, insertTable(2, 2));
+    expect(isInTable(next)).toBe(true);
+    expect(next.doc.childCount).toBe(2); // <p> + new table
+  });
+
+  it('canInsertTable is false when already inside a table', () => {
+    const state = cursorAt(stateFor('<table><tr><td>a</td></tr></table>'), 'a');
+    expect(canInsertTable(state)).toBe(false);
+    expect(insertTable(2, 2)(state, () => {})).toBe(false);
   });
 });

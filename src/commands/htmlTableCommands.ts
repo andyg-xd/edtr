@@ -64,7 +64,14 @@ export function goToNextCell(dir: 1 | -1): Command {
     for (let r = 0; r < ctx.rowIndex; r++) idx += ctx.table.child(r).childCount;
     idx += ctx.colIndex;
     const targetIdx = idx + dir;
-    if (targetIdx < 0 || targetIdx >= cellStarts.length) return true; // edge: consume, no-op
+    if (targetIdx < 0) return true; // Shift-Tab past the first cell: consume, no-op
+    if (targetIdx >= cellStarts.length) {
+      // Tab past the last cell → append an empty body row, land in its first cell.
+      const rows = rowsOf(ctx.table);
+      rows.push(tableRow.create(null, columnAligns(ctx.table).map((a) => emptyCell(false, a))));
+      if (dispatch) dispatch(replaceTableTr(state, ctx, table.create(ctx.table.attrs, rows), rows.length - 1, 0));
+      return true;
+    }
     if (dispatch) {
       const sel = TextSelection.near(state.doc.resolve(cellStarts[targetIdx]));
       dispatch(state.tr.setSelection(sel).scrollIntoView());
@@ -273,3 +280,37 @@ export const toggleHeaderRow: Command = (state, dispatch) => {
 };
 
 export type { Align };
+
+// ---------------------------------------------------------------------------
+// Insert a new table
+// ---------------------------------------------------------------------------
+
+export function buildEmptyTable(rows: number, cols: number): PMNode {
+  const rowNodes: PMNode[] = [];
+  for (let r = 0; r < rows; r++) {
+    const cells: PMNode[] = [];
+    for (let c = 0; c < cols; c++) cells.push(emptyCell(r === 0, null)); // row 0 = header (spec D2)
+    rowNodes.push(tableRow.create(null, cells));
+  }
+  return table.create(undefined, rowNodes); // default attrs → blockId '' → blockIdentityPlugin assigns new-N
+}
+
+/** Insert a new empty table as a new top-level block after the current block. */
+export function insertTable(rows: number, cols: number): Command {
+  return (state, dispatch) => {
+    if (findTable(state.selection.$from)) return false; // no nested tables
+    const index = state.selection.$to.index(0);
+    let end = 0;
+    for (let i = 0; i <= index; i++) end += state.doc.child(i).nodeSize;
+    if (dispatch) {
+      const built = buildEmptyTable(rows, cols);
+      const tr = state.tr.insert(end, built);
+      tr.setSelection(TextSelection.near(tr.doc.resolve(cellContentPos(built, end, 0, 0))));
+      dispatch(tr.scrollIntoView());
+    }
+    return true;
+  };
+}
+export function canInsertTable(state: EditorState): boolean {
+  return !findTable(state.selection.$from);
+}
