@@ -189,3 +189,47 @@ export function canDeleteRow(state: EditorState): boolean {
   const ctx = findTable(state.selection.$from);
   return !!ctx && ctx.table.childCount > 1;
 }
+
+// ---------------------------------------------------------------------------
+// Column commands
+// ---------------------------------------------------------------------------
+
+/** True when every cell in the row is a header cell (a true header row). */
+function rowIsHeader(row: PMNode): boolean {
+  let all = row.childCount > 0;
+  row.forEach((c) => { if (!c.attrs.header) all = false; });
+  return all;
+}
+
+export function addColumn(dir: 'left' | 'right'): Command {
+  return (state, dispatch) => {
+    const ctx = findTable(state.selection.$from);
+    if (!ctx) return false;
+    const at = dir === 'left' ? ctx.colIndex : ctx.colIndex + 1;
+    const rows = rowsOf(ctx.table).map((row) => {
+      const cells = cellsOf(row);
+      cells.splice(at, 0, emptyCell(rowIsHeader(row), null));
+      return tableRow.create(row.attrs, cells);
+    });
+    if (dispatch) dispatch(replaceTableTr(state, ctx, table.create(ctx.table.attrs, rows), ctx.rowIndex, at));
+    return true;
+  };
+}
+
+export const deleteColumn: Command = (state, dispatch) => {
+  const ctx = findTable(state.selection.$from);
+  if (!ctx || ctx.colCount <= 1) return false;
+  const rows = rowsOf(ctx.table).map((row) => {
+    const cells = cellsOf(row);
+    cells.splice(ctx.colIndex, 1);
+    return tableRow.create(row.attrs, cells);
+  });
+  const newTable = table.create(ctx.table.attrs, rows);
+  const col = Math.min(ctx.colIndex, ctx.colCount - 2);
+  if (dispatch) dispatch(replaceTableTr(state, ctx, newTable, ctx.rowIndex, col));
+  return true;
+};
+export function canDeleteColumn(state: EditorState): boolean {
+  const ctx = findTable(state.selection.$from);
+  return !!ctx && ctx.colCount > 1;
+}

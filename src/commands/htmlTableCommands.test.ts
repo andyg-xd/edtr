@@ -6,6 +6,7 @@ import { htmlSchema } from '../views/htmlSchema';
 import {
   findTable, isInTable, goToNextCell, arrowVertical,
   addRow, deleteRow, canDeleteRow,
+  addColumn, deleteColumn, canDeleteColumn,
 } from './htmlTableCommands';
 import type { Command } from 'prosemirror-state';
 
@@ -124,5 +125,29 @@ describe('htmlTableCommands — row ops', () => {
     const state = cursorAt(stateFor('<table><tr><td>a</td></tr></table>'), 'a');
     expect(canDeleteRow(state)).toBe(false);
     expect(deleteRow(state, () => {})).toBe(false);
+  });
+});
+
+describe('htmlTableCommands — column ops', () => {
+  it('addColumn("right") adds a column; the new cell in a header row is a header', () => {
+    const state = cursorAt(stateFor('<table><tr><th>h1</th></tr><tr><td>a</td></tr></table>'), 'h1');
+    const next = run(state, addColumn('right'));
+    const ctx = findTable(next.selection.$from)!;
+    expect(ctx.colCount).toBe(2);
+    expect(ctx.table.child(0).child(1).attrs.header).toBe(true);  // header row → new <th>
+    expect(ctx.table.child(1).child(1).attrs.header).toBe(false); // body row → new <td>
+    expect(ctx.table.child(0).child(1).firstChild!.type.name).toBe('paragraph');
+  });
+
+  it('deleteColumn removes the current column (min 1 column)', () => {
+    const state = cursorAt(stateFor('<table><tr><td>a</td><td>b</td></tr></table>'), 'b');
+    const next = run(state, deleteColumn);
+    expect(findTable(next.selection.$from)!.colCount).toBe(1);
+  });
+
+  it('canDeleteColumn is false at a single-column table', () => {
+    const state = cursorAt(stateFor('<table><tr><td>a</td></tr></table>'), 'a');
+    expect(canDeleteColumn(state)).toBe(false);
+    expect(deleteColumn(state, () => {})).toBe(false);
   });
 });
