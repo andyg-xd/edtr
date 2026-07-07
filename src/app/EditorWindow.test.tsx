@@ -1,10 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
+import { EditorState, TextSelection } from 'prosemirror-state';
 import { htmlSchema } from '../views/htmlSchema';
 import { toLiveHtml } from '../views/htmlModel';
 import { toSource, htmlWriteBack } from '../views/ViewSync';
 import { serializeHtmlDirty } from '../views/htmlSerializer';
 import { toLiveHtml as _toLiveHtml } from '../views/htmlModel';
 import { htmlSchema as _htmlSchema } from '../views/htmlSchema';
+import { isInTable as isHtmlInTable } from '../commands/htmlTableCommands';
+import { isInTable as isMarkdownInTable } from '../commands/markdownTableCommands';
 
 vi.mock('@tauri-apps/api/core', () => ({
   convertFileSrc: (p: string) => `asset://localhost${p}`,
@@ -55,5 +58,40 @@ describe('EditorWindow HTML image wiring', () => {
     res.doc.descendants((n: any) => { if (!img && n.type.name === 'image') img = n; });
     expect(img.attrs.htmlAttrs.src).toBe('a.png');
     expect(img.attrs.displaySrc).not.toBeNull();
+  });
+});
+
+// Wiring-contract for the HTML contextual table toolbar (mounted in EditorWindow's
+// HTML Live branch): the toolbar's visibility is gated on `isHtmlInTable` (from
+// `htmlTableCommands`, schema-aware for `htmlSchema`). Using the Markdown
+// `isInTable` (from `markdownTableCommands`, which walks `liveSchema.nodes.table` /
+// `.tableCell`) instead would compile fine but never match an HTML doc's node
+// types, silently hiding the toolbar forever. This pins that exact failure mode.
+describe('EditorWindow HTML table-toolbar wiring (isHtmlInTable vs Markdown isInTable)', () => {
+  function stateInCell() {
+    const r = toLiveHtml('<html><body><table><tr><td>a</td></tr></table></body></html>');
+    if (!r.ok) throw new Error(`degraded: ${r.reason}`);
+    let at = -1;
+    r.doc.descendants((n, pos) => {
+      if (at < 0 && n.isText && n.text?.includes('a')) at = pos;
+    });
+    if (at < 0) throw new Error('cell text not found');
+    const state = EditorState.create({ doc: r.doc, schema: htmlSchema });
+    return state.apply(state.tr.setSelection(TextSelection.near(state.doc.resolve(at))));
+  }
+
+  it('isHtmlInTable detects the HTML table cell EditorWindow must show the toolbar for', () => {
+    expect(isHtmlInTable(stateInCell())).toBe(true);
+  });
+
+  it('the Markdown isInTable never matches an HTML-schema doc — proves it would be the wrong predicate to wire into the HTML branch', () => {
+    expect(isMarkdownInTable(stateInCell())).toBe(false);
+  });
+
+  it('isHtmlInTable is false outside a table (toolbar absent for a plain paragraph, matching the plain <p>-only HTML doc case)', () => {
+    const r = toLiveHtml('<html><body><p>hi</p></body></html>');
+    if (!r.ok) throw new Error(`degraded: ${r.reason}`);
+    const state = EditorState.create({ doc: r.doc, schema: htmlSchema });
+    expect(isHtmlInTable(state)).toBe(false);
   });
 });

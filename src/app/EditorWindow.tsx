@@ -16,6 +16,8 @@ import { markdownTableRibbon } from '../ribbon/markdownTableRibbon';
 import { isInTable } from '../commands/markdownTableCommands';
 import { toLive, writeBack, htmlWriteBack } from '../views/ViewSync';
 import { htmlRibbon } from '../ribbon/htmlRibbon';
+import { htmlTableRibbon } from '../ribbon/htmlTableRibbon';
+import { isInTable as isHtmlInTable } from '../commands/htmlTableCommands';
 import { openViaDialog, saveSession } from '../files/fileController';
 import { DocumentSession } from '../files/documentSession';
 import { basename } from '../files/fileTypes';
@@ -280,6 +282,17 @@ export function EditorWindow() {
                 docPath={session?.path ?? null}
                 onError={setError}
               />
+            )}
+            {liveView && isHtmlInTable(liveView.state) && (
+              <div className="ribbon-context">
+                <RibbonView
+                  view={liveView}
+                  controls={htmlTableRibbon}
+                  ariaLabel="Table tools"
+                  docPath={session?.path ?? null}
+                  onError={setError}
+                />
+              </div>
             )}
             <HtmlLiveView
               key={`htmllive-${openCount}`}
