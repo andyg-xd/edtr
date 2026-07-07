@@ -5,15 +5,14 @@ import { CloseGuard } from './CloseGuard';
 import { useShortcutsAndCloseGuard } from './MenuBridge';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
 import { openViaDialog, saveSession } from '../files/fileController';
-import { DocumentSession } from '../files/documentSession';
 import { basename } from '../files/fileTypes';
 import { useTheme } from '../settings/useTheme';
-import type { OpenDoc, ViewMode } from '../files/openDocuments';
+import { useOpenDocuments } from './useOpenDocuments';
+import type { ViewMode } from '../files/openDocuments';
 
 export function EditorWindow() {
-  const [session, setSession] = useState<DocumentSession | null>(null);
-  const [openCount, setOpenCount] = useState(0);
-  const [viewMode, setViewMode] = useState<ViewMode>('code');
+  const docs = useOpenDocuments();
+  const active = docs.active;
   const [error, setError] = useState<string | null>(null);
   const [showCloseGuard, setShowCloseGuard] = useState(false);
   const [activeDirty, setActiveDirty] = useState(false);
@@ -21,15 +20,11 @@ export function EditorWindow() {
   const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme();
   const viewRef = useRef<DocumentViewHandle>(null);
 
-  const active: OpenDoc | null = session ? { id: String(openCount), session, viewMode } : null;
-
   const handleOpen = useCallback(async () => {
     try {
       const s = await openViaDialog();
       if (s) {
-        setSession(s);
-        setOpenCount((n) => n + 1);
-        setViewMode('code');
+        docs.openReplace(s); // 5a: open replaces the single active doc (today's behavior)
         setError(null);
         setActiveDirty(false);
         setActiveLiveAvailable(false);
@@ -37,11 +32,11 @@ export function EditorWindow() {
     } catch (e) {
       setError(`Could not open file: ${String(e)}`);
     }
-  }, []);
+  }, [docs]);
 
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (!active) return true;
-    if (active.viewMode === 'live' && viewRef.current && !viewRef.current.flushToSource()) return false;
+    if (active.viewMode === 'live' && activeLiveAvailable && viewRef.current && !viewRef.current.flushToSource()) return false;
     if (!active.session.isDirty()) { setActiveDirty(false); return true; }
     try {
       await saveSession(active.session);
@@ -51,7 +46,7 @@ export function EditorWindow() {
       setError(`Could not save — your changes are safe in the editor. ${String(e)}`);
       return false;
     }
-  }, [active]);
+  }, [active, activeLiveAvailable]);
 
   const dirty = active ? activeDirty : false;
   const requestClose = useCallback(() => {
@@ -74,8 +69,8 @@ export function EditorWindow() {
         onSetViewMode={(m) => {
           if (!active) return;
           if (m === 'live' && !activeLiveAvailable) return;
-          if (m === 'code' && active.viewMode === 'live' && viewRef.current && !viewRef.current.flushToSource()) return;
-          setViewMode(m);
+          if (m === 'code' && active.viewMode === 'live' && activeLiveAvailable && viewRef.current && !viewRef.current.flushToSource()) return;
+          docs.setViewMode(active.id, m);
         }}
         themeMode={themeMode}
         onSetThemeMode={setThemeMode}
