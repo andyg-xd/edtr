@@ -118,11 +118,11 @@ describe('htmlTableCommands — row ops', () => {
   });
 
   it('deleteRow removes the current row without promoting (min 1 row)', () => {
-    const state = cursorAt(stateFor('<table><tr><th>h</th></tr><tr><td>a</td></tr></table>'), 'a');
+    const state = cursorAt(stateFor('<table><tr><th>h</th></tr><tr><td>a</td></tr></table>'), 'h');
     const next = run(state, deleteRow);
     const ctx = findTable(next.selection.$from)!;
     expect(ctx.table.childCount).toBe(1);
-    expect(ctx.table.child(0).child(0).attrs.header).toBe(true); // surviving header stays a header
+    expect(ctx.table.child(0).child(0).attrs.header).toBe(false); // surviving data row is NOT promoted to header
   });
 
   it('canDeleteRow is false at a single-row table', () => {
@@ -143,10 +143,21 @@ describe('htmlTableCommands — column ops', () => {
     expect(ctx.table.child(0).child(1).firstChild!.type.name).toBe('paragraph');
   });
 
-  it('deleteColumn removes the current column (min 1 column)', () => {
+  it('addColumn("left") inserts a new empty cell to the left of the cursor column', () => {
+    const state = cursorAt(stateFor('<table><tr><td>a</td></tr></table>'), 'a');
+    const next = run(state, addColumn('left'));
+    const ctx = findTable(next.selection.$from)!;
+    expect(ctx.colCount).toBe(2);
+    expect(ctx.table.child(0).child(0).textContent).toBe('');  // new empty cell inserted at index 0
+    expect(ctx.table.child(0).child(1).textContent).toBe('a'); // original cell shifted right to index 1
+  });
+
+  it('deleteColumn removes the current column and keeps the other cell (min 1 column)', () => {
     const state = cursorAt(stateFor('<table><tr><td>a</td><td>b</td></tr></table>'), 'b');
     const next = run(state, deleteColumn);
-    expect(findTable(next.selection.$from)!.colCount).toBe(1);
+    const ctx = findTable(next.selection.$from)!;
+    expect(ctx.colCount).toBe(1);
+    expect(ctx.table.child(0).child(0).textContent).toBe('a'); // the surviving cell is 'a', not 'b'
   });
 
   it('canDeleteColumn is false at a single-column table', () => {
@@ -167,14 +178,17 @@ describe('htmlTableCommands — alignment + header toggle', () => {
     expect(getColumnAlign(next)).toBe('center');
   });
 
-  it('toggleHeaderRow flips row 0 between th and td', () => {
-    const state = cursorAt(stateFor('<table><tr><td>a</td><td>b</td></tr></table>'), 'a');
+  it('toggleHeaderRow flips row 0, not the cursor\'s row', () => {
+    const state = cursorAt(stateFor('<table><tr><td>a</td></tr><tr><td>b</td></tr></table>'), 'b');
     expect(headerRowActive(state)).toBe(false);
     const on = run(state, toggleHeaderRow);
-    expect(findTable(on.selection.$from)!.table.child(0).child(0).attrs.header).toBe(true);
+    const ctxOn = findTable(on.selection.$from)!;
+    expect(ctxOn.table.child(0).child(0).attrs.header).toBe(true);  // row 0 ('a') became a header
+    expect(ctxOn.table.child(1).child(0).attrs.header).toBe(false); // row 1 ('b', the cursor's row) untouched
     expect(headerRowActive(on)).toBe(true);
     const off = run(on, toggleHeaderRow);
-    expect(findTable(off.selection.$from)!.table.child(0).child(0).attrs.header).toBe(false);
+    const ctxOff = findTable(off.selection.$from)!;
+    expect(ctxOff.table.child(0).child(0).attrs.header).toBe(false);
   });
 });
 

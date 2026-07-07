@@ -44,10 +44,10 @@ export function isInTable(state: EditorState): boolean {
 
 /**
  * Move to the next (dir=1) / previous (dir=-1) cell, row-major. Returns false
- * outside a table (Tab behaves normally elsewhere); consumes the key as a no-op
- * at the first/last cell. Cells hold block content, so land the cursor with
- * TextSelection.near (the raw cell-content position is not a text position).
- * Tab-at-last-cell → append-row is added in 4d-iv-b.
+ * outside a table. Shift-Tab at the first cell consumes the key as a no-op;
+ * Tab at the last cell appends an empty body row and lands in its first cell.
+ * Cells hold block content, so land with TextSelection.near (the raw
+ * cell-content position is not a text position).
  */
 export function goToNextCell(dir: 1 | -1): Command {
   return (state, dispatch) => {
