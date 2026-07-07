@@ -7,6 +7,7 @@ import {
   findTable, isInTable, goToNextCell, arrowVertical,
   addRow, deleteRow, canDeleteRow,
   addColumn, deleteColumn, canDeleteColumn,
+  setColumnAlign, getColumnAlign, toggleHeaderRow, headerRowActive,
 } from './htmlTableCommands';
 import type { Command } from 'prosemirror-state';
 
@@ -149,5 +150,27 @@ describe('htmlTableCommands — column ops', () => {
     const state = cursorAt(stateFor('<table><tr><td>a</td></tr></table>'), 'a');
     expect(canDeleteColumn(state)).toBe(false);
     expect(deleteColumn(state, () => {})).toBe(false);
+  });
+});
+
+describe('htmlTableCommands — alignment + header toggle', () => {
+  it('setColumnAlign sets the whole column and getColumnAlign reads it back', () => {
+    const state = cursorAt(stateFor('<table><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></table>'), 'c');
+    const next = run(state, setColumnAlign('center'));
+    const ctx = findTable(next.selection.$from)!;
+    expect(ctx.table.child(0).child(0).attrs.align).toBe('center'); // whole column, both rows
+    expect(ctx.table.child(1).child(0).attrs.align).toBe('center');
+    expect(ctx.table.child(0).child(1).attrs.align).toBeNull();     // other column untouched
+    expect(getColumnAlign(next)).toBe('center');
+  });
+
+  it('toggleHeaderRow flips row 0 between th and td', () => {
+    const state = cursorAt(stateFor('<table><tr><td>a</td><td>b</td></tr></table>'), 'a');
+    expect(headerRowActive(state)).toBe(false);
+    const on = run(state, toggleHeaderRow);
+    expect(findTable(on.selection.$from)!.table.child(0).child(0).attrs.header).toBe(true);
+    expect(headerRowActive(on)).toBe(true);
+    const off = run(on, toggleHeaderRow);
+    expect(findTable(off.selection.$from)!.table.child(0).child(0).attrs.header).toBe(false);
   });
 });

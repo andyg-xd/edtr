@@ -233,3 +233,43 @@ export function canDeleteColumn(state: EditorState): boolean {
   const ctx = findTable(state.selection.$from);
   return !!ctx && ctx.colCount > 1;
 }
+
+// ---------------------------------------------------------------------------
+// Column alignment + header-row toggle
+// ---------------------------------------------------------------------------
+
+export function setColumnAlign(align: Align): Command {
+  return (state, dispatch) => {
+    const ctx = findTable(state.selection.$from);
+    if (!ctx) return false;
+    const rows = rowsOf(ctx.table).map((row) =>
+      tableRow.create(row.attrs, cellsOf(row).map((cell, c) => (c === ctx.colIndex ? withAlign(cell, align) : cell))),
+    );
+    if (dispatch) dispatch(replaceTableTr(state, ctx, table.create(ctx.table.attrs, rows), ctx.rowIndex, ctx.colIndex));
+    return true;
+  };
+}
+export function getColumnAlign(state: EditorState): Align {
+  const ctx = findTable(state.selection.$from);
+  if (!ctx) return null;
+  return ctx.table.child(0).child(ctx.colIndex).attrs.align as Align;
+}
+
+export function headerRowActive(state: EditorState): boolean {
+  const ctx = findTable(state.selection.$from);
+  return !!ctx && rowIsHeader(ctx.table.child(0));
+}
+export const toggleHeaderRow: Command = (state, dispatch) => {
+  const ctx = findTable(state.selection.$from);
+  if (!ctx) return false;
+  const makeHeader = !rowIsHeader(ctx.table.child(0));
+  const rows = rowsOf(ctx.table);
+  rows[0] = tableRow.create(rows[0].attrs, cellsOf(rows[0]).map((c) => withHeader(c, makeHeader)));
+  const newTable = table.create(ctx.table.attrs, rows);
+  const row = Math.min(ctx.rowIndex, newTable.childCount - 1);
+  const col = Math.min(ctx.colIndex, ctx.colCount - 1);
+  if (dispatch) dispatch(replaceTableTr(state, ctx, newTable, row, col));
+  return true;
+};
+
+export type { Align };
