@@ -276,7 +276,9 @@ export function buildEmptyTable(rows: number, cols: number): PMNode {
 export function insertTable(rows: number, cols: number): Command {
   return (state, dispatch) => {
     if (findTable(state.selection.$from)) return false; // no nested tables
-    const index = state.selection.$to.index(0);
+    // Clamp to the last block: an AllSelection (⌘A) / cursor at the doc end gives
+    // $to.index(0) === childCount, and doc.child(childCount) throws (RangeError).
+    const index = Math.min(state.selection.$to.index(0), state.doc.childCount - 1);
     let end = 0;
     for (let i = 0; i <= index; i++) end += state.doc.child(i).nodeSize;
     if (dispatch) {
