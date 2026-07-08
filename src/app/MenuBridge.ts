@@ -1,42 +1,39 @@
 import { useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-
-interface BridgeHandlers {
-  onOpen: () => void;
-  onSave: () => void;
-  onCloseRequest: () => void;
-}
+import { listen } from '@tauri-apps/api/event';
+import { dispatchMenuCommand, type MenuCommand, type MenuHandlers } from './menuCommands';
 
 /**
- * Binds ⌘O / ⌘S and intercepts the window close button. Handlers are read
- * through a ref so the listeners always call the latest closures without
+ * Bridges the native menu (src-tauri) and the window close button to app
+ * handlers. The native menu owns the ⌘O/⌘S/⌘W/⌘Q accelerators and emits
+ * `menu://*` events; we listen and dispatch. The red traffic-light button does
+ * NOT go through the menu, so we still intercept `onCloseRequested`. Handlers
+ * are read through a ref so listeners always call the latest closures without
  * re-subscribing on every render.
  */
-export function useShortcutsAndCloseGuard(handlers: BridgeHandlers): void {
+export function useMenuAndCloseGuard(handlers: MenuHandlers): void {
   const ref = useRef(handlers);
   ref.current = handlers;
 
+  // Native-menu events → handlers.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
-      const key = e.key.toLowerCase();
-      if (key === 's') {
-        e.preventDefault();
-        ref.current.onSave();
-      } else if (key === 'o') {
-        e.preventDefault();
-        ref.current.onOpen();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const commands: MenuCommand[] = ['open', 'save', 'close', 'quit'];
+    const unlisteners: Array<() => void> = [];
+    let disposed = false;
+    for (const cmd of commands) {
+      listen(`menu://${cmd}`, () => dispatchMenuCommand(cmd, ref.current))
+        .then((un) => { if (disposed) un(); else unlisteners.push(un); })
+        .catch(() => {});
+    }
+    return () => { disposed = true; unlisteners.forEach((un) => un()); };
   }, []);
 
+  // Window close button (⌘W is handled by the File → Close menu item; this
+  // covers the red traffic-light button) → guard via onCloseRequest.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     getCurrentWindow()
       .onCloseRequested((event) => {
-        // Always intercept; EditorWindow decides whether to prompt or destroy.
         event.preventDefault();
         ref.current.onCloseRequest();
       })

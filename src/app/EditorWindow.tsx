@@ -1,8 +1,9 @@
 import { useCallback, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
 import { WindowChrome } from './WindowChrome';
 import { CloseGuard } from './CloseGuard';
-import { useShortcutsAndCloseGuard } from './MenuBridge';
+import { useMenuAndCloseGuard } from './MenuBridge';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
 import { openViaDialog, saveSession } from '../files/fileController';
 import { basename } from '../files/fileTypes';
@@ -14,7 +15,7 @@ export function EditorWindow() {
   const docs = useOpenDocuments();
   const active = docs.active;
   const [error, setError] = useState<string | null>(null);
-  const [showCloseGuard, setShowCloseGuard] = useState(false);
+  const [pendingIntent, setPendingIntent] = useState<'close' | 'quit' | null>(null);
   const [activeDirty, setActiveDirty] = useState(false);
   const [activeLiveAvailable, setActiveLiveAvailable] = useState(false);
   const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme();
@@ -49,12 +50,25 @@ export function EditorWindow() {
   }, [active, activeLiveAvailable]);
 
   const dirty = active ? activeDirty : false;
-  const requestClose = useCallback(() => {
-    if (dirty) setShowCloseGuard(true);
+  const proceedExit = useCallback((intent: 'close' | 'quit') => {
+    if (intent === 'quit') invoke('quit_app');
     else getCurrentWindow().destroy();
-  }, [dirty]);
+  }, []);
+  const requestClose = useCallback(() => {
+    if (dirty) setPendingIntent('close');
+    else proceedExit('close');
+  }, [dirty, proceedExit]);
+  const requestQuit = useCallback(() => {
+    if (dirty) setPendingIntent('quit');
+    else proceedExit('quit');
+  }, [dirty, proceedExit]);
 
-  useShortcutsAndCloseGuard({ onOpen: handleOpen, onSave: handleSave, onCloseRequest: requestClose });
+  useMenuAndCloseGuard({
+    onOpen: handleOpen,
+    onSave: handleSave,
+    onCloseRequest: requestClose,
+    onQuitRequest: requestQuit,
+  });
 
   const effectiveViewMode: ViewMode = active && active.viewMode === 'live' && activeLiveAvailable ? 'live' : 'code';
   const degraded = !!active && active.viewMode === 'live' && !activeLiveAvailable;
@@ -98,18 +112,20 @@ export function EditorWindow() {
           <button onClick={handleOpen}>Open a file… (⌘O)</button>
         </div>
       )}
-      {showCloseGuard && (
+      {pendingIntent && (
         <CloseGuard
           onSave={async () => {
+            const intent = pendingIntent;
             const saved = await handleSave();
-            setShowCloseGuard(false);
-            if (saved) getCurrentWindow().destroy();
+            setPendingIntent(null);
+            if (saved && intent) proceedExit(intent);
           }}
           onDiscard={() => {
-            setShowCloseGuard(false);
-            getCurrentWindow().destroy();
+            const intent = pendingIntent;
+            setPendingIntent(null);
+            if (intent) proceedExit(intent);
           }}
-          onCancel={() => setShowCloseGuard(false)}
+          onCancel={() => setPendingIntent(null)}
         />
       )}
     </div>
