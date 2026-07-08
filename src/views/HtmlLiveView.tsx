@@ -17,6 +17,18 @@ import {
 } from '../commands/htmlInlineCommands';
 import { writeImageIntoAssets, resolveImageDisplaySrc } from '../files/imageAssets';
 
+/**
+ * Edit-only fallback so an UNSTYLED table (e.g. one the user just inserted) is
+ * visible and clickable in the shadow root, whose only other CSS is the file's
+ * own. Injected BEFORE the file style so any author table rules win by source
+ * order (these are low-specificity tag selectors). Neutral translucent border
+ * reads on any light/dark file background; min-width/padding give empty cells a
+ * clickable footprint. Never written back to source (render-only).
+ */
+const TABLE_EDIT_AFFORDANCE_CSS =
+  'table{border-collapse:collapse}' +
+  'th,td{border:1px solid rgba(128,128,128,0.4);min-width:2.5em;padding:0.25em 0.5em}';
+
 interface HtmlLiveViewProps {
   doc: PMNode;
   styleText: string;
@@ -57,6 +69,14 @@ export function HtmlLiveView({
     if (!host.current) return;
     const shadow = host.current.shadowRoot ?? host.current.attachShadow({ mode: 'open' });
     shadow.innerHTML = '';
+    // Edit-only table affordance, appended FIRST so the file's own <style>
+    // (appended next) wins the cascade on equal specificity.
+    if (editable) {
+      const affordance = document.createElement('style');
+      affordance.setAttribute('data-edtr-affordance', '');
+      affordance.textContent = TABLE_EDIT_AFFORDANCE_CSS;
+      shadow.appendChild(affordance);
+    }
     const style = document.createElement('style');
     style.textContent = styleText.replace(/:root\b/g, ':host');
     shadow.appendChild(style);

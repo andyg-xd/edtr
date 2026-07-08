@@ -39,6 +39,14 @@ describe('HtmlLiveView', () => {
     expect(shadow.querySelector('p.lead')?.textContent).toBe('hi');
   });
 
+  it('does NOT inject the affordance stylesheet in read-only render (fidelity preserved)', async () => {
+    const r = toLiveHtml('<html><body><table><tr><td>a</td></tr></table></body></html>');
+    if (!r.ok) throw new Error(r.reason);
+    const c = await render(<HtmlLiveView doc={r.doc} styleText={r.styleText} />);
+    const shadow = (c.querySelector('.html-live-view') as HTMLElement).shadowRoot!;
+    expect(shadow.querySelector('style[data-edtr-affordance]')).toBeNull();
+  });
+
   it('reconstructs an html/body scaffold (with source attrs) so body/html-scoped CSS matches', async () => {
     const res = toLiveHtml('<html class="h"><body class="dark" id="pg"><p>x</p></body></html>');
     if (!res.ok) throw new Error('expected ok');
@@ -113,6 +121,28 @@ describe('HtmlLiveView — editable (4b)', () => {
     expect(shadow.querySelector('.ProseMirror')).not.toBeNull();
     expect(view).not.toBeNull();
     expect(view.editable).toBe(true);
+  });
+
+  it('injects an edit-only table affordance stylesheet BEFORE the file style when editable', () => {
+    const r = toLiveHtml('<html><head><style>.lead{color:red}</style></head><body><p class="lead">hi</p></body></html>');
+    if (!r.ok) throw new Error(r.reason);
+    const { container: c } = mount(
+      <HtmlLiveView doc={r.doc} styleText={r.styleText} editable onViewReady={() => {}} />,
+    );
+    const shadow = c.querySelector('.html-live-view')!.shadowRoot!;
+    const styles = Array.from(shadow.querySelectorAll('style'));
+    const affordance = shadow.querySelector('style[data-edtr-affordance]');
+    expect(affordance).not.toBeNull();
+    // faint cell borders + a clickable min size for empty cells
+    expect(affordance!.textContent).toContain('td');
+    expect(affordance!.textContent).toContain('border');
+    expect(affordance!.textContent).toContain('min-width');
+    // Author CSS wins: the affordance comes BEFORE the file style in source order.
+    const affIdx = styles.findIndex((s) => s.hasAttribute('data-edtr-affordance'));
+    const fileIdx = styles.findIndex((s) => (s.textContent ?? '').includes('.lead{color:red}'));
+    expect(affIdx).toBeGreaterThanOrEqual(0);
+    expect(fileIdx).toBeGreaterThanOrEqual(0);
+    expect(affIdx).toBeLessThan(fileIdx);
   });
 
   it('reports edits with dirty block ids via onEdit', () => {
