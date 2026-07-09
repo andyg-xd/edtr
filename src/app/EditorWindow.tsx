@@ -56,18 +56,24 @@ export function EditorWindow() {
     [active, activeDirty],
   );
 
+  const findDoc = useCallback(
+    (id: string) => docs.state.docs.find((d) => d.id === id),
+    [docs.state.docs],
+  );
+
   const selectDoc = useCallback((id: string) => {
     if (id === active?.id) return;
     if (!flushActive()) return;
-    const target = docs.state.docs.find((d) => d.id === id);
+    setError(null);
+    const target = findDoc(id);
     setActiveDirty(target ? target.session.isDirty() : false);
     setActiveLiveAvailable(false);
     docs.setActive(id);
-  }, [active, docs, flushActive]);
+  }, [active, docs, flushActive, findDoc]);
 
   // Save one doc (flush first if it's the active/live doc). false = failure.
   const saveDoc = useCallback(async (id: string): Promise<boolean> => {
-    const doc = docs.state.docs.find((d) => d.id === id);
+    const doc = findDoc(id);
     if (!doc) return true;
     if (id === active?.id && !flushActive()) return false;
     if (!doc.session.isDirty()) { if (id === active?.id) setActiveDirty(false); return true; }
@@ -76,23 +82,24 @@ export function EditorWindow() {
       if (id === active?.id) setActiveDirty(false);
       return true;
     } catch (e) {
-      setError(`Could not save — your changes are safe in the editor. ${String(e)}`);
+      setError(`Could not save "${basename(doc.session.path)}" — your changes are safe in the editor. ${String(e)}`);
       return false;
     }
-  }, [docs, active, flushActive]);
+  }, [active, flushActive, findDoc]);
 
   const saveAllDirty = useCallback(async (): Promise<boolean> => {
     if (!flushActive()) return false;
-    try {
-      for (const doc of docs.state.docs) {
-        if (doc.session.isDirty()) await saveSession(doc.session);
+    for (const doc of docs.state.docs) {
+      if (!doc.session.isDirty()) continue;
+      try {
+        await saveSession(doc.session);
+      } catch (e) {
+        setError(`Could not save "${basename(doc.session.path)}" — your changes are safe in the editor. ${String(e)}`);
+        return false;
       }
-      setActiveDirty(false);
-      return true;
-    } catch (e) {
-      setError(`Could not save — your changes are safe in the editor. ${String(e)}`);
-      return false;
     }
+    setActiveDirty(false);
+    return true;
   }, [docs, flushActive]);
 
   // ⌘S / File → Save: active doc only.
@@ -102,11 +109,11 @@ export function EditorWindow() {
   }, [active, saveDoc]);
 
   const closeDoc = useCallback((id: string) => {
-    const doc = docs.state.docs.find((d) => d.id === id);
+    const doc = findDoc(id);
     if (!doc) return;
     if (dirtyFor(doc)) setPendingIntent({ kind: 'close-doc', id });
     else docs.close(id);
-  }, [docs, dirtyFor]);
+  }, [docs, dirtyFor, findDoc]);
 
   const windowDirty = windowIsDirty(docs.state, activeDirty);
   const proceedExit = useCallback((kind: 'close-window' | 'quit') => {
