@@ -51,3 +51,15 @@ export function activeDoc(state: OpenDocsState): OpenDoc | null {
 export function anyDirty(state: OpenDocsState): boolean {
   return state.docs.some((d) => d.session.isDirty());
 }
+
+/** Whether a doc is dirty: the active doc uses `activeDirty` (which includes
+ * unflushed Live edits); inactive docs are captured by their session. */
+export function docIsDirty(doc: OpenDoc, activeId: string | null, activeDirty: boolean): boolean {
+  return doc.id === activeId ? activeDirty : doc.session.isDirty();
+}
+
+/** Whether the window has any unsaved work (any dirty session, or the active
+ * doc's unflushed Live edits). Drives the window-close / quit guard. */
+export function windowIsDirty(state: OpenDocsState, activeDirty: boolean): boolean {
+  return anyDirty(state) || activeDirty;
+}

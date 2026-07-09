@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { DocumentSession } from './documentSession';
 import {
   emptyDocs, open, close, setActive, setViewMode, activeDoc, anyDirty,
+  docIsDirty, windowIsDirty,
 } from './openDocuments';
 
 const sess = (path: string, text = 'x') =>
@@ -48,5 +49,27 @@ describe('openDocuments store', () => {
     expect(anyDirty(s)).toBe(false);
     activeDoc(s)!.session.setCurrentText('y'); // now dirty
     expect(anyDirty(s)).toBe(true);
+  });
+});
+
+describe('multi-doc dirty helpers', () => {
+  it('docIsDirty uses activeDirty for the active doc, session for others', () => {
+    let s = open(open(emptyDocs, sess('/a.md'), 'd0'), sess('/b.md'), 'd1');
+    // d1 active; d0 inactive & clean
+    const d0 = s.docs.find((d) => d.id === 'd0')!;
+    const d1 = s.docs.find((d) => d.id === 'd1')!;
+    expect(docIsDirty(d1, 'd1', true)).toBe(true);   // active → activeDirty
+    expect(docIsDirty(d1, 'd1', false)).toBe(false);
+    expect(docIsDirty(d0, 'd1', true)).toBe(false);  // inactive → session (clean)
+    d0.session.setCurrentText('changed');
+    expect(docIsDirty(d0, 'd1', false)).toBe(true);  // inactive → session (dirty)
+  });
+
+  it('windowIsDirty is true if any session is dirty OR the active doc has unflushed edits', () => {
+    let s = open(open(emptyDocs, sess('/a.md'), 'd0'), sess('/b.md'), 'd1');
+    expect(windowIsDirty(s, false)).toBe(false);
+    expect(windowIsDirty(s, true)).toBe(true);       // active unflushed live edits
+    s.docs.find((d) => d.id === 'd0')!.session.setCurrentText('changed'); // an inactive doc dirty
+    expect(windowIsDirty(s, false)).toBe(true);
   });
 });
