@@ -6,6 +6,7 @@ function tracked(): MenuHandlers & { calls: string[] } {
   return {
     calls,
     onOpen: () => calls.push('open'),
+    onOpenFolder: () => calls.push('open-folder'),
     onSave: () => calls.push('save'),
     onCloseRequest: () => calls.push('close'),
     onQuitRequest: () => calls.push('quit'),
@@ -14,7 +15,7 @@ function tracked(): MenuHandlers & { calls: string[] } {
 
 describe('dispatchMenuCommand', () => {
   it('routes each command to exactly its own handler', () => {
-    for (const cmd of ['open', 'save', 'close', 'quit'] as const satisfies readonly MenuCommand[]) {
+    for (const cmd of ['open', 'open-folder', 'save', 'close', 'quit'] as const satisfies readonly MenuCommand[]) {
       const h = tracked();
       dispatchMenuCommand(cmd, h);
       expect(h.calls).toEqual([cmd]);

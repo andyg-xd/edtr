@@ -24,6 +24,7 @@ pub fn run() {
             // state lives in the React session model, not in Rust.
             let event_name = match event.id().0.as_str() {
                 "open" => "menu://open",
+                "open-folder" => "menu://open-folder",
                 "save" => "menu://save",
                 "close" => "menu://close",
                 "quit" => "menu://quit",

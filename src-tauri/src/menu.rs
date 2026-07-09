@@ -15,6 +15,7 @@ use tauri::{
 pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let quit = MenuItem::with_id(app, "quit", "Quit Edtr", true, Some("Cmd+Q"))?;
     let open = MenuItem::with_id(app, "open", "Open…", true, Some("Cmd+O"))?;
+    let open_folder = MenuItem::with_id(app, "open-folder", "Open Folder…", true, Some("Cmd+Shift+O"))?;
     let save = MenuItem::with_id(app, "save", "Save", true, Some("Cmd+S"))?;
     let close = MenuItem::with_id(app, "close", "Close Window", true, Some("Cmd+W"))?;
 
@@ -32,6 +33,7 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 
     let file_menu = SubmenuBuilder::new(app, "File")
         .item(&open)
+        .item(&open_folder)
         .item(&save)
         .separator()
         .item(&close)

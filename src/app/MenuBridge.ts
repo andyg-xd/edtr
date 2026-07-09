@@ -17,7 +17,7 @@ export function useMenuAndCloseGuard(handlers: MenuHandlers): void {
 
   // Native-menu events → handlers.
   useEffect(() => {
-    const commands: MenuCommand[] = ['open', 'save', 'close', 'quit'];
+    const commands: MenuCommand[] = ['open', 'open-folder', 'save', 'close', 'quit'];
     const unlisteners: Array<() => void> = [];
     let disposed = false;
     for (const cmd of commands) {

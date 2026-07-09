@@ -129,8 +129,13 @@ export function EditorWindow() {
     else proceedExit('quit');
   }, [windowDirty, proceedExit]);
 
+  const handleOpenFolder = useCallback(() => {
+    // TODO: Implement open-folder behavior in a later task
+  }, []);
+
   useMenuAndCloseGuard({
     onOpen: handleOpen,
+    onOpenFolder: handleOpenFolder,
     onSave: handleSave,
     onCloseRequest: requestClose,
     onQuitRequest: requestQuit,

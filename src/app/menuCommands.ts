@@ -1,9 +1,10 @@
 /** The native-menu commands the Rust side emits as `menu://<command>` events. */
-export type MenuCommand = 'open' | 'save' | 'close' | 'quit';
+export type MenuCommand = 'open' | 'open-folder' | 'save' | 'close' | 'quit';
 
 /** App-level handlers the menu (and window close button) drive. */
 export interface MenuHandlers {
   onOpen: () => void;
+  onOpenFolder: () => void;
   onSave: () => void;
   onCloseRequest: () => void;
   onQuitRequest: () => void;
@@ -17,6 +18,7 @@ export interface MenuHandlers {
 export function dispatchMenuCommand(command: MenuCommand, handlers: MenuHandlers): void {
   switch (command) {
     case 'open': handlers.onOpen(); break;
+    case 'open-folder': handlers.onOpenFolder(); break;
     case 'save': handlers.onSave(); break;
     case 'close': handlers.onCloseRequest(); break;
     case 'quit': handlers.onQuitRequest(); break;
