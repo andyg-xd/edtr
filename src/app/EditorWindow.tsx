@@ -1,28 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { invoke } from '@tauri-apps/api/core';
 import { WindowChrome } from './WindowChrome';
 import { CloseGuard } from './CloseGuard';
 import { Sidebar } from './Sidebar';
 import { FolderSidebar } from './FolderSidebar';
 import { useMenuAndCloseGuard } from './MenuBridge';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
-import { openViaDialog, saveSession, pickFolder, readFolder, readSession } from '../files/fileController';
+import { pickFiles, pickFolder, openInNewWindow, takePendingOpen, saveSession, readFolder, readSession } from '../files/fileController';
 import { basename } from '../files/fileTypes';
 import { useTheme } from '../settings/useTheme';
 import { useOpenDocuments } from './useOpenDocuments';
 import { docIsDirty, windowIsDirty, type OpenDoc, type ViewMode } from '../files/openDocuments';
-import type { DocumentSession } from '../files/documentSession';
+import { isEmptyWindow, type OpenPayload } from '../files/openPayload';
 import type { FolderEntry } from '../files/folder';
 
 type FolderView = { path: string; entries: FolderEntry[] };
 
 type PendingIntent =
   | { kind: 'close-window' }
-  | { kind: 'quit' }
   | { kind: 'close-doc'; id: string }
-  | { kind: 'open-folder'; folder: FolderView }
-  | { kind: 'open-loose'; sessions: DocumentSession[] }
   | null;
 
 export function EditorWindow() {
@@ -36,16 +32,6 @@ export function EditorWindow() {
   const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme();
   const viewRef = useRef<DocumentViewHandle>(null);
 
-  // TEMP spike probe (removed in Task 4): claim this window's pending-open
-  // payload (if any) on mount and log it, to prove the handoff round-trips.
-  useEffect(() => {
-    invoke('take_pending_open').then((payload) => {
-      console.log('[spike] take_pending_open ->', payload);
-    });
-  }, []);
-
-  // Flush the active doc's pending Live edits into its session before it goes
-  // inactive (switch/open). false = a serializer throw aborted it.
   const flushActive = useCallback((): boolean => {
     if (active && active.viewMode === 'live' && activeLiveAvailable && viewRef.current) {
       return viewRef.current.flushToSource();
@@ -53,68 +39,67 @@ export function EditorWindow() {
     return true;
   }, [active, activeLiveAvailable]);
 
-  // Reset the active-status flags whenever the active doc changes wholesale.
   const resetActiveFlags = useCallback(() => {
     setError(null);
     setActiveDirty(false);
     setActiveLiveAvailable(false);
   }, []);
 
-  const windowDirty = windowIsDirty(docs.state, activeDirty);
-
-  // Replace the working set with a fresh folder context: empty the store (the
-  // user loads files by clicking), then show the folder. Entries already read.
-  const enterFolder = useCallback((folder: FolderView) => {
-    for (const d of docs.state.docs) docs.close(d.id);
-    setFolderView(folder);
-    resetActiveFlags();
-  }, [docs, resetActiveFlags]);
-
-  // Replace the working set with loose docs-mode sessions (leaves folder-mode).
-  const enterLooseDocs = useCallback((sessions: DocumentSession[]) => {
-    setFolderView(null);
-    if (sessions.length > 0) {
-      docs.openReplace(sessions[0]);
-      for (let i = 1; i < sessions.length; i++) docs.open(sessions[i]);
+  // Load a payload INTO THIS (empty) window. No guard/clear — an empty window
+  // has nothing to lose. Used to fill the launch window and on-mount for a
+  // spawned window.
+  const applyPayload = useCallback(async (payload: OpenPayload) => {
+    try {
+      if (payload.kind === 'files') {
+        for (const path of payload.paths) {
+          const session = await readSession(path);
+          docs.open(session);
+        }
+      } else {
+        const entries = await readFolder(payload.path);
+        setFolderView({ path: payload.path, entries });
+      }
+      resetActiveFlags();
+    } catch (e) {
+      setError(`Could not open: ${String(e)}`);
     }
-    resetActiveFlags();
   }, [docs, resetActiveFlags]);
 
-  // ⌘O / File → Open. docs-mode: append (5b-i). folder-mode: leave folder-mode
-  // → open the picked files fresh (guarding the dirty folder set first).
+  // On mount: if this window was spawned with a payload, load it.
+  useEffect(() => {
+    let cancelled = false;
+    takePendingOpen().then((payload) => {
+      if (!cancelled && payload) applyPayload(payload);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const thisWindowEmpty = isEmptyWindow(docs.state.docs.length, folderView !== null);
+
+  // ⌘O: fill this window if empty, else spawn a new window with the selection.
   const handleOpen = useCallback(async () => {
     try {
-      const sessions = await openViaDialog();
-      if (sessions.length === 0) return;
-      if (folderView) {
-        if (windowDirty) { setPendingIntent({ kind: 'open-loose', sessions }); return; }
-        if (!flushActive()) return;
-        enterLooseDocs(sessions);
-      } else {
-        if (!flushActive()) return;
-        for (const s of sessions) docs.open(s);
-        resetActiveFlags();
-      }
+      const paths = await pickFiles();
+      if (paths.length === 0) return;
+      if (thisWindowEmpty) await applyPayload({ kind: 'files', paths });
+      else await openInNewWindow({ kind: 'files', paths });
     } catch (e) {
       setError(`Could not open file: ${String(e)}`);
     }
-  }, [folderView, windowDirty, flushActive, enterLooseDocs, docs, resetActiveFlags]);
+  }, [thisWindowEmpty, applyPayload]);
 
-  // File → Open Folder…: read the folder (fail fast on error, no state change),
-  // then enter folder-mode, guarding the current working set if it's dirty.
+  // ⇧⌘O: fill this window if empty, else spawn a new folder window.
   const handleOpenFolder = useCallback(async () => {
     try {
       const path = await pickFolder();
       if (path == null) return;
-      const entries = await readFolder(path);
-      const folder: FolderView = { path, entries };
-      if (windowDirty) { setPendingIntent({ kind: 'open-folder', folder }); return; }
-      if (!flushActive()) return;
-      enterFolder(folder);
+      if (thisWindowEmpty) await applyPayload({ kind: 'folder', path });
+      else await openInNewWindow({ kind: 'folder', path });
     } catch (e) {
       setError(`Could not open folder: ${String(e)}`);
     }
-  }, [windowDirty, flushActive, enterFolder]);
+  }, [thisWindowEmpty, applyPayload]);
 
   const dirtyFor = useCallback(
     (doc: OpenDoc) => docIsDirty(doc, active?.id ?? null, activeDirty),
@@ -136,7 +121,6 @@ export function EditorWindow() {
     docs.setActive(id);
   }, [active, docs, flushActive, findDoc]);
 
-  // Folder-sidebar click: activate the doc if already open, else load + open it.
   const openPath = useCallback(async (path: string) => {
     const existing = docs.state.docs.find((d) => d.session.path === path);
     if (existing) { selectDoc(existing.id); return; }
@@ -150,7 +134,6 @@ export function EditorWindow() {
     }
   }, [docs, selectDoc, flushActive, resetActiveFlags]);
 
-  // Save one doc (flush first if it's the active/live doc). false = failure.
   const saveDoc = useCallback(async (id: string): Promise<boolean> => {
     const doc = findDoc(id);
     if (!doc) return true;
@@ -181,7 +164,6 @@ export function EditorWindow() {
     return true;
   }, [docs, flushActive]);
 
-  // ⌘S / File → Save: active doc only.
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (!active) return true;
     return saveDoc(active.id);
@@ -194,25 +176,20 @@ export function EditorWindow() {
     else docs.close(id);
   }, [docs, dirtyFor, findDoc]);
 
-  const proceedExit = useCallback((kind: 'close-window' | 'quit') => {
-    if (kind === 'quit') invoke('quit_app');
-    else getCurrentWindow().destroy();
-  }, []);
+  const windowDirty = windowIsDirty(docs.state, activeDirty);
+  // Closing a window destroys it; Rust's exit-on-zero quits the app when the
+  // last window is gone. No separate "quit" path.
+  const closeThisWindow = useCallback(() => { getCurrentWindow().destroy(); }, []);
   const requestClose = useCallback(() => {
     if (windowDirty) setPendingIntent({ kind: 'close-window' });
-    else proceedExit('close-window');
-  }, [windowDirty, proceedExit]);
-  const requestQuit = useCallback(() => {
-    if (windowDirty) setPendingIntent({ kind: 'quit' });
-    else proceedExit('quit');
-  }, [windowDirty, proceedExit]);
+    else closeThisWindow();
+  }, [windowDirty, closeThisWindow]);
 
   useMenuAndCloseGuard({
     onOpen: handleOpen,
     onOpenFolder: handleOpenFolder,
     onSave: handleSave,
     onCloseRequest: requestClose,
-    onQuitRequest: requestQuit,
   });
 
   const effectiveViewMode: ViewMode = active && active.viewMode === 'live' && activeLiveAvailable ? 'live' : 'code';
@@ -228,14 +205,10 @@ export function EditorWindow() {
     return doc ? docIsDirty(doc, active?.id ?? null, activeDirty) : false;
   }, [docs.state.docs, active, activeDirty]);
 
-  // Guard actions branch on the pending intent.
   const guardProceed = (intent: Exclude<PendingIntent, null>) => {
     switch (intent.kind) {
       case 'close-doc': docs.close(intent.id); break;
-      case 'open-folder': enterFolder(intent.folder); break;
-      case 'open-loose': enterLooseDocs(intent.sessions); break;
-      case 'close-window':
-      case 'quit': proceedExit(intent.kind); break;
+      case 'close-window': closeThisWindow(); break;
       default: { const _exhaustive: never = intent; void _exhaustive; break; }
     }
   };
@@ -319,13 +292,6 @@ export function EditorWindow() {
           ) : (
             <div className="empty-state">
               <button onClick={handleOpen}>Open a file… (⌘O)</button>
-              {/* TEMP spike probe (removed in Task 4): prove open_in_new_window
-                  spawns an independent second window. */}
-              <button
-                onClick={() => invoke('open_in_new_window', { payload: { kind: 'files', paths: [] } })}
-              >
-                [spike] Open in new window
-              </button>
             </div>
           )}
         </div>

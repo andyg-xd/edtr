@@ -3,23 +3,28 @@ import { invoke } from '@tauri-apps/api/core';
 import { readFile, writeFile } from './fileIo';
 import { DocumentSession } from './documentSession';
 import type { FolderEntry } from './folder';
+import type { OpenPayload } from './openPayload';
 
-/** Show the native open panel (multi-select); return a session per chosen file
+/** Show the native open panel (multi-select); return the chosen file paths
  * (empty array if cancelled). */
-export async function openViaDialog(): Promise<DocumentSession[]> {
+export async function pickFiles(): Promise<string[]> {
   const selected = await open({
     multiple: true,
     directory: false,
     filters: [{ name: 'Text', extensions: ['md', 'markdown', 'html', 'htm', 'txt'] }],
   });
   if (selected == null) return [];
-  const paths = Array.isArray(selected) ? selected : [selected];
-  const sessions: DocumentSession[] = [];
-  for (const path of paths) {
-    const loaded = await readFile(path);
-    sessions.push(new DocumentSession(loaded));
-  }
-  return sessions;
+  return Array.isArray(selected) ? selected : [selected];
+}
+
+/** Spawn a new window that will load `payload` on mount. */
+export async function openInNewWindow(payload: OpenPayload): Promise<void> {
+  await invoke('open_in_new_window', { payload });
+}
+
+/** Claim this window's pending open payload (set when it was spawned), if any. */
+export async function takePendingOpen(): Promise<OpenPayload | null> {
+  return (await invoke<OpenPayload | null>('take_pending_open')) ?? null;
 }
 
 /** Persist the session's current text, then mark it clean. */
