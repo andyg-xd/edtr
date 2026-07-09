@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { listen } from '@tauri-apps/api/event';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { dispatchMenuCommand, type MenuCommand, type MenuHandlers } from './menuCommands';
 
 /**
@@ -20,8 +20,9 @@ export function useMenuAndCloseGuard(handlers: MenuHandlers): void {
     const commands: MenuCommand[] = ['open', 'open-folder', 'save', 'close'];
     const unlisteners: Array<() => void> = [];
     let disposed = false;
+    const win = getCurrentWebviewWindow();
     for (const cmd of commands) {
-      listen(`menu://${cmd}`, () => dispatchMenuCommand(cmd, ref.current))
+      win.listen(`menu://${cmd}`, () => dispatchMenuCommand(cmd, ref.current))
         .then((un) => { if (disposed) un(); else unlisteners.push(un); })
         .catch(() => {});
     }

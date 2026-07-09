@@ -16,13 +16,11 @@ pub fn run() {
         .on_menu_event(|app, event| {
             let id = event.id().0.clone();
             if id == "quit" {
-                // Quit = sweep: ask every window to run its own close guard.
+                // Quit sweep: broadcast to every window's (window-scoped) listener.
                 // Each window destroys itself on proceed; exit-on-zero (in
                 // .run) quits once the last is gone. Non-atomic by design
                 // (5b-iii-a); atomic quit is 5b-iii-b.
-                for w in app.webview_windows().into_values() {
-                    let _ = w.emit("menu://close", ());
-                }
+                let _ = app.emit("menu://close", ());
                 return;
             }
             let event_name = match id.as_str() {
@@ -32,13 +30,17 @@ pub fn run() {
                 "close" => "menu://close",
                 _ => return,
             };
-            // Route to the focused window only, so exactly the front window acts.
+            // Deliver to the FOCUSED window only. `emit_to(<label>, …)` targets
+            // that label; only that window's window-scoped listener (see
+            // MenuBridge) fires. (Plain `.emit()` is a global broadcast — do not
+            // use it here.)
             if let Some(w) = app
                 .webview_windows()
                 .into_values()
                 .find(|w| w.is_focused().unwrap_or(false))
             {
-                let _ = w.emit(event_name, ());
+                let label = w.label().to_string();
+                let _ = app.emit_to(label.as_str(), event_name, ());
             }
         })
         .invoke_handler(tauri::generate_handler![
