@@ -276,14 +276,19 @@ mod tests {
     #[test]
     fn read_folder_returns_only_editable_sorted() {
         let dir = tempfile::tempdir().unwrap();
-        for name in ["Zeta.markdown", "a.md", "B.html", "c.txt", "d.png", "notes.htm"] {
+        for name in ["Zeta.markdown", "a.md", "B.html", "c.txt", "d.png", "notes.htm", "Report.MD"] {
             std::fs::write(dir.path().join(name), b"x").unwrap();
         }
-        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        // A directory whose name WOULD pass the extension filter — must still be
+        // excluded by the is_file() gate (not merely by the extension check).
+        std::fs::create_dir(dir.path().join("notdoc.md")).unwrap();
         let entries = read_folder(dir.path().to_string_lossy().to_string()).unwrap();
         let names: Vec<String> = entries.iter().map(|e| e.name.clone()).collect();
-        // Editable only (.txt/.png/subdir excluded), case-insensitive sort.
-        assert_eq!(names, vec!["a.md", "B.html", "notes.htm", "Zeta.markdown"]);
+        // Editable only (.txt/.png excluded); UPPERCASE .MD extension included
+        // (case-insensitive ext match); the notdoc.md DIRECTORY excluded;
+        // case-insensitive sort by name.
+        assert_eq!(names, vec!["a.md", "B.html", "notes.htm", "Report.MD", "Zeta.markdown"]);
+        assert!(!names.iter().any(|n| n == "notdoc.md"));
         // Paths are absolute (inside the temp dir).
         assert!(entries[0].path.ends_with("a.md"));
     }
