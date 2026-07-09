@@ -24,6 +24,12 @@ pub struct LoadedFile {
     pub meta: FileMeta,
 }
 
+#[derive(Debug, PartialEq, Serialize)]
+pub struct FolderEntry {
+    pub name: String,
+    pub path: String,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum DecodeError {
     NotUtf8,
@@ -110,6 +116,37 @@ pub fn write_text_file_atomic(path: String, text: String, meta: FileMeta) -> Res
     tmp.persist(&target)
         .map_err(|e| format!("Could not save file: {e}"))?;
     Ok(())
+}
+
+/// Extensions Edtr lists in a folder sidebar (frozen design spec §6). NOT `txt`.
+const EDITABLE_EXTS: [&str; 4] = ["md", "markdown", "html", "htm"];
+
+/// List a folder's editable files, non-recursively, sorted case-insensitively
+/// by name. Directories, non-editable files, and unreadable entries are skipped.
+#[tauri::command]
+pub fn read_folder(path: String) -> Result<Vec<FolderEntry>, String> {
+    let dir = std::fs::read_dir(&path).map_err(|e| format!("Could not read folder: {e}"))?;
+    let mut entries: Vec<FolderEntry> = Vec::new();
+    for entry in dir.flatten() {
+        let p = entry.path();
+        if !p.is_file() {
+            continue;
+        }
+        let editable = p
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| EDITABLE_EXTS.contains(&e.to_lowercase().as_str()))
+            .unwrap_or(false);
+        if !editable {
+            continue;
+        }
+        entries.push(FolderEntry {
+            name: entry.file_name().to_string_lossy().to_string(),
+            path: p.to_string_lossy().to_string(),
+        });
+    }
+    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(entries)
 }
 
 #[cfg(test)]
@@ -230,5 +267,39 @@ mod tests {
         std::fs::write(&path, b"a\0b").unwrap();
         let err = read_text_file(path.to_string_lossy().to_string()).unwrap_err();
         assert!(err.contains("binary"));
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 5b-ii: read_folder
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn read_folder_returns_only_editable_sorted() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["Zeta.markdown", "a.md", "B.html", "c.txt", "d.png", "notes.htm"] {
+            std::fs::write(dir.path().join(name), b"x").unwrap();
+        }
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        let entries = read_folder(dir.path().to_string_lossy().to_string()).unwrap();
+        let names: Vec<String> = entries.iter().map(|e| e.name.clone()).collect();
+        // Editable only (.txt/.png/subdir excluded), case-insensitive sort.
+        assert_eq!(names, vec!["a.md", "B.html", "notes.htm", "Zeta.markdown"]);
+        // Paths are absolute (inside the temp dir).
+        assert!(entries[0].path.ends_with("a.md"));
+    }
+
+    #[test]
+    fn read_folder_empty_when_no_editable_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("photo.png"), b"x").unwrap();
+        std::fs::write(dir.path().join("data.json"), b"x").unwrap();
+        let entries = read_folder(dir.path().to_string_lossy().to_string()).unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn read_folder_errors_on_missing_dir() {
+        let err = read_folder("/no/such/folder/here".to_string()).unwrap_err();
+        assert!(err.contains("Could not read folder"));
     }
 }

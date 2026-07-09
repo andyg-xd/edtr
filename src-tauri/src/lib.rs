@@ -34,6 +34,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             fs::read_text_file,
             fs::write_text_file_atomic,
+            fs::read_folder,
             assets::copy_image_into_assets,
             assets::write_image_into_assets,
             quit_app
