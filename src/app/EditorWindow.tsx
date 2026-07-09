@@ -228,6 +228,7 @@ export function EditorWindow() {
       case 'open-loose': enterLooseDocs(intent.sessions); break;
       case 'close-window':
       case 'quit': proceedExit(intent.kind); break;
+      default: { const _exhaustive: never = intent; void _exhaustive; break; }
     }
   };
   const onGuardSave = async () => {
@@ -299,7 +300,14 @@ export function EditorWindow() {
               onError={setError}
             />
           ) : folderView ? (
-            <div className="empty-state">Select a file from the sidebar to start editing.</div>
+            folderView.entries.length === 0 ? (
+              <div className="empty-state">
+                <p>This folder has no editable files.</p>
+                <button onClick={handleOpen}>Open a file… (⌘O)</button>
+              </div>
+            ) : (
+              <div className="empty-state">Select a file from the sidebar to start editing.</div>
+            )
           ) : (
             <div className="empty-state">
               <button onClick={handleOpen}>Open a file… (⌘O)</button>
