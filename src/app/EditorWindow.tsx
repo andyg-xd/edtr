@@ -1,21 +1,28 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { WindowChrome } from './WindowChrome';
 import { CloseGuard } from './CloseGuard';
 import { Sidebar } from './Sidebar';
+import { FolderSidebar } from './FolderSidebar';
 import { useMenuAndCloseGuard } from './MenuBridge';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
-import { openViaDialog, saveSession } from '../files/fileController';
+import { openViaDialog, saveSession, pickFolder, readFolder, readSession } from '../files/fileController';
 import { basename } from '../files/fileTypes';
 import { useTheme } from '../settings/useTheme';
 import { useOpenDocuments } from './useOpenDocuments';
 import { docIsDirty, windowIsDirty, type OpenDoc, type ViewMode } from '../files/openDocuments';
+import type { DocumentSession } from '../files/documentSession';
+import type { FolderEntry } from '../files/folder';
+
+type FolderView = { path: string; entries: FolderEntry[] };
 
 type PendingIntent =
   | { kind: 'close-window' }
   | { kind: 'quit' }
   | { kind: 'close-doc'; id: string }
+  | { kind: 'open-folder'; folder: FolderView }
+  | { kind: 'open-loose'; sessions: DocumentSession[] }
   | null;
 
 export function EditorWindow() {
@@ -25,6 +32,7 @@ export function EditorWindow() {
   const [pendingIntent, setPendingIntent] = useState<PendingIntent>(null);
   const [activeDirty, setActiveDirty] = useState(false);
   const [activeLiveAvailable, setActiveLiveAvailable] = useState(false);
+  const [folderView, setFolderView] = useState<FolderView | null>(null);
   const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme();
   const viewRef = useRef<DocumentViewHandle>(null);
 
@@ -37,19 +45,68 @@ export function EditorWindow() {
     return true;
   }, [active, activeLiveAvailable]);
 
+  // Reset the active-status flags whenever the active doc changes wholesale.
+  const resetActiveFlags = useCallback(() => {
+    setError(null);
+    setActiveDirty(false);
+    setActiveLiveAvailable(false);
+  }, []);
+
+  const windowDirty = windowIsDirty(docs.state, activeDirty);
+
+  // Replace the working set with a fresh folder context: empty the store (the
+  // user loads files by clicking), then show the folder. Entries already read.
+  const enterFolder = useCallback((folder: FolderView) => {
+    for (const d of docs.state.docs) docs.close(d.id);
+    setFolderView(folder);
+    resetActiveFlags();
+  }, [docs, resetActiveFlags]);
+
+  // Replace the working set with loose docs-mode sessions (leaves folder-mode).
+  const enterLooseDocs = useCallback((sessions: DocumentSession[]) => {
+    setFolderView(null);
+    if (sessions.length > 0) {
+      docs.openReplace(sessions[0]);
+      for (let i = 1; i < sessions.length; i++) docs.open(sessions[i]);
+    }
+    resetActiveFlags();
+  }, [docs, resetActiveFlags]);
+
+  // ⌘O / File → Open. docs-mode: append (5b-i). folder-mode: leave folder-mode
+  // → open the picked files fresh (guarding the dirty folder set first).
   const handleOpen = useCallback(async () => {
     try {
       const sessions = await openViaDialog();
       if (sessions.length === 0) return;
-      if (!flushActive()) return; // don't lose the outgoing doc's unflushable edit
-      for (const s of sessions) docs.open(s);
-      setError(null);
-      setActiveDirty(false);
-      setActiveLiveAvailable(false);
+      if (folderView) {
+        if (windowDirty) { setPendingIntent({ kind: 'open-loose', sessions }); return; }
+        if (!flushActive()) return;
+        enterLooseDocs(sessions);
+      } else {
+        if (!flushActive()) return;
+        for (const s of sessions) docs.open(s);
+        resetActiveFlags();
+      }
     } catch (e) {
       setError(`Could not open file: ${String(e)}`);
     }
-  }, [docs, flushActive]);
+  }, [folderView, windowDirty, flushActive, enterLooseDocs, docs, resetActiveFlags]);
+
+  // File → Open Folder…: read the folder (fail fast on error, no state change),
+  // then enter folder-mode, guarding the current working set if it's dirty.
+  const handleOpenFolder = useCallback(async () => {
+    try {
+      const path = await pickFolder();
+      if (path == null) return;
+      const entries = await readFolder(path);
+      const folder: FolderView = { path, entries };
+      if (windowDirty) { setPendingIntent({ kind: 'open-folder', folder }); return; }
+      if (!flushActive()) return;
+      enterFolder(folder);
+    } catch (e) {
+      setError(`Could not open folder: ${String(e)}`);
+    }
+  }, [windowDirty, flushActive, enterFolder]);
 
   const dirtyFor = useCallback(
     (doc: OpenDoc) => docIsDirty(doc, active?.id ?? null, activeDirty),
@@ -70,6 +127,20 @@ export function EditorWindow() {
     setActiveLiveAvailable(false);
     docs.setActive(id);
   }, [active, docs, flushActive, findDoc]);
+
+  // Folder-sidebar click: activate the doc if already open, else load + open it.
+  const openPath = useCallback(async (path: string) => {
+    const existing = docs.state.docs.find((d) => d.session.path === path);
+    if (existing) { selectDoc(existing.id); return; }
+    if (!flushActive()) return;
+    try {
+      const session = await readSession(path);
+      resetActiveFlags();
+      docs.open(session);
+    } catch (e) {
+      setError(`Could not open file: ${String(e)}`);
+    }
+  }, [docs, selectDoc, flushActive, resetActiveFlags]);
 
   // Save one doc (flush first if it's the active/live doc). false = failure.
   const saveDoc = useCallback(async (id: string): Promise<boolean> => {
@@ -115,7 +186,6 @@ export function EditorWindow() {
     else docs.close(id);
   }, [docs, dirtyFor, findDoc]);
 
-  const windowDirty = windowIsDirty(docs.state, activeDirty);
   const proceedExit = useCallback((kind: 'close-window' | 'quit') => {
     if (kind === 'quit') invoke('quit_app');
     else getCurrentWindow().destroy();
@@ -129,10 +199,6 @@ export function EditorWindow() {
     else proceedExit('quit');
   }, [windowDirty, proceedExit]);
 
-  const handleOpenFolder = useCallback(() => {
-    // TODO: Implement open-folder behavior in a later task
-  }, []);
-
   useMenuAndCloseGuard({
     onOpen: handleOpen,
     onOpenFolder: handleOpenFolder,
@@ -144,10 +210,25 @@ export function EditorWindow() {
   const effectiveViewMode: ViewMode = active && active.viewMode === 'live' && activeLiveAvailable ? 'live' : 'code';
   const degraded = !!active && active.viewMode === 'live' && !activeLiveAvailable;
 
+  const activePath = active?.session.path ?? null;
+  const openPaths = useMemo(
+    () => new Set(docs.state.docs.map((d) => d.session.path)),
+    [docs.state.docs],
+  );
+  const dirtyForPath = useCallback((path: string) => {
+    const doc = docs.state.docs.find((d) => d.session.path === path);
+    return doc ? docIsDirty(doc, active?.id ?? null, activeDirty) : false;
+  }, [docs.state.docs, active, activeDirty]);
+
   // Guard actions branch on the pending intent.
   const guardProceed = (intent: Exclude<PendingIntent, null>) => {
-    if (intent.kind === 'close-doc') docs.close(intent.id);
-    else proceedExit(intent.kind);
+    switch (intent.kind) {
+      case 'close-doc': docs.close(intent.id); break;
+      case 'open-folder': enterFolder(intent.folder); break;
+      case 'open-loose': enterLooseDocs(intent.sessions); break;
+      case 'close-window':
+      case 'quit': proceedExit(intent.kind); break;
+    }
   };
   const onGuardSave = async () => {
     const intent = pendingIntent;
@@ -187,14 +268,24 @@ export function EditorWindow() {
         <div className="notice notice-error" role="alert">{error}</div>
       )}
       <div className="editor-body">
-        {docs.state.docs.length > 1 && (
-          <Sidebar
-            docs={docs.state.docs}
-            activeId={docs.state.activeId}
-            dirtyFor={dirtyFor}
-            onSelect={selectDoc}
-            onClose={closeDoc}
+        {folderView ? (
+          <FolderSidebar
+            entries={folderView.entries}
+            activePath={activePath}
+            openPaths={openPaths}
+            dirtyForPath={dirtyForPath}
+            onOpen={openPath}
           />
+        ) : (
+          docs.state.docs.length > 1 && (
+            <Sidebar
+              docs={docs.state.docs}
+              activeId={docs.state.activeId}
+              dirtyFor={dirtyFor}
+              onSelect={selectDoc}
+              onClose={closeDoc}
+            />
+          )
         )}
         <div className="doc-pane">
           {active ? (
@@ -207,6 +298,8 @@ export function EditorWindow() {
               onLiveAvailableChange={setActiveLiveAvailable}
               onError={setError}
             />
+          ) : folderView ? (
+            <div className="empty-state">Select a file from the sidebar to start editing.</div>
           ) : (
             <div className="empty-state">
               <button onClick={handleOpen}>Open a file… (⌘O)</button>
