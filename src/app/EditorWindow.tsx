@@ -3,65 +3,124 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { WindowChrome } from './WindowChrome';
 import { CloseGuard } from './CloseGuard';
+import { Sidebar } from './Sidebar';
 import { useMenuAndCloseGuard } from './MenuBridge';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
 import { openViaDialog, saveSession } from '../files/fileController';
 import { basename } from '../files/fileTypes';
 import { useTheme } from '../settings/useTheme';
 import { useOpenDocuments } from './useOpenDocuments';
-import type { ViewMode } from '../files/openDocuments';
+import { docIsDirty, windowIsDirty, type OpenDoc, type ViewMode } from '../files/openDocuments';
+
+type PendingIntent =
+  | { kind: 'close-window' }
+  | { kind: 'quit' }
+  | { kind: 'close-doc'; id: string }
+  | null;
 
 export function EditorWindow() {
   const docs = useOpenDocuments();
   const active = docs.active;
   const [error, setError] = useState<string | null>(null);
-  const [pendingIntent, setPendingIntent] = useState<'close' | 'quit' | null>(null);
+  const [pendingIntent, setPendingIntent] = useState<PendingIntent>(null);
   const [activeDirty, setActiveDirty] = useState(false);
   const [activeLiveAvailable, setActiveLiveAvailable] = useState(false);
   const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme();
   const viewRef = useRef<DocumentViewHandle>(null);
 
+  // Flush the active doc's pending Live edits into its session before it goes
+  // inactive (switch/open). false = a serializer throw aborted it.
+  const flushActive = useCallback((): boolean => {
+    if (active && active.viewMode === 'live' && activeLiveAvailable && viewRef.current) {
+      return viewRef.current.flushToSource();
+    }
+    return true;
+  }, [active, activeLiveAvailable]);
+
   const handleOpen = useCallback(async () => {
     try {
-      const s = await openViaDialog();
-      if (s) {
-        docs.openReplace(s); // 5a: open replaces the single active doc (today's behavior)
-        setError(null);
-        setActiveDirty(false);
-        setActiveLiveAvailable(false);
-      }
+      const sessions = await openViaDialog();
+      if (sessions.length === 0) return;
+      if (!flushActive()) return; // don't lose the outgoing doc's unflushable edit
+      for (const s of sessions) docs.open(s);
+      setError(null);
+      setActiveDirty(false);
+      setActiveLiveAvailable(false);
     } catch (e) {
       setError(`Could not open file: ${String(e)}`);
     }
-  }, [docs]);
+  }, [docs, flushActive]);
 
-  const handleSave = useCallback(async (): Promise<boolean> => {
-    if (!active) return true;
-    if (active.viewMode === 'live' && activeLiveAvailable && viewRef.current && !viewRef.current.flushToSource()) return false;
-    if (!active.session.isDirty()) { setActiveDirty(false); return true; }
+  const dirtyFor = useCallback(
+    (doc: OpenDoc) => docIsDirty(doc, active?.id ?? null, activeDirty),
+    [active, activeDirty],
+  );
+
+  const selectDoc = useCallback((id: string) => {
+    if (id === active?.id) return;
+    if (!flushActive()) return;
+    const target = docs.state.docs.find((d) => d.id === id);
+    setActiveDirty(target ? target.session.isDirty() : false);
+    setActiveLiveAvailable(false);
+    docs.setActive(id);
+  }, [active, docs, flushActive]);
+
+  // Save one doc (flush first if it's the active/live doc). false = failure.
+  const saveDoc = useCallback(async (id: string): Promise<boolean> => {
+    const doc = docs.state.docs.find((d) => d.id === id);
+    if (!doc) return true;
+    if (id === active?.id && !flushActive()) return false;
+    if (!doc.session.isDirty()) { if (id === active?.id) setActiveDirty(false); return true; }
     try {
-      await saveSession(active.session);
+      await saveSession(doc.session);
+      if (id === active?.id) setActiveDirty(false);
+      return true;
+    } catch (e) {
+      setError(`Could not save — your changes are safe in the editor. ${String(e)}`);
+      return false;
+    }
+  }, [docs, active, flushActive]);
+
+  const saveAllDirty = useCallback(async (): Promise<boolean> => {
+    if (!flushActive()) return false;
+    try {
+      for (const doc of docs.state.docs) {
+        if (doc.session.isDirty()) await saveSession(doc.session);
+      }
       setActiveDirty(false);
       return true;
     } catch (e) {
       setError(`Could not save — your changes are safe in the editor. ${String(e)}`);
       return false;
     }
-  }, [active, activeLiveAvailable]);
+  }, [docs, flushActive]);
 
-  const dirty = active ? activeDirty : false;
-  const proceedExit = useCallback((intent: 'close' | 'quit') => {
-    if (intent === 'quit') invoke('quit_app');
+  // ⌘S / File → Save: active doc only.
+  const handleSave = useCallback(async (): Promise<boolean> => {
+    if (!active) return true;
+    return saveDoc(active.id);
+  }, [active, saveDoc]);
+
+  const closeDoc = useCallback((id: string) => {
+    const doc = docs.state.docs.find((d) => d.id === id);
+    if (!doc) return;
+    if (dirtyFor(doc)) setPendingIntent({ kind: 'close-doc', id });
+    else docs.close(id);
+  }, [docs, dirtyFor]);
+
+  const windowDirty = windowIsDirty(docs.state, activeDirty);
+  const proceedExit = useCallback((kind: 'close-window' | 'quit') => {
+    if (kind === 'quit') invoke('quit_app');
     else getCurrentWindow().destroy();
   }, []);
   const requestClose = useCallback(() => {
-    if (dirty) setPendingIntent('close');
-    else proceedExit('close');
-  }, [dirty, proceedExit]);
+    if (windowDirty) setPendingIntent({ kind: 'close-window' });
+    else proceedExit('close-window');
+  }, [windowDirty, proceedExit]);
   const requestQuit = useCallback(() => {
-    if (dirty) setPendingIntent('quit');
+    if (windowDirty) setPendingIntent({ kind: 'quit' });
     else proceedExit('quit');
-  }, [dirty, proceedExit]);
+  }, [windowDirty, proceedExit]);
 
   useMenuAndCloseGuard({
     onOpen: handleOpen,
@@ -73,11 +132,29 @@ export function EditorWindow() {
   const effectiveViewMode: ViewMode = active && active.viewMode === 'live' && activeLiveAvailable ? 'live' : 'code';
   const degraded = !!active && active.viewMode === 'live' && !activeLiveAvailable;
 
+  // Guard actions branch on the pending intent.
+  const guardProceed = (intent: Exclude<PendingIntent, null>) => {
+    if (intent.kind === 'close-doc') docs.close(intent.id);
+    else proceedExit(intent.kind);
+  };
+  const onGuardSave = async () => {
+    const intent = pendingIntent;
+    if (!intent) return;
+    const ok = intent.kind === 'close-doc' ? await saveDoc(intent.id) : await saveAllDirty();
+    setPendingIntent(null);
+    if (ok) guardProceed(intent);
+  };
+  const onGuardDiscard = () => {
+    const intent = pendingIntent;
+    setPendingIntent(null);
+    if (intent) guardProceed(intent);
+  };
+
   return (
     <div className="editor-window">
       <WindowChrome
         name={active ? basename(active.session.path) : null}
-        dirty={dirty}
+        dirty={active ? activeDirty : false}
         viewMode={effectiveViewMode}
         liveDisabled={!activeLiveAvailable}
         onSetViewMode={(m) => {
@@ -97,36 +174,36 @@ export function EditorWindow() {
       {error && (
         <div className="notice notice-error" role="alert">{error}</div>
       )}
-      {active ? (
-        <DocumentView
-          key={active.id}
-          ref={viewRef}
-          doc={active}
-          effectiveTheme={themeEffective}
-          onDirtyChange={setActiveDirty}
-          onLiveAvailableChange={setActiveLiveAvailable}
-          onError={setError}
-        />
-      ) : (
-        <div className="empty-state">
-          <button onClick={handleOpen}>Open a file… (⌘O)</button>
+      <div className="editor-body">
+        {docs.state.docs.length > 1 && (
+          <Sidebar
+            docs={docs.state.docs}
+            activeId={docs.state.activeId}
+            dirtyFor={dirtyFor}
+            onSelect={selectDoc}
+            onClose={closeDoc}
+          />
+        )}
+        <div className="doc-pane">
+          {active ? (
+            <DocumentView
+              key={active.id}
+              ref={viewRef}
+              doc={active}
+              effectiveTheme={themeEffective}
+              onDirtyChange={setActiveDirty}
+              onLiveAvailableChange={setActiveLiveAvailable}
+              onError={setError}
+            />
+          ) : (
+            <div className="empty-state">
+              <button onClick={handleOpen}>Open a file… (⌘O)</button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
       {pendingIntent && (
-        <CloseGuard
-          onSave={async () => {
-            const intent = pendingIntent;
-            const saved = await handleSave();
-            setPendingIntent(null);
-            if (saved && intent) proceedExit(intent);
-          }}
-          onDiscard={() => {
-            const intent = pendingIntent;
-            setPendingIntent(null);
-            if (intent) proceedExit(intent);
-          }}
-          onCancel={() => setPendingIntent(null)}
-        />
+        <CloseGuard onSave={onGuardSave} onDiscard={onGuardDiscard} onCancel={() => setPendingIntent(null)} />
       )}
     </div>
   );
