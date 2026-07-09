@@ -32,6 +32,8 @@ export function EditorWindow() {
   const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme();
   const viewRef = useRef<DocumentViewHandle>(null);
 
+  // Flush the active doc's pending Live edits into its session before it goes
+  // inactive (switch/open). false = a serializer throw aborted it.
   const flushActive = useCallback((): boolean => {
     if (active && active.viewMode === 'live' && activeLiveAvailable && viewRef.current) {
       return viewRef.current.flushToSource();
@@ -39,6 +41,7 @@ export function EditorWindow() {
     return true;
   }, [active, activeLiveAvailable]);
 
+  // Reset the active-status flags whenever the active doc changes wholesale.
   const resetActiveFlags = useCallback(() => {
     setError(null);
     setActiveDirty(false);
@@ -51,10 +54,8 @@ export function EditorWindow() {
   const applyPayload = useCallback(async (payload: OpenPayload) => {
     try {
       if (payload.kind === 'files') {
-        for (const path of payload.paths) {
-          const session = await readSession(path);
-          docs.open(session);
-        }
+        const sessions = await Promise.all(payload.paths.map((p) => readSession(p)));
+        for (const s of sessions) docs.open(s);
       } else {
         const entries = await readFolder(payload.path);
         setFolderView({ path: payload.path, entries });
@@ -65,13 +66,17 @@ export function EditorWindow() {
     }
   }, [docs, resetActiveFlags]);
 
-  // On mount: if this window was spawned with a payload, load it.
+  const appliedRef = useRef(false);
+  // On mount: if this window was spawned with a payload, load it once. A useRef
+  // latch (not a local cancelled flag) so React StrictMode's double-invoke can't
+  // drop the payload — take_pending_open pops server-side, so only one call wins.
   useEffect(() => {
-    let cancelled = false;
     takePendingOpen().then((payload) => {
-      if (!cancelled && payload) applyPayload(payload);
+      if (!appliedRef.current && payload) {
+        appliedRef.current = true;
+        applyPayload(payload);
+      }
     }).catch(() => {});
-    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -121,6 +126,7 @@ export function EditorWindow() {
     docs.setActive(id);
   }, [active, docs, flushActive, findDoc]);
 
+  // Folder-sidebar click: activate the doc if already open, else load + open it.
   const openPath = useCallback(async (path: string) => {
     const existing = docs.state.docs.find((d) => d.session.path === path);
     if (existing) { selectDoc(existing.id); return; }
@@ -134,6 +140,7 @@ export function EditorWindow() {
     }
   }, [docs, selectDoc, flushActive, resetActiveFlags]);
 
+  // Save one doc (flush first if it's the active/live doc). false = failure.
   const saveDoc = useCallback(async (id: string): Promise<boolean> => {
     const doc = findDoc(id);
     if (!doc) return true;
@@ -164,6 +171,7 @@ export function EditorWindow() {
     return true;
   }, [docs, flushActive]);
 
+  // ⌘S / File → Save: active doc only.
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (!active) return true;
     return saveDoc(active.id);
@@ -205,6 +213,7 @@ export function EditorWindow() {
     return doc ? docIsDirty(doc, active?.id ?? null, activeDirty) : false;
   }, [docs.state.docs, active, activeDirty]);
 
+  // Guard actions branch on the pending intent.
   const guardProceed = (intent: Exclude<PendingIntent, null>) => {
     switch (intent.kind) {
       case 'close-doc': docs.close(intent.id); break;
