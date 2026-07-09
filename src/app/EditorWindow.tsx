@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { WindowChrome } from './WindowChrome';
@@ -35,6 +35,14 @@ export function EditorWindow() {
   const [folderView, setFolderView] = useState<FolderView | null>(null);
   const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme();
   const viewRef = useRef<DocumentViewHandle>(null);
+
+  // TEMP spike probe (removed in Task 4): claim this window's pending-open
+  // payload (if any) on mount and log it, to prove the handoff round-trips.
+  useEffect(() => {
+    invoke('take_pending_open').then((payload) => {
+      console.log('[spike] take_pending_open ->', payload);
+    });
+  }, []);
 
   // Flush the active doc's pending Live edits into its session before it goes
   // inactive (switch/open). false = a serializer throw aborted it.
@@ -311,6 +319,13 @@ export function EditorWindow() {
           ) : (
             <div className="empty-state">
               <button onClick={handleOpen}>Open a file… (⌘O)</button>
+              {/* TEMP spike probe (removed in Task 4): prove open_in_new_window
+                  spawns an independent second window. */}
+              <button
+                onClick={() => invoke('open_in_new_window', { payload: { kind: 'files', paths: [] } })}
+              >
+                [spike] Open in new window
+              </button>
             </div>
           )}
         </div>

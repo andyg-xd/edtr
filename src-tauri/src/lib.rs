@@ -1,33 +1,26 @@
 mod assets;
 mod fs;
 mod menu;
+mod window;
 
-use tauri::Emitter;
-
-/// Quit the whole app. Called from the frontend only AFTER the unsaved-changes
-/// guard has been satisfied (Save succeeded, or the user chose Discard, or the
-/// document was clean).
-#[tauri::command]
-fn quit_app(app: tauri::AppHandle) {
-    app.exit(0);
-}
+use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(window::PendingOpen::default())
+        .manage(window::WindowCounter::default())
         .menu(|handle| menu::build_menu(handle))
         .on_menu_event(|app, event| {
-            // Map our custom menu ids to frontend events. The frontend runs the
-            // real logic (open dialog, save, close/quit guard) because dirty
-            // state lives in the React session model, not in Rust.
+            // (Task 3 rewrites this body — for the spike, the existing broadcast
+            // body is fine; the spike doesn't exercise the menu.)
             let event_name = match event.id().0.as_str() {
                 "open" => "menu://open",
                 "open-folder" => "menu://open-folder",
                 "save" => "menu://save",
                 "close" => "menu://close",
-                "quit" => "menu://quit",
                 _ => return,
             };
             let _ = app.emit(event_name, ());
@@ -38,8 +31,22 @@ pub fn run() {
             fs::read_folder,
             assets::copy_image_into_assets,
             assets::write_image_into_assets,
-            quit_app
+            window::open_in_new_window,
+            window::take_pending_open
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Quit when the last window closes (macOS otherwise keeps a
+            // windowless app alive).
+            if let tauri::RunEvent::WindowEvent {
+                event: tauri::WindowEvent::Destroyed,
+                ..
+            } = event
+            {
+                if app_handle.webview_windows().is_empty() {
+                    app_handle.exit(0);
+                }
+            }
+        });
 }
