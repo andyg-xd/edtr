@@ -14,16 +14,32 @@ pub fn run() {
         .manage(window::WindowCounter::default())
         .menu(|handle| menu::build_menu(handle))
         .on_menu_event(|app, event| {
-            // (Task 3 rewrites this body — for the spike, the existing broadcast
-            // body is fine; the spike doesn't exercise the menu.)
-            let event_name = match event.id().0.as_str() {
+            let id = event.id().0.clone();
+            if id == "quit" {
+                // Quit = sweep: ask every window to run its own close guard.
+                // Each window destroys itself on proceed; exit-on-zero (in
+                // .run) quits once the last is gone. Non-atomic by design
+                // (5b-iii-a); atomic quit is 5b-iii-b.
+                for w in app.webview_windows().into_values() {
+                    let _ = w.emit("menu://close", ());
+                }
+                return;
+            }
+            let event_name = match id.as_str() {
                 "open" => "menu://open",
                 "open-folder" => "menu://open-folder",
                 "save" => "menu://save",
                 "close" => "menu://close",
                 _ => return,
             };
-            let _ = app.emit(event_name, ());
+            // Route to the focused window only, so exactly the front window acts.
+            if let Some(w) = app
+                .webview_windows()
+                .into_values()
+                .find(|w| w.is_focused().unwrap_or(false))
+            {
+                let _ = w.emit(event_name, ());
+            }
         })
         .invoke_handler(tauri::generate_handler![
             fs::read_text_file,
