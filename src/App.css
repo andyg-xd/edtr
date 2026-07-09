@@ -325,3 +325,5 @@ body,
   cursor: pointer; padding: 2px 8px; font-size: 15px; line-height: 1;
 }
 .sidebar-close:hover { color: var(--fg); }
+.sidebar-item.is-unopened .sidebar-name { color: var(--fg-faint); }
+.sidebar-empty { padding: 12px 10px; color: var(--fg-faint); font-size: 13px; }
