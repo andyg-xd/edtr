@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use tauri::{AppHandle, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::Emitter;
 
 /// What a freshly-opened window should load. Matches the TS `OpenPayload`
 /// discriminated union: {kind:'files',paths} | {kind:'folder',path}.
@@ -56,4 +57,148 @@ pub fn open_in_new_window(
 #[tauri::command]
 pub fn take_pending_open(window: WebviewWindow, pending: State<PendingOpen>) -> Option<OpenPayload> {
     pending.0.lock().ok()?.remove(window.label())
+}
+
+/// A window's vote in a two-phase quit poll.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Vote {
+    Ready,
+    Cancel,
+}
+
+/// Result of recording a vote (or dropping a window) into the poll.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PollOutcome {
+    Pending, // still waiting on votes
+    Commit,  // every expected window voted Ready → exit the app
+    Abort,   // a Cancel arrived (or the vote was stale) → restore everything
+}
+
+/// Managed registry for the atomic-⌘Q two-phase vote (5b-iii-b).
+#[derive(Default)]
+pub struct QuitPollState(pub Mutex<QuitPoll>);
+
+/// `expected` = window labels snapshotted when ⌘Q started the poll; `votes`
+/// accumulates their votes. Discard/clean both vote `Ready` WITHOUT closing —
+/// nothing is destroyed until Commit, which is what makes Abort atomic.
+#[derive(Default)]
+pub struct QuitPoll {
+    pub active: bool,
+    pub expected: HashSet<String>,
+    pub votes: HashMap<String, Vote>,
+}
+
+impl QuitPoll {
+    /// Begin a poll over `labels`, discarding any prior poll.
+    pub fn start(&mut self, labels: impl IntoIterator<Item = String>) {
+        self.active = true;
+        self.expected = labels.into_iter().collect();
+        self.votes.clear();
+    }
+
+    /// Record a window's vote and return the resulting outcome.
+    pub fn record(&mut self, label: &str, vote: Vote) -> PollOutcome {
+        if !self.active {
+            return PollOutcome::Abort; // stale vote (poll already resolved)
+        }
+        if vote == Vote::Cancel {
+            self.reset();
+            return PollOutcome::Abort;
+        }
+        self.votes.insert(label.to_string(), Vote::Ready);
+        self.decide()
+    }
+
+    /// A window closed mid-poll: it can no longer vote, so drop it from the
+    /// expected set and re-evaluate (prevents a stuck poll).
+    pub fn drop_window(&mut self, label: &str) -> PollOutcome {
+        if !self.active {
+            return PollOutcome::Pending;
+        }
+        self.expected.remove(label);
+        self.votes.remove(label);
+        self.decide()
+    }
+
+    /// Commit once every still-expected window has voted Ready.
+    fn decide(&mut self) -> PollOutcome {
+        let all_ready = self
+            .expected
+            .iter()
+            .all(|l| self.votes.get(l) == Some(&Vote::Ready));
+        if all_ready {
+            self.reset();
+            PollOutcome::Commit
+        } else {
+            PollOutcome::Pending
+        }
+    }
+
+    fn reset(&mut self) {
+        self.active = false;
+        self.expected.clear();
+        self.votes.clear();
+    }
+}
+
+#[cfg(test)]
+mod quit_poll_tests {
+    use super::*;
+
+    #[test]
+    fn all_expected_ready_commits() {
+        let mut p = QuitPoll::default();
+        p.start(["a".to_string(), "b".to_string()]);
+        assert_eq!(p.record("a", Vote::Ready), PollOutcome::Pending);
+        assert_eq!(p.record("b", Vote::Ready), PollOutcome::Commit);
+        assert!(!p.active, "poll resets after commit");
+    }
+
+    #[test]
+    fn single_window_ready_commits_immediately() {
+        let mut p = QuitPoll::default();
+        p.start(["only".to_string()]);
+        assert_eq!(p.record("only", Vote::Ready), PollOutcome::Commit);
+    }
+
+    #[test]
+    fn any_cancel_aborts_and_clears() {
+        let mut p = QuitPoll::default();
+        p.start(["a".to_string(), "b".to_string()]);
+        assert_eq!(p.record("a", Vote::Ready), PollOutcome::Pending);
+        assert_eq!(p.record("b", Vote::Cancel), PollOutcome::Abort);
+        assert!(!p.active);
+        assert!(p.votes.is_empty());
+    }
+
+    #[test]
+    fn vote_without_active_poll_is_stale_abort() {
+        let mut p = QuitPoll::default();
+        assert_eq!(p.record("a", Vote::Ready), PollOutcome::Abort);
+    }
+
+    #[test]
+    fn dropping_last_unvoted_window_commits() {
+        let mut p = QuitPoll::default();
+        p.start(["a".to_string(), "b".to_string()]);
+        assert_eq!(p.record("a", Vote::Ready), PollOutcome::Pending);
+        // b closes before voting → drop it → only a remains and it's ready
+        assert_eq!(p.drop_window("b"), PollOutcome::Commit);
+    }
+
+    #[test]
+    fn drop_without_active_poll_is_pending_noop() {
+        let mut p = QuitPoll::default();
+        assert_eq!(p.drop_window("a"), PollOutcome::Pending);
+    }
+
+    #[test]
+    fn restart_replaces_prior_poll() {
+        let mut p = QuitPoll::default();
+        p.start(["a".to_string(), "b".to_string()]);
+        assert_eq!(p.record("a", Vote::Ready), PollOutcome::Pending);
+        p.start(["c".to_string()]); // ⌘Q again after windows changed
+        assert!(p.votes.is_empty());
+        assert_eq!(p.record("c", Vote::Ready), PollOutcome::Commit);
+    }
 }
