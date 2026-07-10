@@ -33,10 +33,52 @@ describe('HtmlLiveView', () => {
     const host = c.querySelector('.html-live-view') as HTMLElement;
     expect(host.shadowRoot).toBeTruthy();
     const shadow = host.shadowRoot!;
-    expect(shadow.querySelector('style')?.textContent).toContain('.lead{color:red}');
+    expect(shadow.querySelector('style:not([data-edtr-defaults]):not([data-edtr-affordance])')?.textContent).toContain('.lead{color:red}');
     // the paragraph rendered with its class, inside the shadow root (now nested
     // under the reconstructed html/body scaffold — descendant selector still finds it)
     expect(shadow.querySelector('p.lead')?.textContent).toBe('hi');
+  });
+
+  it('injects a browser-default reset FIRST (before the file style) so a light-styled file stays readable in dark mode', async () => {
+    // The shadow scaffold inherits Edtr's themed color/color-scheme across the
+    // host boundary; in dark mode a light-styled file's dark text then sat on a
+    // dark inherited context (unreadable). A low-specificity reset restores the
+    // browser-default canvas/text, overridable by the file's own CSS by source
+    // order. jsdom can't compute the cascade, so assert structure: reset present,
+    // FIRST, and contains the background/color/color-scheme defaults.
+    const res = toLiveHtml('<html><head><style>.lead{color:red}</style></head><body><p class="lead">hi</p></body></html>');
+    if (!res.ok) throw new Error('expected ok');
+    const c = await render(<HtmlLiveView doc={res.doc} styleText={res.styleText} />);
+    const shadow = (c.querySelector('.html-live-view') as HTMLElement).shadowRoot!;
+    const defaults = shadow.querySelector('style[data-edtr-defaults]');
+    expect(defaults).not.toBeNull();
+    expect(defaults!.textContent).toContain('background-color');
+    expect(defaults!.textContent).toContain('color:#000');
+    expect(defaults!.textContent).toContain('color-scheme:light');
+    // Regression guard: the opaque canvas must live on :host ONLY. If html/body
+    // are given an opaque background, a dark file that themes only html/:root
+    // renders its light text on forced white (unreadable). Cascade verified in a
+    // real browser; jsdom can't compute it, so lock the structural invariant.
+    expect(defaults!.textContent).toContain(':host{');
+    expect(defaults!.textContent).not.toMatch(/(?:^|})\s*(?:html|body)[^{}]*\{[^{}]*background/i);
+    // Lowest priority: it is the FIRST stylesheet, before the file style.
+    const styles = Array.from(shadow.querySelectorAll('style'));
+    const defIdx = styles.findIndex((s) => s.hasAttribute('data-edtr-defaults'));
+    const fileIdx = styles.findIndex((s) => (s.textContent ?? '').includes('.lead{color:red}'));
+    expect(defIdx).toBe(0);
+    expect(defIdx).toBeLessThan(fileIdx);
+  });
+
+  it('runs the canvas-propagation sync at mount (sets an explicit color-scheme on the host)', async () => {
+    // jsdom can't compute the page background (the dark/light propagation is
+    // verified in a real browser + GUI QA), but the sync always sets an explicit
+    // color-scheme on the host — proving it ran, and with no page background it
+    // defaults to light. Guards against the sync being dropped.
+    const res = toLiveHtml('<html><body><p>x</p></body></html>');
+    if (!res.ok) throw new Error('expected ok');
+    const c = await render(<HtmlLiveView doc={res.doc} styleText="" />);
+    const host = c.querySelector('.html-live-view') as HTMLElement;
+    expect(host.style.getPropertyValue('color-scheme')).toBe('light');
   });
 
   it('does NOT inject the affordance stylesheet in read-only render (fidelity preserved)', async () => {
@@ -65,7 +107,7 @@ describe('HtmlLiveView', () => {
     // tree — those rules are rewritten to `:host`; see the next test.) jsdom
     // doesn't fully compute the cascade, so actual color application is verified
     // in manual GUI QA.
-    expect(shadow.querySelector('style')?.textContent).toContain('body.dark{color:red}');
+    expect(shadow.querySelector('style:not([data-edtr-defaults]):not([data-edtr-affordance])')?.textContent).toContain('body.dark{color:red}');
     expect(shadow.querySelector('html.h')).toBeTruthy();
     expect(shadow.querySelector('body.dark')).toBeTruthy();
     expect(shadow.querySelector('body.dark p')?.textContent).toBe('x');
@@ -78,7 +120,7 @@ describe('HtmlLiveView', () => {
       <HtmlLiveView doc={res.doc} styleText=":root{--accent:red} body{color:var(--accent)}" />,
     );
     const host = c.querySelector('.html-live-view') as HTMLElement;
-    const css = host.shadowRoot!.querySelector('style')?.textContent ?? '';
+    const css = host.shadowRoot!.querySelector('style:not([data-edtr-defaults]):not([data-edtr-affordance])')?.textContent ?? '';
     // The rewrite must happen: `:root` never matches inside a shadow tree, but
     // `:host` (the shadow host) does, and custom properties declared there
     // inherit down into html/body/content. The computed-cascade effect (var()
@@ -142,6 +184,22 @@ describe('HtmlLiveView — editable (4b)', () => {
     const fileIdx = styles.findIndex((s) => (s.textContent ?? '').includes('.lead{color:red}'));
     expect(affIdx).toBeGreaterThanOrEqual(0);
     expect(fileIdx).toBeGreaterThanOrEqual(0);
+    expect(affIdx).toBeLessThan(fileIdx);
+  });
+
+  it('injects the browser-default reset BEFORE both the affordance and the file style when editable', () => {
+    const r = toLiveHtml('<html><head><style>.lead{color:red}</style></head><body><p class="lead">hi</p></body></html>');
+    if (!r.ok) throw new Error(r.reason);
+    const { container: c } = mount(
+      <HtmlLiveView doc={r.doc} styleText={r.styleText} editable onViewReady={() => {}} />,
+    );
+    const shadow = c.querySelector('.html-live-view')!.shadowRoot!;
+    const styles = Array.from(shadow.querySelectorAll('style'));
+    const defIdx = styles.findIndex((s) => s.hasAttribute('data-edtr-defaults'));
+    const affIdx = styles.findIndex((s) => s.hasAttribute('data-edtr-affordance'));
+    const fileIdx = styles.findIndex((s) => (s.textContent ?? '').includes('.lead{color:red}'));
+    expect(defIdx).toBe(0); // lowest priority of all stylesheets
+    expect(defIdx).toBeLessThan(affIdx);
     expect(affIdx).toBeLessThan(fileIdx);
   });
 

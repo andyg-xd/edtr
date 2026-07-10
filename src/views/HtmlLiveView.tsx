@@ -29,6 +29,42 @@ const TABLE_EDIT_AFFORDANCE_CSS =
   'table{border-collapse:collapse}' +
   'th,td{border:1px solid rgba(128,128,128,0.4);min-width:2.5em;padding:0.25em 0.5em}';
 
+/**
+ * Browser-default reset for the shadow render, injected FIRST (lowest priority)
+ * so the file's own CSS wins by source order. It fixes two shadow-root artifacts
+ * that made HTML Live unreadable in DARK mode: (1) a synthesized html/body in a
+ * shadow root gets no browser "canvas" background, and (2) inherited color /
+ * color-scheme leak across the host boundary from Edtr's themed shell — so a
+ * light-styled file's dark text sat on a dark inherited context.
+ *
+ * The white canvas goes on `:host` — the host div IS the file's page/root element
+ * because parse rewrites the file's `:root` selectors to `:host` — so a file that
+ * themes its page via `:root`/`:host` overrides it by source order, while a file
+ * that themes via `body{}`/`html{}` paints over it inside the shadow. Crucially we
+ * do NOT force an opaque background on html/body: that would clobber a dark file
+ * that themes only `html`/`:root` and leave its light text on forced white. The
+ * text-color reset is a low-specificity `html,body` rule so any file `body{}` /
+ * `html{}` color wins. (Cascade across the host boundary verified in a browser.)
+ */
+const SCAFFOLD_DEFAULT_CSS =
+  ':host{background-color:#fff;color-scheme:light}html,body{color:#000}';
+
+/** Empty / fully-transparent computed background — treated as "no background". */
+function isTransparentColor(c: string): boolean {
+  return !c || c === 'transparent' || c === 'rgba(0, 0, 0, 0)';
+}
+
+/** Relative luminance < 0.5 ⇒ a dark surface (so we match a dark color-scheme).
+ * A fully transparent color is NOT dark — the readability canvas behind it is
+ * white — so `rgba(0,0,0,0)` must not be misread as black. */
+function isDarkColor(c: string): boolean {
+  const m = c.match(/\d+(?:\.\d+)?/g);
+  if (!m || m.length < 3) return false;
+  const [r, g, b, a] = m.map(Number);
+  if (a === 0) return false;
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5;
+}
+
 interface HtmlLiveViewProps {
   doc: PMNode;
   styleText: string;
@@ -69,8 +105,16 @@ export function HtmlLiveView({
     if (!host.current) return;
     const shadow = host.current.shadowRoot ?? host.current.attachShadow({ mode: 'open' });
     shadow.innerHTML = '';
-    // Edit-only table affordance, appended FIRST so the file's own <style>
-    // (appended next) wins the cascade on equal specificity.
+    // Browser-default reset, appended FIRST (before the affordance + file style)
+    // so it's the lowest-priority stylesheet and the file's own CSS wins. Both
+    // read-only and editable renders need it (the dark-mode bleed-through affects
+    // both). See SCAFFOLD_DEFAULT_CSS.
+    const defaults = document.createElement('style');
+    defaults.setAttribute('data-edtr-defaults', '');
+    defaults.textContent = SCAFFOLD_DEFAULT_CSS;
+    shadow.appendChild(defaults);
+    // Edit-only table affordance, appended before the file's own <style>
+    // (appended next) so the file wins the cascade on equal specificity.
     if (editable) {
       const affordance = document.createElement('style');
       affordance.setAttribute('data-edtr-affordance', '');
@@ -159,7 +203,44 @@ export function HtmlLiveView({
       },
     });
     onViewReadyRef.current?.(view);
-    return () => { onViewReadyRef.current?.(null); view.destroy(); };
+
+    // Canvas-background propagation. A browser paints the viewport with the
+    // root/body background; our shadow scaffold does not, so a dark-themed page
+    // rendered as a dark block on the white readability canvas (SCAFFOLD_DEFAULT_
+    // CSS). Mirror the page's effective background onto the host (html bg → body
+    // bg → the :host default) and match color-scheme, so the whole pane goes dark
+    // for a dark page and stays white for a light one. Re-run on OS appearance
+    // change — the file's own @media(prefers-color-scheme) re-evaluates live.
+    // NOTE: coupled to the OS scheme (= Edtr's default System theme); an explicit
+    // Edtr Light/Dark override opposite the OS does not drive the file's @media
+    // variants (would require rewriting its media queries — see PLAN.md follow-up).
+    const syncCanvas = () => {
+      const el = host.current;
+      if (!el) return;
+      el.style.removeProperty('background-color'); // reset so a stale mirror can't stick
+      const htmlBg = getComputedStyle(htmlEl).backgroundColor;
+      const bodyBg = getComputedStyle(bodyEl).backgroundColor;
+      const propagated = !isTransparentColor(htmlBg)
+        ? htmlBg
+        : (!isTransparentColor(bodyBg) ? bodyBg : null);
+      if (propagated) el.style.setProperty('background-color', propagated);
+      el.style.setProperty(
+        'color-scheme',
+        isDarkColor(getComputedStyle(el).backgroundColor) ? 'dark' : 'light',
+      );
+    };
+    syncCanvas();
+    // jsdom has no matchMedia — guard so unit tests still mount; the browser does.
+    const schemeMql = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: dark)')
+      : null;
+    schemeMql?.addEventListener('change', syncCanvas);
+
+    return () => {
+      schemeMql?.removeEventListener('change', syncCanvas);
+      onViewReadyRef.current?.(null);
+      view.destroy();
+    };
     // Mount once per doc; the parent supplies a fresh key when the file changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
