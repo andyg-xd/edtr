@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
 import { WindowChrome } from './WindowChrome';
 import { CloseGuard } from './CloseGuard';
 import { Sidebar } from './Sidebar';
 import { FolderSidebar } from './FolderSidebar';
 import { useMenuAndCloseGuard } from './MenuBridge';
+import { quitVoteFor } from './quitVote';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
 import { pickFiles, pickFolder, openInNewWindow, takePendingOpen, saveSession, readFolder, readSession } from '../files/fileController';
 import { basename } from '../files/fileTypes';
@@ -19,6 +21,7 @@ type FolderView = { path: string; entries: FolderEntry[] };
 type PendingIntent =
   | { kind: 'close-window' }
   | { kind: 'close-doc'; id: string }
+  | { kind: 'quit' }
   | null;
 
 export function EditorWindow() {
@@ -193,11 +196,27 @@ export function EditorWindow() {
     else closeThisWindow();
   }, [windowDirty, closeThisWindow]);
 
+  // Atomic ⌘Q (5b-iii-b): Rust polls every window. Clean → vote ready now;
+  // dirty → prompt and vote on the guard action. Nothing closes here.
+  const voteQuit = useCallback((vote: 'ready' | 'cancel') => {
+    void invoke('quit_vote', { vote });
+  }, []);
+  const onQuitPoll = useCallback(() => {
+    if (windowDirty) setPendingIntent({ kind: 'quit' });
+    else voteQuit('ready');
+  }, [windowDirty, voteQuit]);
+  const onQuitAbort = useCallback(() => {
+    // Another window cancelled the quit — drop our prompt if we had one.
+    setPendingIntent((prev) => (prev?.kind === 'quit' ? null : prev));
+  }, []);
+
   useMenuAndCloseGuard({
     onOpen: handleOpen,
     onOpenFolder: handleOpenFolder,
     onSave: handleSave,
     onCloseRequest: requestClose,
+    onQuitPoll,
+    onQuitAbort,
   });
 
   const effectiveViewMode: ViewMode = active && active.viewMode === 'live' && activeLiveAvailable ? 'live' : 'code';
@@ -214,7 +233,7 @@ export function EditorWindow() {
   }, [docs.state.docs, active, activeDirty]);
 
   // Guard actions branch on the pending intent.
-  const guardProceed = (intent: Exclude<PendingIntent, null>) => {
+  const guardProceed = (intent: { kind: 'close-doc'; id: string } | { kind: 'close-window' }) => {
     switch (intent.kind) {
       case 'close-doc': docs.close(intent.id); break;
       case 'close-window': closeThisWindow(); break;
@@ -224,6 +243,12 @@ export function EditorWindow() {
   const onGuardSave = async () => {
     const intent = pendingIntent;
     if (!intent) return;
+    if (intent.kind === 'quit') {
+      const ok = await saveAllDirty();
+      setPendingIntent(null);
+      voteQuit(quitVoteFor('save', ok));
+      return;
+    }
     const ok = intent.kind === 'close-doc' ? await saveDoc(intent.id) : await saveAllDirty();
     setPendingIntent(null);
     if (ok) guardProceed(intent);
@@ -231,7 +256,14 @@ export function EditorWindow() {
   const onGuardDiscard = () => {
     const intent = pendingIntent;
     setPendingIntent(null);
-    if (intent) guardProceed(intent);
+    if (!intent) return;
+    if (intent.kind === 'quit') { voteQuit(quitVoteFor('discard', false)); return; }
+    guardProceed(intent);
+  };
+  const onGuardCancel = () => {
+    const intent = pendingIntent;
+    setPendingIntent(null);
+    if (intent?.kind === 'quit') voteQuit(quitVoteFor('cancel', false));
   };
 
   return (
@@ -306,7 +338,7 @@ export function EditorWindow() {
         </div>
       </div>
       {pendingIntent && (
-        <CloseGuard onSave={onGuardSave} onDiscard={onGuardDiscard} onCancel={() => setPendingIntent(null)} />
+        <CloseGuard onSave={onGuardSave} onDiscard={onGuardDiscard} onCancel={onGuardCancel} />
       )}
     </div>
   );
