@@ -12,15 +12,19 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(window::PendingOpen::default())
         .manage(window::WindowCounter::default())
+        .manage(window::QuitPollState::default())
         .menu(|handle| menu::build_menu(handle))
         .on_menu_event(|app, event| {
             let id = event.id().0.clone();
             if id == "quit" {
-                // Quit sweep: broadcast to every window's (window-scoped) listener.
-                // Each window destroys itself on proceed; exit-on-zero (in
-                // .run) quits once the last is gone. Non-atomic by design
-                // (5b-iii-a); atomic quit is 5b-iii-b.
-                let _ = app.emit("menu://close", ());
+                // Atomic quit (5b-iii-b): snapshot the current windows and poll
+                // them. Each votes ready/cancel WITHOUT closing; quit_vote
+                // commits (exit) or aborts. Replaces the 5b-iii-a sweep.
+                let labels: Vec<String> = app.webview_windows().into_keys().collect();
+                if let Ok(mut p) = app.state::<window::QuitPollState>().0.lock() {
+                    p.start(labels);
+                }
+                let _ = app.emit("menu://quit-poll", ());
                 return;
             }
             let event_name = match id.as_str() {
@@ -50,18 +54,32 @@ pub fn run() {
             assets::copy_image_into_assets,
             assets::write_image_into_assets,
             window::open_in_new_window,
-            window::take_pending_open
+            window::take_pending_open,
+            window::quit_vote
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            // Quit when the last window closes (macOS otherwise keeps a
-            // windowless app alive).
             if let tauri::RunEvent::WindowEvent {
+                label,
                 event: tauri::WindowEvent::Destroyed,
                 ..
-            } = event
+            } = &event
             {
+                // If a quit poll is active, a window that just closed can no
+                // longer vote — drop it and re-check (may complete the poll).
+                let dropped = app_handle
+                    .state::<window::QuitPollState>()
+                    .0
+                    .lock()
+                    .ok()
+                    .map(|mut p| p.drop_window(label));
+                if let Some(window::PollOutcome::Commit) = dropped {
+                    app_handle.exit(0);
+                    return;
+                }
+                // Quit when the last window closes (macOS otherwise keeps a
+                // windowless app alive).
                 if app_handle.webview_windows().is_empty() {
                     app_handle.exit(0);
                 }

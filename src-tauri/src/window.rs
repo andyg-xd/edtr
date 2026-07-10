@@ -141,6 +141,26 @@ impl QuitPoll {
     }
 }
 
+/// A window's vote in the atomic-quit poll. `vote` is "ready" | "cancel"
+/// (anything other than "cancel" is treated as ready). The window label is
+/// taken from the caller, like `take_pending_open`. On Commit the app exits; on
+/// Abort we broadcast `menu://quit-abort` so any open quit prompt dismisses.
+#[tauri::command]
+pub fn quit_vote(app: AppHandle, window: WebviewWindow, vote: String, poll: State<QuitPollState>) {
+    let vote = if vote == "cancel" { Vote::Cancel } else { Vote::Ready };
+    let outcome = match poll.0.lock() {
+        Ok(mut p) => p.record(window.label(), vote),
+        Err(_) => return,
+    };
+    match outcome {
+        PollOutcome::Commit => app.exit(0),
+        PollOutcome::Abort => {
+            let _ = app.emit("menu://quit-abort", ());
+        }
+        PollOutcome::Pending => {}
+    }
+}
+
 #[cfg(test)]
 mod quit_poll_tests {
     use super::*;
