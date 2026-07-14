@@ -7,7 +7,7 @@ import type { EditorFormat, FileMeta, LoadedFile } from './fileTypes';
 export class DocumentSession {
   readonly path: string;
   readonly format: EditorFormat;
-  readonly meta: FileMeta;
+  private _meta: FileMeta;
   private savedText: string;
   private currentText: string;
   private _version = 0;
@@ -15,9 +15,13 @@ export class DocumentSession {
   constructor(loaded: LoadedFile) {
     this.path = loaded.path;
     this.format = loaded.format;
-    this.meta = loaded.meta;
+    this._meta = loaded.meta;
     this.savedText = loaded.text;
     this.currentText = loaded.text;
+  }
+
+  get meta(): FileMeta {
+    return this._meta;
   }
 
   get text(): string {
@@ -39,5 +43,15 @@ export class DocumentSession {
 
   isDirty(): boolean {
     return this.currentText !== this.savedText;
+  }
+
+  /** Replace the buffer from a fresh on-disk read: text + meta become the new
+   * saved baseline (clean), so a later save re-encodes with the file's current
+   * EOL/BOM. `path`/`format` are unchanged (same file). */
+  reload(loaded: LoadedFile): void {
+    this._meta = loaded.meta;
+    this.savedText = loaded.text;
+    this.currentText = loaded.text;
+    this._version++;
   }
 }

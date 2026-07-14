@@ -54,3 +54,20 @@ describe('DocumentSession.version', () => {
     expect(s.version).toBe(2);
   });
 });
+
+const makeLoaded = (text: string, eol: 'lf' | 'crlf' = 'lf'): LoadedFile =>
+  ({ path: '/d/a.md', text, meta: { eol, hadBom: false }, format: 'markdown' });
+
+describe('DocumentSession.reload', () => {
+  it('replaces text, becomes clean, adopts new meta, bumps version', () => {
+    const s = new DocumentSession(makeLoaded('old', 'lf'));
+    s.setCurrentText('my edit');
+    expect(s.isDirty()).toBe(true);
+    const v = s.version;
+    s.reload(makeLoaded('fresh', 'crlf'));
+    expect(s.text).toBe('fresh');
+    expect(s.isDirty()).toBe(false);          // saved == current == 'fresh'
+    expect(s.meta.eol).toBe('crlf');          // adopted the reloaded file's EOL
+    expect(s.version).toBeGreaterThan(v);
+  });
+});
