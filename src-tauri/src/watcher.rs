@@ -1,5 +1,13 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{channel, Receiver};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+use serde::Serialize;
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum WatchAction {
@@ -41,6 +49,82 @@ pub fn record_unwatch(counts: &mut HashMap<PathBuf, usize>, path: &Path) -> Watc
         }
         None => WatchAction::None,
     }
+}
+
+pub struct WatcherState {
+    watcher: Mutex<RecommendedWatcher>,
+    counts: Arc<Mutex<HashMap<PathBuf, usize>>>,
+}
+
+#[derive(Clone, Serialize)]
+struct ChangedPayload { path: String }
+
+/// Collect the watched-file paths named by one notify event.
+fn watched_paths_in(ev: &Event, counts: &Arc<Mutex<HashMap<PathBuf, usize>>>, out: &mut HashSet<PathBuf>) {
+    if let Ok(c) = counts.lock() {
+        for p in &ev.paths {
+            if c.contains_key(p) {
+                out.insert(p.clone());
+            }
+        }
+    }
+}
+
+/// Coalesce a burst (~200ms) and emit one `fs://changed` per affected watched file.
+fn debounce_loop<R: Runtime>(app: AppHandle<R>, rx: Receiver<notify::Result<Event>>, counts: Arc<Mutex<HashMap<PathBuf, usize>>>) {
+    while let Ok(first) = rx.recv() {
+        let mut paths: HashSet<PathBuf> = HashSet::new();
+        if let Ok(ev) = first { watched_paths_in(&ev, &counts, &mut paths); }
+        // drain the settle window
+        loop {
+            match rx.recv_timeout(Duration::from_millis(200)) {
+                Ok(Ok(ev)) => watched_paths_in(&ev, &counts, &mut paths),
+                Ok(Err(_)) => {}          // watcher error event — ignore
+                Err(_) => break,          // timed out (settled) or channel closed
+            }
+        }
+        for p in paths {
+            let _ = app.emit("fs://changed", ChangedPayload { path: p.to_string_lossy().into_owned() });
+        }
+    }
+}
+
+pub fn init<R: Runtime>(app: &AppHandle<R>) -> notify::Result<WatcherState> {
+    let (tx, rx) = channel::<notify::Result<Event>>();
+    let watcher = RecommendedWatcher::new(tx, notify::Config::default())?;
+    let counts: Arc<Mutex<HashMap<PathBuf, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+    let thread_counts = Arc::clone(&counts);
+    let thread_app = app.clone();
+    std::thread::spawn(move || debounce_loop(thread_app, rx, thread_counts));
+    Ok(WatcherState { watcher: Mutex::new(watcher), counts })
+}
+
+#[tauri::command]
+pub fn watch_path(path: String, state: State<WatcherState>) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    let action = {
+        let mut c = state.counts.lock().map_err(|_| "counts lock poisoned")?;
+        record_watch(&mut c, &p)
+    };
+    if let WatchAction::StartDir(dir) = action {
+        state.watcher.lock().map_err(|_| "watcher lock poisoned")?
+            .watch(&dir, RecursiveMode::NonRecursive).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn unwatch_path(path: String, state: State<WatcherState>) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    let action = {
+        let mut c = state.counts.lock().map_err(|_| "counts lock poisoned")?;
+        record_unwatch(&mut c, &p)
+    };
+    if let WatchAction::StopDir(dir) = action {
+        // Unwatch is best-effort: the dir may already be gone.
+        let _ = state.watcher.lock().map_err(|_| "watcher lock poisoned")?.unwatch(&dir);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

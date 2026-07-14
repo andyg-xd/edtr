@@ -26,6 +26,10 @@ pub fn run() {
                 *l = loaded;
             }
             menu::rebuild(handle); // swap in the menu populated with loaded recents
+            match watcher::init(app.handle()) {
+                Ok(ws) => { app.manage(ws); }
+                Err(e) => { eprintln!("file watcher unavailable: {e}"); } // non-fatal
+            }
             Ok(())
         })
         .on_menu_event(|app, event| {
@@ -103,7 +107,9 @@ pub fn run() {
             window::quit_vote,
             window::take_launch_open,
             window::mark_frontend_ready,
-            recents::record_recent
+            recents::record_recent,
+            watcher::watch_path,
+            watcher::unwatch_path
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
