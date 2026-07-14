@@ -30,9 +30,18 @@ export function useMenuAndCloseGuard(handlers: MenuHandlers): void {
     }
     win.listen('menu://open-payload', (e) =>
       ref.current.onOpenPayload(e.payload as OpenPayload))
-      .then((un) => { if (disposed) un(); else unlisteners.push(un); })
+      .then((un) => {
+        if (disposed) { un(); return; }
+        unlisteners.push(un);
+        // Signal ready only AFTER the listener is live (so a warm OS-open push
+        // can't race ahead of registration). If a cold open was stashed during
+        // setup, mark_frontend_ready hands it back — route it through the same
+        // choke point the warm push uses.
+        markFrontendReady()
+          .then((stranded) => { if (!disposed && stranded) ref.current.onOpenPayload(stranded); })
+          .catch(() => {});
+      })
       .catch(() => {});
-    markFrontendReady().catch(() => {});
     return () => { disposed = true; unlisteners.forEach((un) => un()); };
   }, []);
 

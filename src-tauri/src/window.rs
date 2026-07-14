@@ -101,10 +101,17 @@ pub fn take_launch_open(launch: State<LaunchOpen>) -> Option<OpenPayload> {
 /// The frontend calls this once its listeners are live; flips ReadyState so a
 /// subsequent OS `Opened` pushes to a window rather than stashing it cold.
 #[tauri::command]
-pub fn mark_frontend_ready(ready: State<ReadyState>) {
+pub fn mark_frontend_ready(
+    ready: State<ReadyState>,
+    launch: State<LaunchOpen>,
+) -> Option<OpenPayload> {
     if let Ok(mut r) = ready.0.lock() {
         *r = true;
     }
+    // A cold open stashed during setup would otherwise be stranded (the
+    // window's on-mount claim already ran) — hand it back so the frontend can
+    // route it through the normal open path.
+    launch.0.lock().ok().and_then(|mut o| o.take())
 }
 
 /// A window's vote in a two-phase quit poll.
