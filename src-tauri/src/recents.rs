@@ -102,9 +102,7 @@ pub fn record_recent<R: Runtime>(
         l.clone()
     };
     save(&app, &updated)?;
-    // Task 5 adds `crate::menu::rebuild(&app);` here once `menu::rebuild` exists,
-    // so the native "Open Recent" menu refreshes after each open. For now this
-    // command only updates the store + disk — the crate compiles as-is.
+    crate::menu::rebuild(&app);
     Ok(())
 }
 

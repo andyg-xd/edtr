@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
-use tauri::{AppHandle, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri::Emitter;
 
 /// What a freshly-opened window should load. Matches the TS `OpenPayload`
@@ -96,6 +96,36 @@ pub fn take_pending_open(window: WebviewWindow, pending: State<PendingOpen>) -> 
 #[tauri::command]
 pub fn take_launch_open(launch: State<LaunchOpen>) -> Option<OpenPayload> {
     launch.0.lock().ok().and_then(|mut o| o.take())
+}
+
+/// Deliver an open payload to a running frontend: push it to the focused window
+/// (fallback: any window) via `menu://open-payload`; if there are somehow no
+/// windows, spawn one. The frontend runs its fill-or-spawn choke point.
+///
+/// Concrete (not generic over `Runtime`): `open_in_new_window` — the fallback
+/// spawn path — is itself concrete (a `#[tauri::command]` entry point), and
+/// every call site here (the `Opened` warm branch, `on_menu_event`) already
+/// hands us the app's single concrete runtime, so there's nothing to abstract
+/// over.
+pub fn deliver_open_payload(app: &AppHandle, payload: OpenPayload) {
+    if let Some(w) = app
+        .webview_windows()
+        .into_values()
+        .find(|w| w.is_focused().unwrap_or(false))
+        .or_else(|| app.webview_windows().into_values().next())
+    {
+        let label = w.label().to_string();
+        let _ = app.emit_to(label.as_str(), "menu://open-payload", payload);
+    } else {
+        // No window (rare): spawn one via the existing pending-open path.
+        // open_in_new_window needs the managed state; go through the command entry.
+        let _ = open_in_new_window(
+            app.clone(),
+            payload,
+            app.state::<PendingOpen>(),
+            app.state::<WindowCounter>(),
+        );
+    }
 }
 
 /// The frontend calls this once its listeners are live; flips ReadyState so a

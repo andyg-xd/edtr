@@ -16,9 +16,50 @@ pub fn run() {
         .manage(window::QuitPollState::default())
         .manage(window::ReadyState::default())
         .manage(window::LaunchOpen::default())
+        .manage(recents::RecentsState::default())
         .menu(|handle| menu::build_menu(handle, &[]))
+        .setup(|app| {
+            let handle = app.handle();
+            let loaded = recents::load(handle);
+            if let Ok(mut l) = app.state::<recents::RecentsState>().0.lock() {
+                *l = loaded;
+            }
+            menu::rebuild(handle); // swap in the menu populated with loaded recents
+            Ok(())
+        })
         .on_menu_event(|app, event| {
             let id = event.id().0.clone();
+            if id.starts_with("recent:") {
+                match menu::parse_recent_id(&id) {
+                    Some(menu::RecentClick::Clear) => {
+                        let _ = recents::clear(app, &app.state::<recents::RecentsState>());
+                        menu::rebuild(app);
+                    }
+                    Some(menu::RecentClick::Open(entry)) => {
+                        if std::path::Path::new(&entry.path).exists() {
+                            let payload = match entry.kind {
+                                recents::RecentKind::File => window::OpenPayload::Files { paths: vec![entry.path.clone()] },
+                                recents::RecentKind::Folder => window::OpenPayload::Folder { path: entry.path.clone() },
+                            };
+                            window::deliver_open_payload(app, payload);
+                            // The frontend's open choke point re-records it (move-to-top).
+                        } else {
+                            // Prune-missing: tell the user + drop it + rebuild.
+                            use tauri_plugin_dialog::DialogExt;
+                            let name = std::path::Path::new(&entry.path)
+                                .file_name().and_then(|s| s.to_str()).unwrap_or(&entry.path).to_string();
+                            app.dialog()
+                                .message(format!("The item \"{name}\" can't be found. It may have been moved or deleted."))
+                                .title("Item Not Found")
+                                .show(|_| {});
+                            let _ = recents::remove(app, &app.state::<recents::RecentsState>(), &entry);
+                            menu::rebuild(app);
+                        }
+                    }
+                    None => {} // "recent:none" (disabled) or malformed → ignore
+                }
+                return;
+            }
             if id == "quit" {
                 // Atomic quit (5b-iii-b): snapshot the current windows and poll
                 // them. Each votes ready/cancel WITHOUT closing; quit_vote
@@ -60,7 +101,8 @@ pub fn run() {
             window::take_pending_open,
             window::quit_vote,
             window::take_launch_open,
-            window::mark_frontend_ready
+            window::mark_frontend_ready,
+            recents::record_recent
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -79,17 +121,7 @@ pub fn run() {
                         .map(|r| *r)
                         .unwrap_or(false);
                     if ready {
-                        // Warm: push to the focused window (fallback: any window);
-                        // it runs the ⌘O fill-or-spawn path.
-                        if let Some(w) = app_handle
-                            .webview_windows()
-                            .into_values()
-                            .find(|w| w.is_focused().unwrap_or(false))
-                            .or_else(|| app_handle.webview_windows().into_values().next())
-                        {
-                            let label = w.label().to_string();
-                            let _ = app_handle.emit_to(label.as_str(), "menu://open-payload", payload);
-                        }
+                        window::deliver_open_payload(app_handle, payload);
                     } else {
                         // Cold: stash for the first window to claim on mount.
                         if let Ok(mut slot) = app_handle.state::<window::LaunchOpen>().0.lock() {
