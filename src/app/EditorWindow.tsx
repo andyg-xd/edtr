@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { invoke } from '@tauri-apps/api/core';
 import { WindowChrome } from './WindowChrome';
 import { CloseGuard } from './CloseGuard';
@@ -14,6 +15,7 @@ import { useTheme } from '../settings/useTheme';
 import { useOpenDocuments } from './useOpenDocuments';
 import { docIsDirty, windowIsDirty, type OpenDoc, type ViewMode } from '../files/openDocuments';
 import { isEmptyWindow, type OpenPayload } from '../files/openPayload';
+import { classifyPath } from '../files/pathKind';
 import type { FolderEntry } from '../files/folder';
 
 type FolderView = { path: string; entries: FolderEntry[] };
@@ -83,6 +85,26 @@ export function EditorWindow() {
         }
       })
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Window-level: dropping a DOCUMENT file opens it in a new window. Image
+  // drops fall through to DocumentView's per-doc insert listener (disjoint by
+  // extension), so the two never double-handle the same file.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    getCurrentWebview().onDragDropEvent(async (e) => {
+      if (e.payload.type !== 'drop') return;
+      const docPaths = e.payload.paths.filter((p) => classifyPath(p) === 'document');
+      if (docPaths.length === 0) return; // images/other handled elsewhere or ignored
+      try {
+        await openInNewWindow({ kind: 'files', paths: docPaths });
+      } catch (err) {
+        setError(`Could not open the dropped file. ${String(err)}`);
+      }
+    }).then((fn) => { if (disposed) fn(); else unlisten = fn; });
+    return () => { disposed = true; unlisten?.(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
