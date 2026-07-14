@@ -1,6 +1,7 @@
 mod assets;
 mod fs;
 mod menu;
+mod recents;
 mod window;
 
 use tauri::{Emitter, Manager};
