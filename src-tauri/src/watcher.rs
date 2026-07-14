@@ -107,8 +107,19 @@ pub fn watch_path(path: String, state: State<WatcherState>) -> Result<(), String
         record_watch(&mut c, &p)
     };
     if let WatchAction::StartDir(dir) = action {
-        state.watcher.lock().map_err(|_| "watcher lock poisoned")?
-            .watch(&dir, RecursiveMode::NonRecursive).map_err(|e| e.to_string())?;
+        let res = state
+            .watcher
+            .lock()
+            .map_err(|_| "watcher lock poisoned".to_string())
+            .and_then(|mut w| w.watch(&dir, RecursiveMode::NonRecursive).map_err(|e| e.to_string()));
+        if let Err(e) = res {
+            // Roll back the count we just recorded, so this directory isn't left
+            // phantom-watched and the next file opened here retries the watch.
+            if let Ok(mut c) = state.counts.lock() {
+                record_unwatch(&mut c, &p);
+            }
+            return Err(e);
+        }
     }
     Ok(())
 }
