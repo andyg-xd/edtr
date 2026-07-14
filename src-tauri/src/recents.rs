@@ -72,8 +72,8 @@ pub fn clear<R: Runtime>(app: &AppHandle<R>, state: &RecentsState) -> Result<Vec
     {
         let mut l = state.0.lock().map_err(|_| "recents lock poisoned")?;
         l.clear();
+        save(app, &l)?;
     }
-    save(app, &[])?;
     Ok(Vec::new())
 }
 
@@ -82,9 +82,9 @@ pub fn remove<R: Runtime>(app: &AppHandle<R>, state: &RecentsState, entry: &Rece
     let updated = {
         let mut l = state.0.lock().map_err(|_| "recents lock poisoned")?;
         l.retain(|e| e != entry);
+        save(app, &l)?;
         l.clone()
     };
-    save(app, &updated)?;
     Ok(updated)
 }
 
@@ -96,12 +96,11 @@ pub fn record_recent<R: Runtime>(
     state: State<RecentsState>,
     entry: RecentEntry,
 ) -> Result<(), String> {
-    let updated = {
+    {
         let mut l = state.0.lock().map_err(|_| "recents lock poisoned")?;
         *l = push_recent(l.clone(), entry, RECENTS_CAP);
-        l.clone()
-    };
-    save(&app, &updated)?;
+        save(&app, &l)?;
+    }
     crate::menu::rebuild(&app);
     Ok(())
 }
