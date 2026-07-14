@@ -101,16 +101,24 @@ export function EditorWindow() {
 
   // ⌘O: fill this window if empty, else spawn a new window with the selection.
   const handleOpen = useCallback(async () => {
-    const paths = await pickFiles();
-    if (paths.length === 0) return;
-    await handleOpenPayload({ kind: 'files', paths });
+    try {
+      const paths = await pickFiles();
+      if (paths.length === 0) return;
+      await handleOpenPayload({ kind: 'files', paths });
+    } catch (e) {
+      setError(`Could not open file: ${String(e)}`);
+    }
   }, [handleOpenPayload]);
 
   // ⇧⌘O: fill this window if empty, else spawn a new folder window.
   const handleOpenFolder = useCallback(async () => {
-    const path = await pickFolder();
-    if (path == null) return;
-    await handleOpenPayload({ kind: 'folder', path });
+    try {
+      const path = await pickFolder();
+      if (path == null) return;
+      await handleOpenPayload({ kind: 'folder', path });
+    } catch (e) {
+      setError(`Could not open folder: ${String(e)}`);
+    }
   }, [handleOpenPayload]);
 
   const dirtyFor = useCallback(
