@@ -13,6 +13,8 @@ pub fn run() {
         .manage(window::PendingOpen::default())
         .manage(window::WindowCounter::default())
         .manage(window::QuitPollState::default())
+        .manage(window::ReadyState::default())
+        .manage(window::LaunchOpen::default())
         .menu(|handle| menu::build_menu(handle))
         .on_menu_event(|app, event| {
             let id = event.id().0.clone();
@@ -55,11 +57,46 @@ pub fn run() {
             assets::write_image_into_assets,
             window::open_in_new_window,
             window::take_pending_open,
-            window::quit_vote
+            window::quit_vote,
+            window::take_launch_open,
+            window::mark_frontend_ready
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
+            if let tauri::RunEvent::Opened { urls } = &event {
+                let paths: Vec<String> = urls
+                    .iter()
+                    .filter_map(|u| u.to_file_path().ok())
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .collect();
+                if let Some(payload) = window::assemble_open_payload(paths) {
+                    let ready = app_handle
+                        .state::<window::ReadyState>()
+                        .0
+                        .lock()
+                        .map(|r| *r)
+                        .unwrap_or(false);
+                    if ready {
+                        // Warm: push to the focused window (fallback: any window);
+                        // it runs the ⌘O fill-or-spawn path.
+                        if let Some(w) = app_handle
+                            .webview_windows()
+                            .into_values()
+                            .find(|w| w.is_focused().unwrap_or(false))
+                            .or_else(|| app_handle.webview_windows().into_values().next())
+                        {
+                            let label = w.label().to_string();
+                            let _ = app_handle.emit_to(label.as_str(), "menu://open-payload", payload);
+                        }
+                    } else {
+                        // Cold: stash for the first window to claim on mount.
+                        if let Ok(mut slot) = app_handle.state::<window::LaunchOpen>().0.lock() {
+                            *slot = Some(payload);
+                        }
+                    }
+                }
+            }
             if let tauri::RunEvent::WindowEvent {
                 label,
                 event: tauri::WindowEvent::Destroyed,

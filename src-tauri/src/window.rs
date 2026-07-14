@@ -6,12 +6,44 @@ use tauri::Emitter;
 
 /// What a freshly-opened window should load. Matches the TS `OpenPayload`
 /// discriminated union: {kind:'files',paths} | {kind:'folder',path}.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum OpenPayload {
     Files { paths: Vec<String> },
     Folder { path: String },
 }
+
+/// Document extensions Edtr auto-opens (mirror of the TS `DOCUMENT_EXTS`, D5).
+const DOCUMENT_EXTS: [&str; 4] = ["md", "markdown", "html", "htm"];
+
+/// True if `path`'s extension is an auto-open document type (case-insensitive).
+pub fn is_document(path: &str) -> bool {
+    match path.rsplit_once('.') {
+        Some((_, ext)) => DOCUMENT_EXTS.contains(&ext.to_lowercase().as_str()),
+        None => false,
+    }
+}
+
+/// Turn OS-open paths into a payload: a single existing directory → Folder;
+/// otherwise the document files → Files; nothing openable → None.
+pub fn assemble_open_payload(paths: Vec<String>) -> Option<OpenPayload> {
+    if let [only] = paths.as_slice() {
+        if std::path::Path::new(only).is_dir() {
+            return Some(OpenPayload::Folder { path: only.clone() });
+        }
+    }
+    let docs: Vec<String> = paths.into_iter().filter(|p| is_document(p)).collect();
+    if docs.is_empty() { None } else { Some(OpenPayload::Files { paths: docs }) }
+}
+
+/// Set true once a window's frontend has registered its listeners, so an
+/// `Opened` event can push to it instead of stashing for a cold claim.
+#[derive(Default)]
+pub struct ReadyState(pub Mutex<bool>);
+
+/// A cold-launch payload waiting for the first window to claim it on mount.
+#[derive(Default)]
+pub struct LaunchOpen(pub Mutex<Option<OpenPayload>>);
 
 /// Payloads waiting for their not-yet-mounted window to claim them, keyed by
 /// window label. A new window pops its payload once on mount.
@@ -57,6 +89,22 @@ pub fn open_in_new_window(
 #[tauri::command]
 pub fn take_pending_open(window: WebviewWindow, pending: State<PendingOpen>) -> Option<OpenPayload> {
     pending.0.lock().ok()?.remove(window.label())
+}
+
+/// The first window to mount claims a cold-launch payload, if any. Pops once
+/// (server-side), so only one window wins.
+#[tauri::command]
+pub fn take_launch_open(launch: State<LaunchOpen>) -> Option<OpenPayload> {
+    launch.0.lock().ok().and_then(|mut o| o.take())
+}
+
+/// The frontend calls this once its listeners are live; flips ReadyState so a
+/// subsequent OS `Opened` pushes to a window rather than stashing it cold.
+#[tauri::command]
+pub fn mark_frontend_ready(ready: State<ReadyState>) {
+    if let Ok(mut r) = ready.0.lock() {
+        *r = true;
+    }
 }
 
 /// A window's vote in a two-phase quit poll.
@@ -220,5 +268,35 @@ mod quit_poll_tests {
         p.start(["c".to_string()]); // ⌘Q again after windows changed
         assert!(p.votes.is_empty());
         assert_eq!(p.record("c", Vote::Ready), PollOutcome::Commit);
+    }
+}
+
+#[cfg(test)]
+mod open_payload_tests {
+    use super::*;
+
+    #[test]
+    fn is_document_matches_d4_set_case_insensitive() {
+        assert!(is_document("/a/notes.md"));
+        assert!(is_document("R.MARKDOWN"));
+        assert!(is_document("/x/p.HtmL"));
+        assert!(is_document("x.htm"));
+        assert!(!is_document("/a/log.txt")); // txt is NOT auto-open (D4/D5)
+        assert!(!is_document("/a/pic.png"));
+        assert!(!is_document("/a/noext"));
+    }
+
+    #[test]
+    fn assemble_filters_non_documents_into_files() {
+        let p = assemble_open_payload(vec![
+            "/a/one.md".into(), "/a/pic.png".into(), "/a/two.html".into(),
+        ]);
+        assert_eq!(p, Some(OpenPayload::Files { paths: vec!["/a/one.md".into(), "/a/two.html".into()] }));
+    }
+
+    #[test]
+    fn assemble_none_when_no_documents() {
+        assert_eq!(assemble_open_payload(vec!["/a/pic.png".into(), "/a/x.zip".into()]), None);
+        assert_eq!(assemble_open_payload(vec![]), None);
     }
 }
