@@ -27,6 +27,16 @@ export async function takePendingOpen(): Promise<OpenPayload | null> {
   return (await invoke<OpenPayload | null>('take_pending_open')) ?? null;
 }
 
+/** Claim a cold-launch payload (first window on mount), if any. */
+export async function takeLaunchOpen(): Promise<OpenPayload | null> {
+  return (await invoke<OpenPayload | null>('take_launch_open')) ?? null;
+}
+
+/** Tell Rust this window's listeners are live (so OS opens push, not stash). */
+export async function markFrontendReady(): Promise<void> {
+  await invoke('mark_frontend_ready');
+}
+
 /** Persist the session's current text, then mark it clean. */
 export async function saveSession(session: DocumentSession): Promise<void> {
   await writeFile(session.path, session.text, session.meta);

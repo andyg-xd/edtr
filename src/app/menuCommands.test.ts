@@ -11,6 +11,7 @@ function tracked(): MenuHandlers & { calls: string[] } {
     onCloseRequest: () => calls.push('close'),
     onQuitPoll: () => calls.push('quit-poll'),
     onQuitAbort: () => calls.push('quit-abort'),
+    onOpenPayload: () => {},
   };
 }
 

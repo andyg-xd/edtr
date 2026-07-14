@@ -1,3 +1,5 @@
+import type { OpenPayload } from '../files/openPayload';
+
 /** The native-menu commands the Rust side emits as `menu://<command>` events. */
 export type MenuCommand = 'open' | 'open-folder' | 'save' | 'close' | 'quit-poll' | 'quit-abort';
 
@@ -11,6 +13,8 @@ export interface MenuHandlers {
   onQuitPoll: () => void;
   /** The quit poll was aborted — dismiss any open quit prompt (5b-iii-b). */
   onQuitAbort: () => void;
+  /** An OS/warm open delivered a payload to this (focused) window. */
+  onOpenPayload: (payload: OpenPayload) => void;
 }
 
 /**

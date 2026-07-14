@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { dispatchMenuCommand, type MenuCommand, type MenuHandlers } from './menuCommands';
+import { markFrontendReady } from '../files/fileController';
+import type { OpenPayload } from '../files/openPayload';
 
 /**
  * Bridges the native menu (src-tauri) and the window close button to app
@@ -26,6 +28,11 @@ export function useMenuAndCloseGuard(handlers: MenuHandlers): void {
         .then((un) => { if (disposed) un(); else unlisteners.push(un); })
         .catch(() => {});
     }
+    win.listen('menu://open-payload', (e) =>
+      ref.current.onOpenPayload(e.payload as OpenPayload))
+      .then((un) => { if (disposed) un(); else unlisteners.push(un); })
+      .catch(() => {});
+    markFrontendReady().catch(() => {});
     return () => { disposed = true; unlisteners.forEach((un) => un()); };
   }, []);
 

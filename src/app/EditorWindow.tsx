@@ -8,7 +8,7 @@ import { FolderSidebar } from './FolderSidebar';
 import { useMenuAndCloseGuard } from './MenuBridge';
 import { quitVoteFor } from './quitVote';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
-import { pickFiles, pickFolder, openInNewWindow, takePendingOpen, saveSession, readFolder, readSession } from '../files/fileController';
+import { pickFiles, pickFolder, openInNewWindow, takePendingOpen, takeLaunchOpen, saveSession, readFolder, readSession } from '../files/fileController';
 import { basename } from '../files/fileTypes';
 import { useTheme } from '../settings/useTheme';
 import { useOpenDocuments } from './useOpenDocuments';
@@ -74,40 +74,44 @@ export function EditorWindow() {
   // latch (not a local cancelled flag) so React StrictMode's double-invoke can't
   // drop the payload — take_pending_open pops server-side, so only one call wins.
   useEffect(() => {
-    takePendingOpen().then((payload) => {
-      if (!appliedRef.current && payload) {
-        appliedRef.current = true;
-        applyPayload(payload);
-      }
-    }).catch(() => {});
+    takePendingOpen()
+      .then((payload) => payload ?? takeLaunchOpen())
+      .then((payload) => {
+        if (!appliedRef.current && payload) {
+          appliedRef.current = true;
+          applyPayload(payload);
+        }
+      })
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const thisWindowEmpty = isEmptyWindow(docs.state.docs.length, folderView !== null);
 
-  // ⌘O: fill this window if empty, else spawn a new window with the selection.
-  const handleOpen = useCallback(async () => {
+  // Open a payload from ⌘O / an OS gesture: fill this window if empty, else a
+  // new window. The single fill-or-spawn choke point.
+  const handleOpenPayload = useCallback(async (payload: OpenPayload) => {
     try {
-      const paths = await pickFiles();
-      if (paths.length === 0) return;
-      if (thisWindowEmpty) await applyPayload({ kind: 'files', paths });
-      else await openInNewWindow({ kind: 'files', paths });
+      if (thisWindowEmpty) await applyPayload(payload);
+      else await openInNewWindow(payload);
     } catch (e) {
-      setError(`Could not open file: ${String(e)}`);
+      setError(`Could not open: ${String(e)}`);
     }
   }, [thisWindowEmpty, applyPayload]);
 
+  // ⌘O: fill this window if empty, else spawn a new window with the selection.
+  const handleOpen = useCallback(async () => {
+    const paths = await pickFiles();
+    if (paths.length === 0) return;
+    await handleOpenPayload({ kind: 'files', paths });
+  }, [handleOpenPayload]);
+
   // ⇧⌘O: fill this window if empty, else spawn a new folder window.
   const handleOpenFolder = useCallback(async () => {
-    try {
-      const path = await pickFolder();
-      if (path == null) return;
-      if (thisWindowEmpty) await applyPayload({ kind: 'folder', path });
-      else await openInNewWindow({ kind: 'folder', path });
-    } catch (e) {
-      setError(`Could not open folder: ${String(e)}`);
-    }
-  }, [thisWindowEmpty, applyPayload]);
+    const path = await pickFolder();
+    if (path == null) return;
+    await handleOpenPayload({ kind: 'folder', path });
+  }, [handleOpenPayload]);
 
   const dirtyFor = useCallback(
     (doc: OpenDoc) => docIsDirty(doc, active?.id ?? null, activeDirty),
@@ -217,6 +221,7 @@ export function EditorWindow() {
     onCloseRequest: requestClose,
     onQuitPoll,
     onQuitAbort,
+    onOpenPayload: handleOpenPayload,
   });
 
   const effectiveViewMode: ViewMode = active && active.viewMode === 'live' && activeLiveAvailable ? 'live' : 'code';
