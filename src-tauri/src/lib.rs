@@ -16,7 +16,7 @@ pub fn run() {
         .manage(window::QuitPollState::default())
         .manage(window::ReadyState::default())
         .manage(window::LaunchOpen::default())
-        .menu(|handle| menu::build_menu(handle))
+        .menu(|handle| menu::build_menu(handle, &[]))
         .on_menu_event(|app, event| {
             let id = event.id().0.clone();
             if id == "quit" {
