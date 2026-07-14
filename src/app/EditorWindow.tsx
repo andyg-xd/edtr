@@ -11,6 +11,7 @@ import { quitVoteFor } from './quitVote';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
 import { pickFiles, pickFolder, openInNewWindow, takePendingOpen, takeLaunchOpen, saveSession, readFolder, readSession } from '../files/fileController';
 import { basename } from '../files/fileTypes';
+import { recordRecent } from '../files/recents';
 import { useTheme } from '../settings/useTheme';
 import { useOpenDocuments } from './useOpenDocuments';
 import { docIsDirty, windowIsDirty, type OpenDoc, type ViewMode } from '../files/openDocuments';
@@ -61,9 +62,11 @@ export function EditorWindow() {
       if (payload.kind === 'files') {
         const sessions = await Promise.all(payload.paths.map((p) => readSession(p)));
         for (const s of sessions) docs.open(s);
+        for (const p of payload.paths) recordRecent({ kind: 'file', path: p }).catch(() => {});
       } else {
         const entries = await readFolder(payload.path);
         setFolderView({ path: payload.path, entries });
+        recordRecent({ kind: 'folder', path: payload.path }).catch(() => {});
       }
       resetActiveFlags();
     } catch (e) {
@@ -172,6 +175,7 @@ export function EditorWindow() {
       const session = await readSession(path);
       resetActiveFlags();
       docs.open(session);
+      recordRecent({ kind: 'file', path }).catch(() => {});
     } catch (e) {
       setError(`Could not open file: ${String(e)}`);
     }
