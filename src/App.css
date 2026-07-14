@@ -327,3 +327,60 @@ body,
 .sidebar-close:hover { color: var(--fg); }
 .sidebar-item.is-unopened .sidebar-name { color: var(--fg-faint); }
 .sidebar-empty { padding: 12px 10px; color: var(--fg-faint); font-size: 13px; }
+
+/* Reload banner — external file change notification. */
+.reload-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  background: var(--info-bg);
+  color: var(--info-fg);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.reload-banner__msg {
+  flex: 1;
+  min-width: 0;
+}
+
+.reload-banner__actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.reload-banner button {
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.reload-banner button:hover {
+  opacity: 0.9;
+}
+
+.reload-banner button:active {
+  opacity: 0.8;
+}
+
+.reload-banner__dismiss {
+  background: none;
+  color: var(--info-fg);
+  padding: 0 0.3rem;
+  font-size: 1.2rem;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.reload-banner__dismiss:hover {
+  opacity: 1;
+}
