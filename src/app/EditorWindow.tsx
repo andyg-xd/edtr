@@ -51,6 +51,13 @@ export function EditorWindow() {
   // Fresh view of the store for the empty-dep fs://changed listener + reload.
   const docsRef = useRef(docs.state);
   docsRef.current = docs.state;
+  // The active doc's id + dirty flag, mirrored into refs so the empty-dep
+  // listener sees current values (the active doc's Live edits may be unflushed,
+  // so its session.isDirty() lags — activeDirty is the authoritative signal).
+  const activeIdRef = useRef<string | null>(active?.id ?? null);
+  activeIdRef.current = active?.id ?? null;
+  const activeDirtyRef = useRef(activeDirty);
+  activeDirtyRef.current = activeDirty;
   // The file paths this window currently has the OS watcher subscribed to.
   const watchedRef = useRef<Set<string>>(new Set());
 
@@ -151,7 +158,10 @@ export function EditorWindow() {
       setReloadState((prev) => {
         const next = { ...prev };
         for (const d of hits) {
-          const st = decideReloadState(onDisk, d.session.savedText, d.session.isDirty());
+          // Use docIsDirty (not session.isDirty()) so the active doc's
+          // unflushed Live edits count as dirty → 'conflict', not 'changed'.
+          const dirty = docIsDirty(d, activeIdRef.current, activeDirtyRef.current);
+          const st = decideReloadState(onDisk, d.session.savedText, dirty);
           if (st) next[d.id] = st;
           else delete next[d.id];
         }
