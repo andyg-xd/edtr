@@ -1,3 +1,5 @@
+import { saveTheme } from './settingsStore';
+
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type EffectiveTheme = 'light' | 'dark';
 
@@ -14,13 +16,33 @@ export function getStoredMode(): ThemeMode {
   }
 }
 
-/** Persist the mode. Storage failures are non-fatal (theme still applies in-session). */
+/** Persist the mode: localStorage (sync paint-cache) + the durable Tauri store
+ * (async, fire-and-forget). Storage failures are non-fatal (theme still applies
+ * in-session). */
 export function setStoredMode(mode: ThemeMode): void {
   try {
     localStorage.setItem(STORAGE_KEY, mode);
   } catch {
     /* storage unavailable — non-fatal */
   }
+  void saveTheme(mode).catch(() => {
+    /* durable persist failed — non-fatal, applied in-session + cached locally */
+  });
+}
+
+/**
+ * Decide how a window's local (localStorage) mode reconciles with the durable
+ * store on mount. `seed` = store empty → write local into it (first-run
+ * migration + corrupt-file recovery); `adopt` = store has a different value →
+ * take it as truth; neither = already in sync.
+ */
+export function reconcileMode(
+  local: ThemeMode,
+  stored: ThemeMode | null,
+): { seed?: ThemeMode; adopt?: ThemeMode } {
+  if (stored === null) return { seed: local };
+  if (stored !== local) return { adopt: stored };
+  return {};
 }
 
 /** Resolve mode + OS preference to the concrete theme to render. */

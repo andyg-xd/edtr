@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+vi.mock('./settingsStore', () => ({ saveTheme: vi.fn().mockResolvedValue(undefined) }));
+import { saveTheme } from './settingsStore';
 import {
   getStoredMode,
   setStoredMode,
   resolveEffective,
   applyMode,
+  reconcileMode,
   type ThemeMode,
 } from './theme';
 
@@ -58,5 +61,27 @@ describe('applyMode', () => {
     applyMode('system', true);
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     expect(getStoredMode()).toBe('system');
+  });
+});
+
+describe('reconcileMode', () => {
+  it('store empty (null) → seed with local', () => {
+    expect(reconcileMode('dark', null)).toEqual({ seed: 'dark' });
+  });
+  it('store equals local → no action', () => {
+    expect(reconcileMode('dark', 'dark')).toEqual({});
+  });
+  it('store differs → adopt the store value', () => {
+    expect(reconcileMode('light', 'dark')).toEqual({ adopt: 'dark' });
+  });
+});
+
+describe('setStoredMode write-through', () => {
+  it('writes localStorage AND calls saveTheme', () => {
+    localStorage.clear();
+    (saveTheme as unknown as ReturnType<typeof vi.fn>).mockClear();
+    setStoredMode('dark');
+    expect(localStorage.getItem('edtr.theme')).toBe('dark');
+    expect(saveTheme).toHaveBeenCalledWith('dark');
   });
 });
