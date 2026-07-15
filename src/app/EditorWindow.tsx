@@ -11,7 +11,7 @@ import { useMenuAndCloseGuard } from './MenuBridge';
 import { quitVoteFor } from './quitVote';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
 import { ReloadBanner } from './ReloadBanner';
-import { pickFiles, pickFolder, openInNewWindow, takePendingOpen, takeLaunchOpen, saveSession, readFolder, readSession } from '../files/fileController';
+import { pickFiles, pickFolder, pickSavePath, openInNewWindow, takePendingOpen, takeLaunchOpen, saveSession, readFolder, readSession } from '../files/fileController';
 import { basename } from '../files/fileTypes';
 import { recordRecent } from '../files/recents';
 import { useTheme } from '../settings/useTheme';
@@ -20,7 +20,7 @@ import { docIsDirty, windowIsDirty, type OpenDoc, type ViewMode } from '../files
 import { isEmptyWindow, type OpenPayload } from '../files/openPayload';
 import { classifyPath } from '../files/pathKind';
 import type { FolderEntry } from '../files/folder';
-import { readFile } from '../files/fileIo';
+import { readFile, writeFile } from '../files/fileIo';
 import { watchPath, unwatchPath } from '../files/fileWatch';
 import { decideReloadState, type ReloadState } from '../files/reloadDecision';
 
@@ -32,10 +32,18 @@ type PendingIntent =
   | { kind: 'quit' }
   | null;
 
+/** Directory portion of a path (everything before the last '/'). */
+function dirOf(path: string): string {
+  const slash = path.lastIndexOf('/');
+  return slash === -1 ? '' : path.slice(0, slash);
+}
+
 export function EditorWindow() {
   const docs = useOpenDocuments();
   const active = docs.active;
   const [error, setError] = useState<string | null>(null);
+  const [errorAction, setErrorAction] = useState<{ label: string; onClick: () => void } | null>(null);
+  const [infoNotice, setInfoNotice] = useState<string | null>(null);
   const [pendingIntent, setPendingIntent] = useState<PendingIntent>(null);
   const [activeDirty, setActiveDirty] = useState(false);
   const [activeLiveAvailable, setActiveLiveAvailable] = useState(false);
@@ -70,9 +78,18 @@ export function EditorWindow() {
     return true;
   }, [active, activeLiveAvailable]);
 
+  // Single writer for the error banner: an error always resets the action, so a
+  // stale "Save As…" button never attaches to an unrelated (open/reload) error.
+  const showError = useCallback((message: string | null, action: { label: string; onClick: () => void } | null = null) => {
+    setError(message);
+    setErrorAction(action);
+  }, []);
+
   // Reset the active-status flags whenever the active doc changes wholesale.
   const resetActiveFlags = useCallback(() => {
     setError(null);
+    setErrorAction(null);
+    setInfoNotice(null);
     setActiveDirty(false);
     setActiveLiveAvailable(false);
   }, []);
@@ -93,7 +110,7 @@ export function EditorWindow() {
       }
       resetActiveFlags();
     } catch (e) {
-      setError(`Could not open: ${String(e)}`);
+      showError(`Could not open: ${String(e)}`);
     }
   }, [docs, resetActiveFlags]);
 
@@ -127,7 +144,7 @@ export function EditorWindow() {
       try {
         await openInNewWindow({ kind: 'files', paths: docPaths });
       } catch (err) {
-        setError(`Could not open the dropped file. ${String(err)}`);
+        showError(`Could not open the dropped file. ${String(err)}`);
       }
     }).then((fn) => { if (disposed) fn(); else unlisten = fn; });
     return () => { disposed = true; unlisten?.(); };
@@ -181,7 +198,7 @@ export function EditorWindow() {
       if (thisWindowEmpty) await applyPayload(payload);
       else await openInNewWindow(payload);
     } catch (e) {
-      setError(`Could not open: ${String(e)}`);
+      showError(`Could not open: ${String(e)}`);
     }
   }, [thisWindowEmpty, applyPayload]);
 
@@ -192,7 +209,7 @@ export function EditorWindow() {
       if (paths.length === 0) return;
       await handleOpenPayload({ kind: 'files', paths });
     } catch (e) {
-      setError(`Could not open file: ${String(e)}`);
+      showError(`Could not open file: ${String(e)}`);
     }
   }, [handleOpenPayload]);
 
@@ -203,7 +220,7 @@ export function EditorWindow() {
       if (path == null) return;
       await handleOpenPayload({ kind: 'folder', path });
     } catch (e) {
-      setError(`Could not open folder: ${String(e)}`);
+      showError(`Could not open folder: ${String(e)}`);
     }
   }, [handleOpenPayload]);
 
@@ -220,7 +237,7 @@ export function EditorWindow() {
   const selectDoc = useCallback((id: string) => {
     if (id === active?.id) return;
     if (!flushActive()) return;
-    setError(null);
+    showError(null);
     const target = findDoc(id);
     setActiveDirty(target ? target.session.isDirty() : false);
     setActiveLiveAvailable(false);
@@ -238,7 +255,7 @@ export function EditorWindow() {
       docs.open(session);
       recordRecent({ kind: 'file', path }).catch(() => {});
     } catch (e) {
-      setError(`Could not open file: ${String(e)}`);
+      showError(`Could not open file: ${String(e)}`);
     }
   }, [docs, selectDoc, flushActive, resetActiveFlags]);
 
@@ -253,7 +270,7 @@ export function EditorWindow() {
       if (id === active?.id) setActiveDirty(false);
       return true;
     } catch (e) {
-      setError(`Could not save "${basename(doc.session.path)}" — your changes are safe in the editor. ${String(e)}`);
+      showError(`Could not save "${basename(doc.session.path)}" — your changes are safe in the editor. ${String(e)}`);
       return false;
     }
   }, [active, flushActive, findDoc]);
@@ -265,7 +282,7 @@ export function EditorWindow() {
       try {
         await saveSession(doc.session);
       } catch (e) {
-        setError(`Could not save "${basename(doc.session.path)}" — your changes are safe in the editor. ${String(e)}`);
+        showError(`Could not save "${basename(doc.session.path)}" — your changes are safe in the editor. ${String(e)}`);
         return false;
       }
     }
@@ -279,6 +296,38 @@ export function EditorWindow() {
     return saveDoc(active.id);
   }, [active, saveDoc]);
 
+  // ⇧⌘S / File → Save As…: write to a new path first, then rebind the active
+  // doc's session onto it (write-first, rebind-on-success — a write failure
+  // leaves the buffer + old path untouched).
+  const handleSaveAs = useCallback(async () => {
+    if (!active) return;
+    if (!flushActive()) return; // capture Live edits; abort on serializer throw
+    const oldPath = active.session.path;
+    let newPath: string | null;
+    try {
+      newPath = await pickSavePath(basename(oldPath));
+    } catch (e) {
+      showError(`Could not open the Save As dialog. ${String(e)}`);
+      return;
+    }
+    if (newPath == null) return; // cancelled
+    try {
+      await writeFile(newPath, active.session.text, active.session.meta); // write FIRST (verbatim)
+    } catch (e) {
+      showError(`Could not save to "${basename(newPath)}" — your changes are safe in the editor. ${String(e)}`,
+        { label: 'Save As…', onClick: () => { void handleSaveAs(); } });
+      return;
+    }
+    // Success: rebind through the store (watcher + UI follow), remount to re-derive.
+    const assetsMayBreak = active.session.text.includes('.assets/') && dirOf(newPath) !== dirOf(oldPath);
+    docs.rebind(active.id, newPath);
+    setReloadNonce((m) => ({ ...m, [active.id]: (m[active.id] ?? 0) + 1 }));
+    setActiveDirty(false);
+    showError(null);
+    setInfoNotice(assetsMayBreak ? 'Saved to a different folder — relative image paths may not resolve here.' : null);
+    recordRecent({ kind: 'file', path: newPath }).catch(() => {});
+  }, [active, flushActive, docs, showError]);
+
   // Reload the banner's doc from disk: adopt the on-disk text/meta into its
   // session, then remount its DocumentView (via the nonce) so Code + Live
   // re-derive cleanly. Used only by the 'changed'/'conflict' Reload button.
@@ -289,9 +338,9 @@ export function EditorWindow() {
       doc.session.reload(await readFile(doc.session.path));
       setReloadNonce((m) => ({ ...m, [id]: (m[id] ?? 0) + 1 }));
       setReloadState((prev) => { const n = { ...prev }; delete n[id]; return n; });
-      if (id === active?.id) { setActiveDirty(false); setError(null); }
+      if (id === active?.id) { setActiveDirty(false); showError(null); }
     } catch (e) {
-      setError(`Could not reload the file. ${String(e)}`);
+      showError(`Could not reload the file. ${String(e)}`);
     }
   }, [active]);
 
@@ -334,6 +383,7 @@ export function EditorWindow() {
     onOpen: handleOpen,
     onOpenFolder: handleOpenFolder,
     onSave: handleSave,
+    onSaveAs: handleSaveAs,
     onCloseRequest: requestClose,
     onQuitPoll,
     onQuitAbort,
@@ -412,7 +462,15 @@ export function EditorWindow() {
         </div>
       )}
       {error && (
-        <div className="notice notice-error" role="alert">{error}</div>
+        <div className="notice notice-error" role="alert">
+          <span>{error}</span>
+          {errorAction && (
+            <button className="notice-action" onClick={errorAction.onClick}>{errorAction.label}</button>
+          )}
+        </div>
+      )}
+      {infoNotice && (
+        <div className="notice notice-info" role="status">{infoNotice}</div>
       )}
       <div className="editor-body">
         {folderView ? (
@@ -452,7 +510,7 @@ export function EditorWindow() {
                 effectiveTheme={themeEffective}
                 onDirtyChange={setActiveDirty}
                 onLiveAvailableChange={setActiveLiveAvailable}
-                onError={setError}
+                onError={(m) => showError(m)}
               />
             </>
           ) : folderView ? (

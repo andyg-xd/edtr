@@ -1,13 +1,14 @@
 import type { OpenPayload } from '../files/openPayload';
 
 /** The native-menu commands the Rust side emits as `menu://<command>` events. */
-export type MenuCommand = 'open' | 'open-folder' | 'save' | 'close' | 'quit-poll' | 'quit-abort';
+export type MenuCommand = 'open' | 'open-folder' | 'save' | 'save-as' | 'close' | 'quit-poll' | 'quit-abort';
 
 /** App-level handlers the menu (and window close button) drive. */
 export interface MenuHandlers {
   onOpen: () => void;
   onOpenFolder: () => void;
   onSave: () => void;
+  onSaveAs: () => void;
   onCloseRequest: () => void;
   /** ⌘Q started an atomic-quit poll — this window must vote (5b-iii-b). */
   onQuitPoll: () => void;
@@ -27,6 +28,7 @@ export function dispatchMenuCommand(command: MenuCommand, handlers: MenuHandlers
     case 'open': handlers.onOpen(); break;
     case 'open-folder': handlers.onOpenFolder(); break;
     case 'save': handlers.onSave(); break;
+    case 'save-as': handlers.onSaveAs(); break;
     case 'close': handlers.onCloseRequest(); break;
     case 'quit-poll': handlers.onQuitPoll(); break;
     case 'quit-abort': handlers.onQuitAbort(); break;
