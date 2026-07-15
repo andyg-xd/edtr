@@ -83,6 +83,7 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry]) -> ta
     let open = MenuItem::with_id(app, "open", "Open…", true, Some("Cmd+O"))?;
     let open_folder = MenuItem::with_id(app, "open-folder", "Open Folder…", true, Some("Cmd+Shift+O"))?;
     let save = MenuItem::with_id(app, "save", "Save", true, Some("Cmd+S"))?;
+    let save_as = MenuItem::with_id(app, "save-as", "Save As…", true, Some("Cmd+Shift+S"))?;
     let close = MenuItem::with_id(app, "close", "Close Window", true, Some("Cmd+W"))?;
     let recent_menu = build_recent_submenu(app, recents)?;
 
@@ -103,6 +104,7 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry]) -> ta
         .item(&open_folder)
         .item(&recent_menu)
         .item(&save)
+        .item(&save_as)
         .separator()
         .item(&close)
         .build()?;

@@ -86,6 +86,7 @@ pub fn run() {
                 "open" => "menu://open",
                 "open-folder" => "menu://open-folder",
                 "save" => "menu://save",
+                "save-as" => "menu://save-as",
                 "close" => "menu://close",
                 _ => return,
             };
