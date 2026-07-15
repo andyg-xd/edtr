@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
@@ -36,6 +38,58 @@ fn write_settings(path: &Path, settings: &Settings) -> Result<(), String> {
     tmp.write_all(json.as_bytes()).map_err(|e| e.to_string())?;
     tmp.as_file().sync_all().map_err(|e| e.to_string())?;
     tmp.persist(path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn settings_file<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    Ok(dir.join("settings.json"))
+}
+
+/// Load persisted settings once at startup. None if absent/corrupt.
+pub fn load<R: Runtime>(app: &AppHandle<R>) -> Option<Settings> {
+    settings_file(app).ok().and_then(|p| read_settings(&p))
+}
+
+fn save<R: Runtime>(app: &AppHandle<R>, settings: &Settings) -> Result<(), String> {
+    let path = settings_file(app)?;
+    write_settings(&path, settings)
+}
+
+/// In-memory settings; None until a valid file is loaded or a set_* writes one.
+#[derive(Default)]
+pub struct SettingsState(pub Mutex<Option<Settings>>);
+
+#[tauri::command]
+pub fn get_settings(state: State<SettingsState>) -> Option<Settings> {
+    state.0.lock().ok().and_then(|g| g.clone())
+}
+
+/// Persist the theme + broadcast settings://changed to all windows — but only
+/// when the value actually changed (a no-op write doesn't re-broadcast, so a
+/// window adopting a cross-window change doesn't echo an endless feedback loop).
+#[tauri::command]
+pub fn set_theme<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<SettingsState>,
+    mode: String,
+) -> Result<(), String> {
+    if !is_valid_theme(&mode) {
+        return Err(format!("invalid theme: {mode}"));
+    }
+    let settings = Settings { theme: mode };
+    let changed = {
+        let mut g = state.0.lock().map_err(|_| "settings lock poisoned")?;
+        let changed = g.as_ref() != Some(&settings);
+        if changed {
+            save(&app, &settings)?;
+            *g = Some(settings.clone());
+        }
+        changed
+    };
+    if changed {
+        let _ = app.emit("settings://changed", settings);
+    }
     Ok(())
 }
 

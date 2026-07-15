@@ -19,12 +19,17 @@ pub fn run() {
         .manage(window::ReadyState::default())
         .manage(window::LaunchOpen::default())
         .manage(recents::RecentsState::default())
+        .manage(settings::SettingsState::default())
         .menu(|handle| menu::build_menu(handle, &[]))
         .setup(|app| {
             let handle = app.handle();
             let loaded = recents::load(handle);
             if let Ok(mut l) = app.state::<recents::RecentsState>().0.lock() {
                 *l = loaded;
+            }
+            let loaded_settings = settings::load(handle);
+            if let Ok(mut g) = app.state::<settings::SettingsState>().0.lock() {
+                *g = loaded_settings;
             }
             menu::rebuild(handle); // swap in the menu populated with loaded recents
             match watcher::init(app.handle()) {
@@ -110,7 +115,9 @@ pub fn run() {
             window::mark_frontend_ready,
             recents::record_recent,
             watcher::watch_path,
-            watcher::unwatch_path
+            watcher::unwatch_path,
+            settings::get_settings,
+            settings::set_theme
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
