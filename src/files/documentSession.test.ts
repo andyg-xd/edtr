@@ -42,6 +42,15 @@ describe('DocumentSession', () => {
     expect(s.format).toBe('markdown');
     expect(s.meta).toEqual({ eol: 'lf', hadBom: false });
   });
+
+  it('savedText tracks the last-saved baseline, not the live buffer', () => {
+    const s = new DocumentSession(loaded);
+    expect(s.savedText).toBe('hello\n');
+    s.setCurrentText('edited\n');
+    expect(s.savedText).toBe('hello\n');   // baseline unmoved by an edit
+    s.markSaved();
+    expect(s.savedText).toBe('edited\n');  // baseline advances on save
+  });
 });
 
 describe('DocumentSession.version', () => {

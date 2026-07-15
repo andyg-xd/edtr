@@ -8,7 +8,7 @@ export class DocumentSession {
   readonly path: string;
   readonly format: EditorFormat;
   private _meta: FileMeta;
-  private savedText: string;
+  private _savedText: string;
   private currentText: string;
   private _version = 0;
 
@@ -16,7 +16,7 @@ export class DocumentSession {
     this.path = loaded.path;
     this.format = loaded.format;
     this._meta = loaded.meta;
-    this.savedText = loaded.text;
+    this._savedText = loaded.text;
     this.currentText = loaded.text;
   }
 
@@ -26,6 +26,12 @@ export class DocumentSession {
 
   get text(): string {
     return this.currentText;
+  }
+
+  /** The last-saved (or last-loaded/reloaded) text — the baseline `isDirty`
+   * compares against, and the baseline a disk change is compared to. */
+  get savedText(): string {
+    return this._savedText;
   }
 
   get version(): number {
@@ -38,11 +44,11 @@ export class DocumentSession {
   }
 
   markSaved(): void {
-    this.savedText = this.currentText;
+    this._savedText = this.currentText;
   }
 
   isDirty(): boolean {
-    return this.currentText !== this.savedText;
+    return this.currentText !== this._savedText;
   }
 
   /** Replace the buffer from a fresh on-disk read: text + meta become the new
@@ -50,7 +56,7 @@ export class DocumentSession {
    * EOL/BOM. `path`/`format` are unchanged (same file). */
   reload(loaded: LoadedFile): void {
     this._meta = loaded.meta;
-    this.savedText = loaded.text;
+    this._savedText = loaded.text;
     this.currentText = loaded.text;
     this._version++;
   }

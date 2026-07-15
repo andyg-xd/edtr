@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { invoke } from '@tauri-apps/api/core';
 import { WindowChrome } from './WindowChrome';
 import { CloseGuard } from './CloseGuard';
@@ -9,6 +10,7 @@ import { FolderSidebar } from './FolderSidebar';
 import { useMenuAndCloseGuard } from './MenuBridge';
 import { quitVoteFor } from './quitVote';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
+import { ReloadBanner } from './ReloadBanner';
 import { pickFiles, pickFolder, openInNewWindow, takePendingOpen, takeLaunchOpen, saveSession, readFolder, readSession } from '../files/fileController';
 import { basename } from '../files/fileTypes';
 import { recordRecent } from '../files/recents';
@@ -18,6 +20,9 @@ import { docIsDirty, windowIsDirty, type OpenDoc, type ViewMode } from '../files
 import { isEmptyWindow, type OpenPayload } from '../files/openPayload';
 import { classifyPath } from '../files/pathKind';
 import type { FolderEntry } from '../files/folder';
+import { readFile } from '../files/fileIo';
+import { watchPath, unwatchPath } from '../files/fileWatch';
+import { decideReloadState, type ReloadState } from '../files/reloadDecision';
 
 type FolderView = { path: string; entries: FolderEntry[] };
 
@@ -37,6 +42,17 @@ export function EditorWindow() {
   const [folderView, setFolderView] = useState<FolderView | null>(null);
   const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme();
   const viewRef = useRef<DocumentViewHandle>(null);
+
+  // Per-doc reload-banner state + a per-doc remount nonce. The nonce forces the
+  // active DocumentView to remount after a reload so Code + Live re-derive from
+  // the freshly-adopted session text.
+  const [reloadState, setReloadState] = useState<Record<string, ReloadState>>({});
+  const [reloadNonce, setReloadNonce] = useState<Record<string, number>>({});
+  // Fresh view of the store for the empty-dep fs://changed listener + reload.
+  const docsRef = useRef(docs.state);
+  docsRef.current = docs.state;
+  // The file paths this window currently has the OS watcher subscribed to.
+  const watchedRef = useRef<Set<string>>(new Set());
 
   // Flush the active doc's pending Live edits into its session before it goes
   // inactive (switch/open). false = a serializer throw aborted it.
@@ -108,6 +124,41 @@ export function EditorWindow() {
       }
     }).then((fn) => { if (disposed) fn(); else unlisten = fn; });
     return () => { disposed = true; unlisten?.(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep the Rust file-watcher subscribed to exactly this window's open docs.
+  // One place covers every open/close/append/folder-open path.
+  useEffect(() => {
+    const current = new Set(docs.state.docs.map((d) => d.session.path));
+    for (const p of current) if (!watchedRef.current.has(p)) watchPath(p).catch(() => {});
+    for (const p of watchedRef.current) if (!current.has(p)) unwatchPath(p).catch(() => {});
+    watchedRef.current = current;
+  }, [docs.state.docs]);
+
+  // A watched file changed on disk: re-read it and decide each open copy's
+  // banner state. Comparing on-disk text to the session's savedText makes our
+  // own ⌘S suppress naturally (after a save, on-disk == savedText → no banner).
+  useEffect(() => {
+    let disposed = false;
+    const un = getCurrentWebviewWindow().listen<{ path: string }>('fs://changed', async (e) => {
+      const path = e.payload.path;
+      const hits = docsRef.current.docs.filter((d) => d.session.path === path);
+      if (hits.length === 0) return;
+      let onDisk: string | null = null;
+      try { onDisk = (await readFile(path)).text; } catch { onDisk = null; }
+      if (disposed) return;
+      setReloadState((prev) => {
+        const next = { ...prev };
+        for (const d of hits) {
+          const st = decideReloadState(onDisk, d.session.savedText, d.session.isDirty());
+          if (st) next[d.id] = st;
+          else delete next[d.id];
+        }
+        return next;
+      });
+    });
+    return () => { disposed = true; un.then((f) => f()); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -218,6 +269,27 @@ export function EditorWindow() {
     return saveDoc(active.id);
   }, [active, saveDoc]);
 
+  // Reload the banner's doc from disk: adopt the on-disk text/meta into its
+  // session, then remount its DocumentView (via the nonce) so Code + Live
+  // re-derive cleanly. Used only by the 'changed'/'conflict' Reload button.
+  const reloadDoc = useCallback(async (id: string) => {
+    const doc = docsRef.current.docs.find((d) => d.id === id);
+    if (!doc) return;
+    try {
+      doc.session.reload(await readFile(doc.session.path));
+      setReloadNonce((m) => ({ ...m, [id]: (m[id] ?? 0) + 1 }));
+      setReloadState((prev) => { const n = { ...prev }; delete n[id]; return n; });
+      if (id === active?.id) { setActiveDirty(false); setError(null); }
+    } catch (e) {
+      setError(`Could not reload the file. ${String(e)}`);
+    }
+  }, [active]);
+
+  // "Keep mine" / dismiss: clear the banner, keep the in-memory buffer as-is.
+  const dismissReload = useCallback((id: string) => {
+    setReloadState((prev) => { const n = { ...prev }; delete n[id]; return n; });
+  }, []);
+
   const closeDoc = useCallback((id: string) => {
     const doc = findDoc(id);
     if (!doc) return;
@@ -305,6 +377,9 @@ export function EditorWindow() {
     if (intent?.kind === 'quit') voteQuit(quitVoteFor('cancel', false));
   };
 
+  const activeReload = active ? reloadState[active.id] : undefined;
+  const activeNonce = active ? reloadNonce[active.id] ?? 0 : 0;
+
   return (
     <div className="editor-window">
       <WindowChrome
@@ -351,15 +426,25 @@ export function EditorWindow() {
         )}
         <div className="doc-pane">
           {active ? (
-            <DocumentView
-              key={active.id}
-              ref={viewRef}
-              doc={active}
-              effectiveTheme={themeEffective}
-              onDirtyChange={setActiveDirty}
-              onLiveAvailableChange={setActiveLiveAvailable}
-              onError={setError}
-            />
+            <>
+              {activeReload && (
+                <ReloadBanner
+                  state={activeReload}
+                  onReload={() => reloadDoc(active.id)}
+                  onKeepMine={() => dismissReload(active.id)}
+                  onDismiss={() => dismissReload(active.id)}
+                />
+              )}
+              <DocumentView
+                key={`${active.id}:${activeNonce}`}
+                ref={viewRef}
+                doc={active}
+                effectiveTheme={themeEffective}
+                onDirtyChange={setActiveDirty}
+                onLiveAvailableChange={setActiveLiveAvailable}
+                onError={setError}
+              />
+            </>
           ) : folderView ? (
             folderView.entries.length === 0 ? (
               <div className="empty-state">
