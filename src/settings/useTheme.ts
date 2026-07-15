@@ -55,7 +55,9 @@ export function useTheme(): {
         if (!disposed) setModeState(s.theme);
       });
       if (disposed) unlisten();
-    })();
+    })().catch(() => {
+      /* store reconcile/subscription unavailable — non-fatal, cached mode already applied */
+    });
     return () => {
       disposed = true;
       unlisten?.();
