@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { applyMode, getStoredMode, resolveEffective, type EffectiveTheme, type ThemeMode } from './theme';
+import {
+  applyMode,
+  getStoredMode,
+  reconcileMode,
+  resolveEffective,
+  type EffectiveTheme,
+  type ThemeMode,
+} from './theme';
+import { loadSettings, saveTheme, onSettingsChanged } from './settingsStore';
+import type { UnlistenFn } from '@tauri-apps/api/event';
 
 const QUERY = '(prefers-color-scheme: dark)';
 
@@ -31,6 +40,28 @@ export function useTheme(): {
   useEffect(() => {
     applyMode(mode, systemPrefersDark);
   }, [mode, systemPrefersDark]);
+
+  // Reconcile this window's cached mode with the durable store, then live-sync.
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    let disposed = false;
+    (async () => {
+      const stored = await loadSettings();
+      if (disposed) return;
+      const { seed, adopt } = reconcileMode(getStoredMode(), stored?.theme ?? null);
+      if (seed !== undefined) void saveTheme(seed).catch(() => {});
+      if (adopt !== undefined) setModeState(adopt);
+      unlisten = await onSettingsChanged((s) => {
+        if (!disposed) setModeState(s.theme);
+      });
+      if (disposed) unlisten();
+    })();
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setMode = useCallback((m: ThemeMode) => setModeState(m), []);
   const effective = resolveEffective(mode, systemPrefersDark);

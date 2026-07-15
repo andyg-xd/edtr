@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { vi } from 'vitest';
+vi.mock('./settingsStore', () => ({
+  loadSettings: vi.fn().mockResolvedValue(null),
+  saveTheme: vi.fn().mockResolvedValue(undefined),
+  onSettingsChanged: vi.fn().mockResolvedValue(() => {}),
+}));
+
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import type { ReactElement } from 'react';
