@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { DocumentSession } from '../files/documentSession';
 import {
   emptyDocs, open as openDoc, close as closeDoc, setActive as setActiveDoc,
-  setViewMode as setViewModeDoc, activeDoc, type OpenDocsState, type ViewMode,
+  setViewMode as setViewModeDoc, rebind as rebindDoc, activeDoc, type OpenDocsState, type ViewMode,
 } from '../files/openDocuments';
 
 export function useOpenDocuments() {
@@ -20,5 +20,6 @@ export function useOpenDocuments() {
     close: useCallback((id: string) => setState((s) => closeDoc(s, id)), []),
     setActive: useCallback((id: string) => setState((s) => setActiveDoc(s, id)), []),
     setViewMode: useCallback((id: string, mode: ViewMode) => setState((s) => setViewModeDoc(s, id, mode)), []),
+    rebind: useCallback((id: string, newPath: string) => setState((s) => rebindDoc(s, id, newPath)), []),
   };
 }

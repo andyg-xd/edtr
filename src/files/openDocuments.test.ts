@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { DocumentSession } from './documentSession';
 import {
   emptyDocs, open, close, setActive, setViewMode, activeDoc, anyDirty,
-  docIsDirty, windowIsDirty,
+  docIsDirty, windowIsDirty, rebind,
 } from './openDocuments';
 
 const sess = (path: string, text = 'x') =>
@@ -71,5 +71,21 @@ describe('multi-doc dirty helpers', () => {
     expect(windowIsDirty(s, true)).toBe(true);       // active unflushed live edits
     s.docs.find((d) => d.id === 'd0')!.session.setCurrentText('changed'); // an inactive doc dirty
     expect(windowIsDirty(s, false)).toBe(true);
+  });
+});
+
+describe('rebind', () => {
+  it('rebinds the target doc session to the new path and returns new state', () => {
+    const sess = new DocumentSession({ path: '/d/a.md', text: 'x', meta: { eol: 'lf', hadBom: false }, format: 'markdown' });
+    const s0 = open(emptyDocs, sess, 'doc-0');
+    const s1 = rebind(s0, 'doc-0', '/d/b.html');
+    expect(s1).not.toBe(s0);                 // new state ref (effects re-run)
+    expect(s1.docs[0].session.path).toBe('/d/b.html');
+    expect(s1.docs[0].session.format).toBe('html');
+    expect(s1.activeId).toBe('doc-0');       // identity preserved
+  });
+  it('is a no-op for an unknown id', () => {
+    const s0 = open(emptyDocs, new DocumentSession({ path: '/d/a.md', text: 'x', meta: { eol: 'lf', hadBom: false }, format: 'markdown' }), 'doc-0');
+    expect(rebind(s0, 'nope', '/d/b.md')).toBe(s0);
   });
 });

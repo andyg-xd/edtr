@@ -44,6 +44,17 @@ export function setViewMode(state: OpenDocsState, id: string, mode: ViewMode): O
   return { ...state, docs: state.docs.map((d) => (d.id === id ? { ...d, viewMode: mode } : d)) };
 }
 
+/** Save As: rebind a doc's session to a new path. Mutates the session in place
+ * (sessions are mutable entities, like reload/setCurrentText) and returns NEW
+ * state (fresh docs array + wrapper for the target) so the watch-reconcile
+ * effect and the UI re-run against the new path. */
+export function rebind(state: OpenDocsState, id: string, newPath: string): OpenDocsState {
+  const doc = state.docs.find((d) => d.id === id);
+  if (!doc) return state;
+  doc.session.rebind(newPath);
+  return { ...state, docs: state.docs.map((d) => (d.id === id ? { ...d } : d)) };
+}
+
 export function activeDoc(state: OpenDocsState): OpenDoc | null {
   return state.docs.find((d) => d.id === state.activeId) ?? null;
 }
