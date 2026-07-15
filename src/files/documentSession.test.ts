@@ -80,3 +80,18 @@ describe('DocumentSession.reload', () => {
     expect(s.version).toBeGreaterThan(v);
   });
 });
+
+describe('DocumentSession.rebind', () => {
+  it('changes path, re-derives format, becomes clean at the new path, keeps buffer text', () => {
+    const s = new DocumentSession(makeLoaded('body', 'lf'));   // path '/d/a.md', format 'markdown'
+    s.setCurrentText('edited body');
+    expect(s.isDirty()).toBe(true);
+    const v = s.version;
+    s.rebind('/other/b.html');
+    expect(s.path).toBe('/other/b.html');
+    expect(s.format).toBe('html');            // re-derived from the new extension
+    expect(s.text).toBe('edited body');       // buffer unchanged
+    expect(s.isDirty()).toBe(false);          // savedText adopted current → clean at new path
+    expect(s.version).toBeGreaterThan(v);
+  });
+});
