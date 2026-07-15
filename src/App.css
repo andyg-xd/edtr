@@ -105,11 +105,31 @@ body,
 }
 
 .notice-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 8px 12px;
   background: var(--danger-bg);
   color: var(--danger-fg);
   font-size: 13px;
 }
+
+/* Recovery action button inside a notice banner (e.g. "Save As…" after a
+   failed save). Mirrors .reload-banner button's filled-accent notice-action
+   styling so buttons-in-notices read consistently across the app. */
+.notice-action {
+  margin-left: 4px;
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.notice-action:hover { opacity: 0.9; }
+.notice-action:active { opacity: 0.8; }
 
 .empty-state {
   flex: 1;

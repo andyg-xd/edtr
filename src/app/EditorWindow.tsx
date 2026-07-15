@@ -357,8 +357,9 @@ export function EditorWindow() {
     else {
       docs.close(id);
       setInfoNotice(null);
+      showError(null);
     }
-  }, [docs, dirtyFor, findDoc]);
+  }, [docs, dirtyFor, findDoc, showError]);
 
   const windowDirty = windowIsDirty(docs.state, activeDirty);
   // Closing a window destroys it; Rust's exit-on-zero quits the app when the
@@ -413,6 +414,7 @@ export function EditorWindow() {
       case 'close-doc':
         docs.close(intent.id);
         setInfoNotice(null);
+        showError(null);
         break;
       case 'close-window': closeThisWindow(); break;
       default: { const _exhaustive: never = intent; void _exhaustive; break; }
