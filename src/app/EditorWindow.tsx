@@ -238,6 +238,7 @@ export function EditorWindow() {
     if (id === active?.id) return;
     if (!flushActive()) return;
     showError(null);
+    setInfoNotice(null);
     const target = findDoc(id);
     setActiveDirty(target ? target.session.isDirty() : false);
     setActiveLiveAvailable(false);
@@ -353,7 +354,10 @@ export function EditorWindow() {
     const doc = findDoc(id);
     if (!doc) return;
     if (dirtyFor(doc)) setPendingIntent({ kind: 'close-doc', id });
-    else docs.close(id);
+    else {
+      docs.close(id);
+      setInfoNotice(null);
+    }
   }, [docs, dirtyFor, findDoc]);
 
   const windowDirty = windowIsDirty(docs.state, activeDirty);
@@ -406,7 +410,10 @@ export function EditorWindow() {
   // Guard actions branch on the pending intent.
   const guardProceed = (intent: { kind: 'close-doc'; id: string } | { kind: 'close-window' }) => {
     switch (intent.kind) {
-      case 'close-doc': docs.close(intent.id); break;
+      case 'close-doc':
+        docs.close(intent.id);
+        setInfoNotice(null);
+        break;
       case 'close-window': closeThisWindow(); break;
       default: { const _exhaustive: never = intent; void _exhaustive; break; }
     }
