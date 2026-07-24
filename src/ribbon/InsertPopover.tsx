@@ -12,9 +12,11 @@ interface InsertPopoverProps {
   onCancel: () => void;
   /** Surfaces a copy/write failure via the app's non-destructive error banner. */
   onError?: (msg: string) => void;
+  /** Returns false when an image can't be inserted at the current selection. */
+  canInsertImage?: () => boolean;
 }
 
-export function InsertPopover({ kind, initialText = '', docPath = null, onConfirm, onCancel, onError }: InsertPopoverProps) {
+export function InsertPopover({ kind, initialText = '', docPath = null, onConfirm, onCancel, onError, canInsertImage }: InsertPopoverProps) {
   const [text, setText] = useState(initialText);
   const [url, setUrl] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
@@ -39,6 +41,11 @@ export function InsertPopover({ kind, initialText = '', docPath = null, onConfir
 
   const chooseFile = async () => {
     if (!docPath) return;
+    if (canInsertImage && !canInsertImage()) {
+      onError?.("Can't insert an image here. Put the cursor in regular text, not in a code block.");
+      onCancel(); // the image can't go here — close the popover
+      return;
+    }
     try {
       const picked = await open({
         multiple: false,

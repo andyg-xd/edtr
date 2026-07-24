@@ -13,7 +13,7 @@ import { splitCommand, softBreakCommand } from '../commands/htmlStructureCommand
 import { sinkListItemCmd, liftListItemCmd } from '../commands/htmlBlockCommands';
 import { goToNextCell, arrowVertical } from '../commands/htmlTableCommands';
 import {
-  toggleStrong, toggleEm, toggleUnderline, insertImage,
+  toggleStrong, toggleEm, toggleUnderline, insertImage, canInsertImage,
 } from '../commands/htmlInlineCommands';
 import { writeImageIntoAssets, resolveImageDisplaySrc } from '../files/imageAssets';
 
@@ -173,6 +173,10 @@ export function HtmlLiveView({
           if (item.kind === 'file' && item.type.startsWith('image/')) {
             const file = item.getAsFile();
             if (!file) continue;
+            if (!canInsertImage(view.state)) {
+              onErrorRef.current?.("Can't insert an image here. Put the cursor in regular text, not in a code block.");
+              return true; // consume: handled by rejecting
+            }
             const dp = docPathRef.current;
             const ext = (item.type.split('/')[1] || 'png').split('+')[0]; // image/svg+xml -> svg
             file.arrayBuffer()

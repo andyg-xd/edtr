@@ -18,8 +18,8 @@ import { htmlTableRibbon } from '../ribbon/htmlTableRibbon';
 import { isInTable as isHtmlInTable } from '../commands/htmlTableCommands';
 import { detectFlavor } from '../doc/flavor';
 import { copyImageIntoAssets, resolveImageDisplaySrc, IMAGE_EXTS } from '../files/imageAssets';
-import { insertImage } from '../commands/markdownInlineCommands';
-import { insertImage as htmlInsertImage } from '../commands/htmlInlineCommands';
+import { insertImage, canInsertImage as mdCanInsertImage } from '../commands/markdownInlineCommands';
+import { insertImage as htmlInsertImage, canInsertImage as htmlCanInsertImage } from '../commands/htmlInlineCommands';
 import type { OpenDoc } from '../files/openDocuments';
 
 export interface DocumentViewHandle {
@@ -110,6 +110,11 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
         IMAGE_EXTS.includes((p.split('.').pop() ?? '').toLowerCase() as (typeof IMAGE_EXTS)[number]));
       if (imgs.length === 0) return;
       view.focus();
+      const canImg = dropFormatRef.current === 'html' ? htmlCanInsertImage : mdCanInsertImage;
+      if (!canImg(view.state)) {
+        onError("Can't insert an image here. Put the cursor in regular text, not in a code block.");
+        return;
+      }
       for (const path of imgs) {
         try {
           const rel = await copyImageIntoAssets(docPath, path);
@@ -155,7 +160,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     return (
       <>
         {liveView && (
-          <RibbonView view={liveView} controls={htmlRibbon} linkRequest={linkRequest} docPath={session.path ?? null} onError={onError} />
+          <RibbonView view={liveView} controls={htmlRibbon} linkRequest={linkRequest} docPath={session.path ?? null} onError={onError} canInsertImage={htmlCanInsertImage} />
         )}
         {liveView && isHtmlInTable(liveView.state) && (
           <div className="ribbon-context">
@@ -175,7 +180,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     return (
       <>
         {liveView && (
-          <RibbonView view={liveView} controls={markdownRibbon} linkRequest={linkRequest} docPath={session.path ?? null} onError={onError} />
+          <RibbonView view={liveView} controls={markdownRibbon} linkRequest={linkRequest} docPath={session.path ?? null} onError={onError} canInsertImage={mdCanInsertImage} />
         )}
         {liveView && isInTable(liveView.state) && (
           <div className="ribbon-context">

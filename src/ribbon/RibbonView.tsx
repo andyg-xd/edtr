@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { EditorView } from 'prosemirror-view';
-import type { Command } from 'prosemirror-state';
+import type { Command, EditorState } from 'prosemirror-state';
 import type { RibbonControl, PopoverValues } from './RibbonModel';
 import { InsertPopover } from './InsertPopover';
 import { TableSizePicker } from './TableSizePicker';
@@ -15,9 +15,11 @@ interface RibbonViewProps {
   docPath?: string | null;
   /** Surfaces a copy/write failure via the app's non-destructive error banner. */
   onError?: (msg: string) => void;
+  /** Format-specific "can an image be inserted at the current selection" check. */
+  canInsertImage?: (state: EditorState) => boolean;
 }
 
-export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Formatting', docPath = null, onError }: RibbonViewProps) {
+export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Formatting', docPath = null, onError, canInsertImage }: RibbonViewProps) {
   const [popover, setPopover] = useState<{ control: RibbonControl; initialText: string } | null>(null);
   const [sizePicker, setSizePicker] = useState<RibbonControl | null>(null);
 
@@ -104,6 +106,7 @@ export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Forma
           onConfirm={confirmPopover}
           onCancel={() => { setPopover(null); view.focus(); }}
           onError={onError}
+          canInsertImage={canInsertImage ? () => canInsertImage(view.state) : undefined}
         />
       )}
       {sizePicker && sizePicker.action.kind === 'sizePicker' && (

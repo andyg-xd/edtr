@@ -12,7 +12,7 @@ import { blockIdentityPlugin } from './blockIdentity';
 import { splitCommand, softBreakCommand } from '../commands/markdownStructureCommands';
 import { goToNextCell, arrowVertical } from '../commands/markdownTableCommands';
 import { writeImageIntoAssets, resolveImageDisplaySrc } from '../files/imageAssets';
-import { insertImage } from '../commands/markdownInlineCommands';
+import { insertImage, canInsertImage } from '../commands/markdownInlineCommands';
 
 interface LiveViewProps {
   doc: PMNode;
@@ -87,6 +87,10 @@ export function LiveView({
           if (item.kind === 'file' && item.type.startsWith('image/')) {
             const file = item.getAsFile();
             if (!file) continue;
+            if (!canInsertImage(view.state)) {
+              onError?.("Can't insert an image here. Put the cursor in regular text, not in a code block.");
+              return true; // consume: we handled it by rejecting; don't paste binary as text
+            }
             const ext = (item.type.split('/')[1] || 'png').split('+')[0]; // image/svg+xml -> svg
             file.arrayBuffer()
               .then((buf) => writeImageIntoAssets(docPath, Array.from(new Uint8Array(buf)), ext))
