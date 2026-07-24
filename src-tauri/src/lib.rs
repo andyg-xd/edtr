@@ -122,6 +122,7 @@ pub fn run() {
             fs::read_text_file,
             fs::write_text_file_atomic,
             fs::read_folder,
+            fs::path_exists,
             assets::copy_image_into_assets,
             assets::write_image_into_assets,
             window::open_in_new_window,
@@ -133,6 +134,7 @@ pub fn run() {
             recents::record_recent,
             watcher::watch_path,
             watcher::unwatch_path,
+            watcher::watcher_available,
             settings::get_settings,
             settings::set_theme
         ])

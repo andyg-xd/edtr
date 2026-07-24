@@ -149,6 +149,14 @@ pub fn read_folder(path: String) -> Result<Vec<FolderEntry>, String> {
     Ok(entries)
 }
 
+/// True if `path` currently exists on disk. Used by the reload path to tell a
+/// genuine deletion (→ the 'deleted' banner) from a present-but-unreadable file
+/// (→ a distinct notice), without brittle error-string matching (5f, D10c).
+#[tauri::command]
+pub fn path_exists(path: String) -> bool {
+    std::path::Path::new(&path).exists()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

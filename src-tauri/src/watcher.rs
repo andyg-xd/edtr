@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Runtime, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum WatchAction {
@@ -136,6 +136,14 @@ pub fn unwatch_path(path: String, state: State<WatcherState>) -> Result<(), Stri
         let _ = state.watcher.lock().map_err(|_| "watcher lock poisoned")?.unwatch(&dir);
     }
     Ok(())
+}
+
+/// True if the file watcher initialized at startup. When false, external-change
+/// detection is off for the whole session (setup logged the failure); the
+/// frontend surfaces a one-time notice. Read-only; touches no state.
+#[tauri::command]
+pub fn watcher_available(app: AppHandle) -> bool {
+    app.try_state::<WatcherState>().is_some()
 }
 
 #[cfg(test)]
