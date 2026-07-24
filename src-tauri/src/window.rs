@@ -171,14 +171,50 @@ pub struct QuitPoll {
     pub active: bool,
     pub expected: HashSet<String>,
     pub votes: HashMap<String, Vote>,
+    /// Windows that proved their webview is alive (acked on poll receipt).
+    pub acked: HashSet<String>,
+    /// Bumped each `start`; a grace timer that captures a stale value no-ops.
+    pub generation: u64,
 }
 
 impl QuitPoll {
-    /// Begin a poll over `labels`, discarding any prior poll.
-    pub fn start(&mut self, labels: impl IntoIterator<Item = String>) {
+    /// Begin a poll over `labels`, discarding any prior poll. Returns the new
+    /// generation so a grace timer can detect a superseded poll.
+    pub fn start(&mut self, labels: impl IntoIterator<Item = String>) -> u64 {
         self.active = true;
         self.expected = labels.into_iter().collect();
         self.votes.clear();
+        self.acked.clear();
+        self.generation += 1;
+        self.generation
+    }
+
+    /// Record that a window's webview is alive. Ignored if no poll is active.
+    pub fn mark_ack(&mut self, label: &str) {
+        if self.active {
+            self.acked.insert(label.to_string());
+        }
+    }
+
+    /// Grace-timer callback: if this is still the same active poll (`gen`), drop
+    /// every expected window that never acked (a crashed webview) and re-decide.
+    /// An acked-but-unvoted window (a human still on its guard) is kept → Pending.
+    /// If nothing acked, the expected set empties → Commit (total webview death).
+    pub fn prune_if(&mut self, gen: u64) -> PollOutcome {
+        if !self.active || self.generation != gen {
+            return PollOutcome::Pending;
+        }
+        let crashed: Vec<String> = self
+            .expected
+            .iter()
+            .filter(|l| !self.acked.contains(*l))
+            .cloned()
+            .collect();
+        for l in &crashed {
+            self.expected.remove(l);
+            self.votes.remove(l);
+        }
+        self.decide()
     }
 
     /// Record a window's vote and return the resulting outcome.
@@ -202,6 +238,7 @@ impl QuitPoll {
         }
         self.expected.remove(label);
         self.votes.remove(label);
+        self.acked.remove(label);
         self.decide()
     }
 
@@ -223,6 +260,7 @@ impl QuitPoll {
         self.active = false;
         self.expected.clear();
         self.votes.clear();
+        self.acked.clear();
     }
 }
 
@@ -243,6 +281,16 @@ pub fn quit_vote(app: AppHandle, window: WebviewWindow, vote: String, poll: Stat
             let _ = app.emit("menu://quit-abort", ());
         }
         PollOutcome::Pending => {}
+    }
+}
+
+/// A window's liveness ack for the atomic-quit poll. The frontend calls this the
+/// moment it receives `menu://quit-poll` (before showing any guard), so the grace
+/// timer can tell a crashed webview (never acks) from a human still deciding.
+#[tauri::command]
+pub fn quit_ack(window: WebviewWindow, poll: State<QuitPollState>) {
+    if let Ok(mut p) = poll.0.lock() {
+        p.mark_ack(window.label());
     }
 }
 
@@ -305,6 +353,54 @@ mod quit_poll_tests {
         p.start(["c".to_string()]); // ⌘Q again after windows changed
         assert!(p.votes.is_empty());
         assert_eq!(p.record("c", Vote::Ready), PollOutcome::Commit);
+    }
+
+    #[test]
+    fn unacked_window_is_pruned_and_rest_commits() {
+        let mut p = QuitPoll::default();
+        let g = p.start(["a".to_string(), "b".to_string()]);
+        p.mark_ack("a");
+        assert_eq!(p.record("a", Vote::Ready), PollOutcome::Pending); // b never acked/voted
+        assert_eq!(p.prune_if(g), PollOutcome::Commit); // b pruned as crashed → a ready → commit
+    }
+
+    #[test]
+    fn no_acks_prunes_all_and_commits() {
+        let mut p = QuitPoll::default();
+        let g = p.start(["a".to_string(), "b".to_string()]);
+        // total webview death: neither window acked
+        assert_eq!(p.prune_if(g), PollOutcome::Commit);
+    }
+
+    #[test]
+    fn acked_but_unvoted_stays_pending_after_prune() {
+        let mut p = QuitPoll::default();
+        let g = p.start(["a".to_string(), "b".to_string()]);
+        p.mark_ack("a");
+        p.mark_ack("b"); // b is alive (deliberating on its guard), just hasn't voted
+        assert_eq!(p.record("a", Vote::Ready), PollOutcome::Pending);
+        assert_eq!(p.prune_if(g), PollOutcome::Pending); // b kept → wait for the human
+    }
+
+    #[test]
+    fn stale_generation_prune_is_noop() {
+        let mut p = QuitPoll::default();
+        let g1 = p.start(["a".to_string()]);
+        p.start(["b".to_string()]); // ⌘Q again → generation bumped
+        assert_eq!(p.prune_if(g1), PollOutcome::Pending); // the old timer no-ops
+    }
+
+    #[test]
+    fn prune_on_inactive_poll_is_noop() {
+        let mut p = QuitPoll::default();
+        assert_eq!(p.prune_if(0), PollOutcome::Pending);
+    }
+
+    #[test]
+    fn mark_ack_ignored_when_inactive() {
+        let mut p = QuitPoll::default();
+        p.mark_ack("a"); // no active poll
+        assert!(p.acked.is_empty());
     }
 }
 
