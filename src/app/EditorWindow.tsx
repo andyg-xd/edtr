@@ -20,8 +20,8 @@ import { docIsDirty, windowIsDirty, type OpenDoc, type ViewMode } from '../files
 import { isEmptyWindow, type OpenPayload } from '../files/openPayload';
 import { classifyPath } from '../files/pathKind';
 import type { FolderEntry } from '../files/folder';
-import { readFile, writeFile } from '../files/fileIo';
-import { watchPath, unwatchPath } from '../files/fileWatch';
+import { readFile, writeFile, pathExists } from '../files/fileIo';
+import { watchPath, unwatchPath, watcherAvailable } from '../files/fileWatch';
 import { decideReloadState, type ReloadState } from '../files/reloadDecision';
 
 type FolderView = { path: string; entries: FolderEntry[] };
@@ -48,6 +48,8 @@ export function EditorWindow() {
   const [activeDirty, setActiveDirty] = useState(false);
   const [activeLiveAvailable, setActiveLiveAvailable] = useState(false);
   const [folderView, setFolderView] = useState<FolderView | null>(null);
+  const [watcherUnavailable, setWatcherUnavailable] = useState(false);
+  const watcherAvailableRef = useRef(true);
   const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme();
   const viewRef = useRef<DocumentViewHandle>(null);
 
@@ -102,6 +104,8 @@ export function EditorWindow() {
       if (payload.kind === 'files') {
         const sessions = await Promise.all(payload.paths.map((p) => readSession(p)));
         for (const s of sessions) docs.open(s);
+        // Recents is a convenience: a failed write just means this item won't
+        // appear in Open Recent — deliberately non-fatal, not surfaced (5f D11).
         for (const p of payload.paths) recordRecent({ kind: 'file', path: p }).catch(() => {});
       } else {
         const entries = await readFolder(payload.path);
@@ -155,7 +159,11 @@ export function EditorWindow() {
   // One place covers every open/close/append/folder-open path.
   useEffect(() => {
     const current = new Set(docs.state.docs.map((d) => d.session.path));
-    for (const p of current) if (!watchedRef.current.has(p)) watchPath(p).catch(() => {});
+    for (const p of current) if (!watchedRef.current.has(p)) watchPath(p).catch(() => {
+      // Item 3(b): this file won't get change/conflict banners. If the watcher
+      // is globally down, (a)'s banner already says so — suppress the duplicate.
+      if (watcherAvailableRef.current) setInfoNotice(`Edtr can't watch "${basename(p)}" for outside changes.`);
+    });
     for (const p of watchedRef.current) if (!current.has(p)) unwatchPath(p).catch(() => {});
     watchedRef.current = current;
   }, [docs.state.docs]);
@@ -170,8 +178,23 @@ export function EditorWindow() {
       const hits = docsRef.current.docs.filter((d) => d.session.path === path);
       if (hits.length === 0) return;
       let onDisk: string | null = null;
-      try { onDisk = (await readFile(path)).text; } catch { onDisk = null; }
+      let readErr: unknown = null;
+      try { onDisk = (await readFile(path)).text; } catch (e) { readErr = e; onDisk = null; }
       if (disposed) return;
+      if (readErr !== null) {
+        // Item 3(c): a genuine deletion legitimately reads as null → 'deleted'
+        // banner (keep). A present-but-unreadable file (permission/IO) must NOT
+        // be mislabeled 'deleted' — surface it and leave the banner state alone.
+        const stillThere = await pathExists(path).catch(() => false);
+        if (disposed) return;
+        if (stillThere) {
+          for (const d of hits) {
+            showError(`"${basename(d.session.path)}" changed on disk but couldn't be read. ${String(readErr)}`);
+          }
+          return;
+        }
+        // not present → fall through with onDisk = null → decideReloadState → 'deleted'
+      }
       setReloadState((prev) => {
         const next = { ...prev };
         for (const d of hits) {
@@ -187,6 +210,21 @@ export function EditorWindow() {
     });
     return () => { disposed = true; un.then((f) => f()); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Item 3(a): if the OS file watcher failed to init, external-change detection
+  // is off for the whole session — tell the user once (its own persistent info
+  // banner, so a later doc-open's resetActiveFlags can't clear it).
+  useEffect(() => {
+    let disposed = false;
+    watcherAvailable()
+      .then((ok) => {
+        if (disposed) return;
+        watcherAvailableRef.current = ok;
+        setWatcherUnavailable(!ok);
+      })
+      .catch(() => {});
+    return () => { disposed = true; };
   }, []);
 
   const thisWindowEmpty = isEmptyWindow(docs.state.docs.length, folderView !== null);
@@ -471,6 +509,11 @@ export function EditorWindow() {
       {degraded && (
         <div className="notice notice-info" role="status">
           Edtr can't live-edit this file safely — showing Code view.
+        </div>
+      )}
+      {watcherUnavailable && (
+        <div className="notice notice-info" role="status">
+          Live file-change detection is unavailable this session. Edtr won't warn you if an open file changes on disk.
         </div>
       )}
       {error && (

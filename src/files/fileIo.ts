@@ -16,3 +16,8 @@ export async function readFile(path: string): Promise<LoadedFile> {
 export async function writeFile(path: string, text: string, meta: FileMeta): Promise<void> {
   await invoke('write_text_file_atomic', { path, text, meta });
 }
+
+/** True if `path` currently exists on disk. */
+export async function pathExists(path: string): Promise<boolean> {
+  return invoke<boolean>('path_exists', { path });
+}
