@@ -126,3 +126,8 @@ export function insertImage(
     return true;
   };
 }
+
+/** True if an image node can be inserted at the current selection (Markdown live). */
+export function canInsertImage(state: EditorState): boolean {
+  return canInsert(state, image);
+}

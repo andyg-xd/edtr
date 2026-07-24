@@ -1,5 +1,5 @@
 import { toggleMark } from 'prosemirror-commands';
-import type { Command } from 'prosemirror-state';
+import type { Command, EditorState } from 'prosemirror-state';
 import { htmlSchema } from '../views/htmlSchema';
 import { markActive, getMarkRange, canInsert } from './markdownInlineCommands';
 
@@ -65,4 +65,9 @@ export function insertImage(
     }
     return true;
   };
+}
+
+/** True if an <img> node can be inserted at the current selection (HTML live). */
+export function canInsertImage(state: EditorState): boolean {
+  return canInsert(state, image);
 }
