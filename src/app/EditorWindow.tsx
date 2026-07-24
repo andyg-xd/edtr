@@ -376,6 +376,9 @@ export function EditorWindow() {
     void invoke('quit_vote', { vote });
   }, []);
   const onQuitPoll = useCallback(() => {
+    // Prove this webview is alive BEFORE showing any guard, so Rust's grace
+    // timer can tell a crashed webview (never acks) from a deliberating human.
+    void invoke('quit_ack');
     if (windowDirty) setPendingIntent({ kind: 'quit' });
     else voteQuit('ready');
   }, [windowDirty, voteQuit]);

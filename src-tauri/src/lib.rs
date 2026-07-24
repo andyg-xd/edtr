@@ -72,14 +72,29 @@ pub fn run() {
                 return;
             }
             if id == "quit" {
-                // Atomic quit (5b-iii-b): snapshot the current windows and poll
-                // them. Each votes ready/cancel WITHOUT closing; quit_vote
-                // commits (exit) or aborts. Replaces the 5b-iii-a sweep.
+                // Atomic quit (5b-iii-b) + crash safety net (5f, Item 2):
+                // snapshot the windows, start the poll, broadcast the request.
+                // Each live window acks immediately then votes; a grace timer
+                // prunes any window that never acked (a crashed webview) so a
+                // dead webview can't wedge the quit. A window still deliberating
+                // on its guard HAS acked, so it is never force-quit.
                 let labels: Vec<String> = app.webview_windows().into_keys().collect();
-                if let Ok(mut p) = app.state::<window::QuitPollState>().0.lock() {
-                    p.start(labels);
-                }
+                let generation = match app.state::<window::QuitPollState>().0.lock() {
+                    Ok(mut p) => p.start(labels),
+                    Err(_) => return,
+                };
                 let _ = app.emit("menu://quit-poll", ());
+                let app_timer = app.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(1500));
+                    let outcome = match app_timer.state::<window::QuitPollState>().0.lock() {
+                        Ok(mut p) => p.prune_if(generation),
+                        Err(_) => return,
+                    };
+                    if outcome == window::PollOutcome::Commit {
+                        app_timer.exit(0);
+                    }
+                });
                 return;
             }
             let event_name = match id.as_str() {
@@ -112,6 +127,7 @@ pub fn run() {
             window::open_in_new_window,
             window::take_pending_open,
             window::quit_vote,
+            window::quit_ack,
             window::take_launch_open,
             window::mark_frontend_ready,
             recents::record_recent,
