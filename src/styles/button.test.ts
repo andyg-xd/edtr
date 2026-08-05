@@ -15,14 +15,19 @@ describe('button primitive', () => {
   it('no bare <button> is rendered anywhere', () => {
     // This is the regression that produced the primitive: dialogs shipped
     // unstyled browser buttons because nothing forced otherwise.
+    //
+    // Match the whole opening tag with the `s` flag so MULTI-LINE JSX is
+    // covered too -- a line-based scan silently misses those, and the app
+    // currently has 7 of them.
     const offenders: string[] = [];
     for (const f of tsxFiles(SRC)) {
-      readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
-        const m = /<button(\s[^>]*)?>/.exec(line);
-        if (m && !/className=/.test(m[0])) {
-          offenders.push(`${f.replace(SRC, 'src')}:${i + 1} ${line.trim()}`);
+      const src = readFileSync(f, 'utf8');
+      for (const m of src.matchAll(/<button\b[^>]*>/gs)) {
+        if (!/className/.test(m[0])) {
+          const line = src.slice(0, m.index).split('\n').length;
+          offenders.push(`${f.replace(SRC, 'src')}:${line} ${m[0].split(/\s+/).join(' ').slice(0, 80)}`);
         }
-      });
+      }
     }
     expect(offenders).toEqual([]);
   });
