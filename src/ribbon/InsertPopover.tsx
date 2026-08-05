@@ -89,11 +89,11 @@ export function InsertPopover({ kind, initialText = '', docPath = null, onConfir
         />
       </label>
       {kind === 'image' && (
-        <button type="button" onClick={chooseFile} disabled={!docPath}>Choose file…</button>
+        <button type="button" className="btn btn--secondary" onClick={chooseFile} disabled={!docPath}>Choose file…</button>
       )}
       <div className="insert-popover-actions">
-        <button type="button" onClick={onCancel}>Cancel</button>
-        <button type="button" onClick={submit} disabled={!canConfirm}>{confirmLabel}</button>
+        <button type="button" className="btn btn--secondary" onClick={onCancel}>Cancel</button>
+        <button type="button" className="btn btn--primary" onClick={submit} disabled={!canConfirm}>{confirmLabel}</button>
       </div>
     </div>
   );

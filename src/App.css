@@ -7,6 +7,7 @@
 @import './styles/fonts.css';
 @import './styles/base.css';
 @import './styles/chrome.css';
+@import './styles/button.css';
 @import './styles/banners.css';
 @import './styles/canvas.css';
 @import './styles/ribbon.css';

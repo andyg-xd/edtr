@@ -11,9 +11,9 @@ export function CloseGuard({ onSave, onDiscard, onCancel }: CloseGuardProps) {
       <div className="modal">
         <p>You have unsaved changes. Save before closing?</p>
         <div className="modal-actions">
-          <button onClick={onSave}>Save</button>
-          <button onClick={onDiscard}>Discard</button>
-          <button onClick={onCancel}>Cancel</button>
+          <button className="btn btn--primary" onClick={onSave}>Save</button>
+          <button className="btn btn--danger" onClick={onDiscard}>Discard</button>
+          <button className="btn btn--secondary" onClick={onCancel}>Cancel</button>
         </div>
       </div>
     </div>

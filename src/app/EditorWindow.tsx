@@ -520,7 +520,7 @@ export function EditorWindow() {
         <div className="notice notice-error" role="alert">
           <span>{error}</span>
           {errorAction && (
-            <button className="notice-action" onClick={errorAction.onClick}>{errorAction.label}</button>
+            <button className="btn btn--primary notice-action" onClick={errorAction.onClick}>{errorAction.label}</button>
           )}
         </div>
       )}
@@ -572,14 +572,14 @@ export function EditorWindow() {
             folderView.entries.length === 0 ? (
               <div className="empty-state">
                 <p>This folder has no editable files.</p>
-                <button onClick={handleOpen}>Open a file… (⌘O)</button>
+                <button className="btn btn--primary" onClick={handleOpen}>Open a file… (⌘O)</button>
               </div>
             ) : (
               <div className="empty-state">Select a file from the sidebar to start editing.</div>
             )
           ) : (
             <div className="empty-state">
-              <button onClick={handleOpen}>Open a file… (⌘O)</button>
+              <button className="btn btn--primary" onClick={handleOpen}>Open a file… (⌘O)</button>
             </div>
           )}
         </div>

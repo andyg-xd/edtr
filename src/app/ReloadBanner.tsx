@@ -18,9 +18,9 @@ export function ReloadBanner({
     <div className="reload-banner" role="alert">
       <span className="reload-banner__msg">{MESSAGE[state]}</span>
       <span className="reload-banner__actions">
-        {state === 'changed' && <button onClick={onReload}>Reload</button>}
-        {state === 'conflict' && <button onClick={onReload}>Reload (discard mine)</button>}
-        {state === 'conflict' && <button onClick={onKeepMine}>Keep mine</button>}
+        {state === 'changed' && <button className="btn btn--primary" onClick={onReload}>Reload</button>}
+        {state === 'conflict' && <button className="btn btn--danger" onClick={onReload}>Reload (discard mine)</button>}
+        {state === 'conflict' && <button className="btn btn--secondary" onClick={onKeepMine}>Keep mine</button>}
         {(state === 'changed' || state === 'deleted') && (
           <button className="reload-banner__dismiss" aria-label="Dismiss" onClick={onDismiss}>×</button>
         )}
