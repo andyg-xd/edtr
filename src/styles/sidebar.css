@@ -6,15 +6,15 @@
 .sidebar-select {
   flex: 1; display: flex; align-items: center; gap: var(--space-3); min-width: 0;
   background: none; border: none; text-align: left; padding: var(--space-3) var(--space-4);
-  color: var(--fg); font-size: 13px; cursor: pointer;
+  color: var(--fg); font-size: var(--text-base); cursor: pointer;
 }
 .sidebar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar-dot { color: var(--accent); font-size: 10px; flex: none; line-height: 1; }
+.sidebar-dot { color: var(--accent); font-size: var(--text-xs); flex: none; line-height: 1; }
 .sidebar-close {
   background: none; border: none; color: var(--fg-faint);
-  cursor: pointer; padding: var(--space-1) var(--space-4); font-size: 15px; line-height: 1;
+  cursor: pointer; padding: var(--space-1) var(--space-4); font-size: var(--text-lg); line-height: 1;
   transition: color var(--motion-fast) var(--ease);
 }
 .sidebar-close:hover { color: var(--fg); }
 .sidebar-item.is-unopened .sidebar-name { color: var(--fg-faint); }
-.sidebar-empty { padding: var(--space-5) var(--space-5); color: var(--fg-faint); font-size: 13px; }
+.sidebar-empty { padding: var(--space-5) var(--space-5); color: var(--fg-faint); font-size: var(--text-base); }

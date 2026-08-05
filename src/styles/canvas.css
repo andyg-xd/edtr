@@ -16,7 +16,7 @@
 .live-view .ProseMirror:focus { outline: none; }
 .md-verbatim {
   background: var(--surface-2); border: 1px dashed var(--verbatim-border); border-radius: var(--radius-sm);
-  padding: var(--space-4) var(--space-5); white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 13px;
+  padding: var(--space-4) var(--space-5); white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: var(--text-base);
 }
 /* Task-list item: checkbox and text on one line (the task body is a block div). */
 .live-view .task-item { list-style: none; display: flex; align-items: flex-start; gap: var(--space-3); }

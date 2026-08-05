@@ -13,7 +13,7 @@
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
-  font-size: 13px;
+  font-size: var(--text-base);
   cursor: pointer;
   color: inherit;
   transition: background var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease);
@@ -26,7 +26,7 @@
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
-  font-size: 13px;
+  font-size: var(--text-base);
   color: inherit;
   cursor: pointer;
   padding: 0 var(--space-2);
@@ -53,8 +53,8 @@
   border-radius: var(--radius-md);
   box-shadow: 0 4px 16px var(--shadow);
 }
-.insert-popover-field { display: flex; flex-direction: column; gap: var(--space-2); font-size: 12px; }
-.insert-popover-field input { padding: var(--space-2) var(--space-3); font-size: 13px; }
+.insert-popover-field { display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--text-sm); }
+.insert-popover-field input { padding: var(--space-2) var(--space-3); font-size: var(--text-base); }
 .insert-popover-actions { display: flex; justify-content: flex-end; gap: var(--space-3); }
 /* Contextual table toolbar — a second ribbon row shown only inside a table. */
 .ribbon-context { border-bottom: 1px solid var(--border-subtle); }
@@ -77,4 +77,4 @@
   border: 1px solid var(--border-strong); background: var(--surface); cursor: pointer;
 }
 .tsp-cell.tsp-on { background: var(--accent); border-color: var(--accent-border); }
-.tsp-caption { margin-top: var(--space-3); text-align: center; font-size: 12px; color: var(--fg-muted); }
+.tsp-caption { margin-top: var(--space-3); text-align: center; font-size: var(--text-sm); color: var(--fg-muted); }

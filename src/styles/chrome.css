@@ -10,13 +10,13 @@
   gap: var(--space-4);
   padding: var(--space-3) var(--space-5);
   border-bottom: 1px solid var(--border-subtle);
-  font-size: 13px;
+  font-size: var(--text-base);
   user-select: none;
 }
 
 .dirty-dot {
   color: var(--fg-faint);
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 .empty-state {
   flex: 1;
@@ -30,7 +30,7 @@
 .theme-control { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
 .view-toggle button,
 .theme-control button {
-  border: 0; background: var(--surface); color: var(--fg); padding: var(--space-1) var(--space-5); font-size: 12px; cursor: pointer;
+  border: 0; background: var(--surface); color: var(--fg); padding: var(--space-1) var(--space-5); font-size: var(--text-sm); cursor: pointer;
 }
 .view-toggle button.active,
 .theme-control button.active { background: var(--seg-active-bg); color: var(--seg-active-fg); }

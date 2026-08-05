@@ -4,6 +4,7 @@
    element; Task 1's verification asserts no such duplicate exists, so this
    order is safe and is simply the original document order. */
 @import './styles/tokens.css';
+@import './styles/fonts.css';
 @import './styles/base.css';
 @import './styles/chrome.css';
 @import './styles/banners.css';
