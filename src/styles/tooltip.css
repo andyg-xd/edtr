@@ -1,0 +1,28 @@
+/* Custom tooltip (Tooltip.tsx). The 150ms show-delay lives in JS; this file
+   is presentation only. Sits above the ribbon's insert-popover (z-index: 10)
+   since it can appear over any ribbon control including one with a popover
+   open. */
+.tooltip {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 8px var(--shadow);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.tooltip-shortcut {
+  padding: 0 var(--space-2);
+  background: var(--btn-active-bg);
+  border-radius: var(--radius-sm);
+  font-family: monospace;
+  color: var(--accent);
+}

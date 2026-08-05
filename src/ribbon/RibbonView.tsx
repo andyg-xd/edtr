@@ -4,6 +4,7 @@ import type { Command, EditorState } from 'prosemirror-state';
 import type { RibbonControl, PopoverValues } from './RibbonModel';
 import { InsertPopover } from './InsertPopover';
 import { TableSizePicker } from './TableSizePicker';
+import { Tooltip } from '../ui/Tooltip';
 
 interface RibbonViewProps {
   view: EditorView;
@@ -76,16 +77,18 @@ export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Forma
           return (
             <Fragment key={c.id}>
               {divider}
-              <select
-                className="ribbon-select"
-                aria-label={c.ariaLabel}
-                disabled={!isEnabled}
-                value={action.getValue(view.state)}
-                onMouseDown={(e) => e.stopPropagation()}
-                onChange={(e) => { runCommand(action.run(e.target.value)); }}
-              >
-                {action.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              <Tooltip label={c.ariaLabel} shortcut={c.shortcut} id={`tip-${c.id}`}>
+                <select
+                  className="ribbon-select"
+                  aria-label={c.ariaLabel}
+                  disabled={!isEnabled}
+                  value={action.getValue(view.state)}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onChange={(e) => { runCommand(action.run(e.target.value)); }}
+                >
+                  {action.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </Tooltip>
             </Fragment>
           );
         }
@@ -93,17 +96,19 @@ export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Forma
         return (
           <Fragment key={c.id}>
             {divider}
-            <button
-              type="button"
-              className={`ribbon-btn${active ? ' is-active' : ''}`}
-              aria-label={c.ariaLabel}
-              aria-pressed={active}
-              disabled={!isEnabled}
-              onMouseDown={(e) => e.preventDefault()} // keep the editor selection on click
-              onClick={() => activate(c)}
-            >
-              {c.label}
-            </button>
+            <Tooltip label={c.ariaLabel} shortcut={c.shortcut} id={`tip-${c.id}`}>
+              <button
+                type="button"
+                className={`ribbon-btn${active ? ' is-active' : ''}`}
+                aria-label={c.ariaLabel}
+                aria-pressed={active}
+                disabled={!isEnabled}
+                onMouseDown={(e) => e.preventDefault()} // keep the editor selection on click
+                onClick={() => activate(c)}
+              >
+                {c.label}
+              </button>
+            </Tooltip>
           </Fragment>
         );
       })}
