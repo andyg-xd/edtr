@@ -25,3 +25,7 @@ dist-ssr
 
 # SDD scratch workspace (subagent-driven development ledger/briefs/reports)
 .superpowers/
+
+# tauri icon regenerates iOS/Android sets; Edtr ships macOS only
+src-tauri/icons/ios/
+src-tauri/icons/android/
