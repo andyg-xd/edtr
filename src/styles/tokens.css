@@ -1,26 +1,33 @@
 :root {
   color-scheme: light;
 
-  /* Palette tokens — light. */
+  /* Palette tokens — light. Neutral chrome, purple only on active states,
+     pure-white canvas (icon-derived identity, 6d-ii). */
   --bg: #ffffff;
-  --fg: #1a1a1a;
-  --fg-muted: #444444;
-  --fg-faint: #888888;
-  --fg-disabled: #bbbbbb;
+  --fg: #1e1c24;
+  --fg-muted: #52525a;
+  --fg-faint: #7c7c84;
+  --fg-disabled: #b6b6bd;
   --surface: #ffffff;
-  --surface-2: #f6f6f6;
-  --border: #d0d0d0;
-  --border-subtle: #e5e5e5;
-  --border-strong: #b9b9b9;
-  --accent: #4a90d9;
-  --accent-border: #3f7fc0;
-  --accent-hover: #3f7fc0;
+  --surface-2: #f6f6f7;
+  --surface-sidebar: #f6f6f7;
+  --border: #e8e8ea;
+  --border-subtle: #efeff1;
+  --border-strong: #d3d3d8;
+  /* #a36415, not the brief's #c77a1a: c77a1a only reaches 3.37:1 against the
+     white --accent-fg text it sits under in .notice-action/.reload-banner
+     button (banners.css) -- fails AA 4.5:1. Darkened until it clears 4.5:1
+     (lands at 4.78:1); --seg-active-bg carries the same fix since it reused
+     the same failing value for the same white-text-on-fill usage. */
+  --accent: #a36415;
+  --accent-border: #a35f0d;
+  --accent-hover: #a35f0d;
   --accent-fg: #ffffff;
-  --seg-active-bg: #1a1a1a;
+  --seg-active-bg: #a36415;
   --seg-active-fg: #ffffff;
-  --btn-hover-bg: rgba(0, 0, 0, 0.06);
-  --btn-active-bg: rgba(0, 0, 0, 0.12);
-  --btn-active-border: rgba(0, 0, 0, 0.18);
+  --btn-hover-bg: rgba(0, 0, 0, 0.05);
+  --btn-active-bg: #efe9f5;
+  --btn-active-border: #ded2ea;
   --danger-bg: #fde8e8;
   --danger-fg: #9b1c1c;
   --info-bg: #eef2ff;
@@ -71,26 +78,28 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  /* Palette tokens — dark (soft dark-gray). */
-  --bg: #1e1e1e;
-  --fg: #e4e4e4;
-  --fg-muted: #9a9a9a;
-  --fg-faint: #6f6f6f;
-  --fg-disabled: #5a5a5a;
-  --surface: #252526;
-  --surface-2: #2d2d2d;
-  --border: #3a3a3a;
-  --border-subtle: #333333;
-  --border-strong: #4a4a4a;
-  --accent: #4c8ed6;
-  --accent-border: #3f7fc0;
-  --accent-hover: #3f7fc0;
-  --accent-fg: #ffffff;
-  --seg-active-bg: #37373d;
-  --seg-active-fg: #ffffff;
-  --btn-hover-bg: rgba(255, 255, 255, 0.08);
-  --btn-active-bg: rgba(255, 255, 255, 0.14);
-  --btn-active-border: rgba(255, 255, 255, 0.22);
+  /* Palette tokens — dark. Purple chrome, calm near-neutral canvas
+     (icon-derived identity, 6d-ii). */
+  --bg: #1a151f;
+  --fg: #e9e5ee;
+  --fg-muted: #b7aec4;
+  --fg-faint: #8d8398;
+  --fg-disabled: #5f5869;
+  --surface: #1f1826;
+  --surface-2: #1b1522;
+  --surface-sidebar: #130f18;
+  --border: #2f2438;
+  --border-subtle: #261d2e;
+  --border-strong: #4a3a58;
+  --accent: #e4922e;
+  --accent-border: #f0a842;
+  --accent-hover: #f0a842;
+  --accent-fg: #1a1008;
+  --seg-active-bg: #e4922e;
+  --seg-active-fg: #1a1008;
+  --btn-hover-bg: rgba(255, 255, 255, 0.07);
+  --btn-active-bg: #2f2438;
+  --btn-active-border: #4a3a58;
   --danger-bg: #4a2323;
   --danger-fg: #f2b8b8;
   --info-bg: #22304d;
