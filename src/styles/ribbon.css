@@ -16,6 +16,7 @@
   font-size: 13px;
   cursor: pointer;
   color: inherit;
+  transition: background var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease);
 }
 .ribbon-btn:hover:not(:disabled) { background: var(--btn-hover-bg); }
 .ribbon-btn.is-active { background: var(--btn-active-bg); border-color: var(--btn-active-border); }
@@ -29,6 +30,7 @@
   color: inherit;
   cursor: pointer;
   padding: 0 4px;
+  transition: background var(--motion-fast) var(--ease);
 }
 .ribbon-select:hover:not(:disabled) { background: var(--btn-hover-bg); }
 .ribbon-select:disabled { opacity: 0.4; cursor: default; }

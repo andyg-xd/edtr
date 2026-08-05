@@ -32,6 +32,25 @@
   --overlay: rgba(0, 0, 0, 0.3);
   --shadow: rgba(0, 0, 0, 0.2);
 
+  /* Spacing scale — replaces 12+ ad-hoc padding combinations. */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 24px;
+
+  /* Radius scale — replaces the five values previously in use (3/4/5/6/8px). */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 9px;
+
+  /* Motion. The app had no transitions before 6d-i. */
+  --motion-fast: 120ms;
+  --motion-panel: 180ms;
+  --ease: ease-out;
+
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: var(--fg);
   background: var(--bg);
@@ -70,4 +89,14 @@
   --th-bg: rgba(255, 255, 255, 0.05);
   --overlay: rgba(0, 0, 0, 0.5);
   --shadow: rgba(0, 0, 0, 0.55);
+}
+
+/* Respect the OS "reduce motion" setting. Collapsing the duration tokens here
+   disables every transition in the app at once — individual components must
+   never special-case this. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-panel: 0ms;
+  }
 }

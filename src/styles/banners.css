@@ -21,6 +21,7 @@
   font-size: 0.85rem;
   cursor: pointer;
   white-space: nowrap;
+  transition: opacity var(--motion-fast) var(--ease);
 }
 .notice-action:hover { opacity: 0.9; }
 .notice-action:active { opacity: 0.8; }
