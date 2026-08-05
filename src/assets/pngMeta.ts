@@ -9,11 +9,26 @@ export interface PngMeta {
   colorType: number;
 }
 
+// Must cover every byte readPngMeta/decodeRgba read out of the IHDR chunk:
+// 8 (signature) + 4 (chunk length) + 4 ("IHDR") + 13 (IHDR data, through the
+// interlace method at byte 28) + 4 (CRC) = 33. A signature-valid buffer
+// shorter than this would otherwise read past its own bytes into whatever
+// came next and return undefined/garbage fields instead of throwing.
+const MIN_IHDR_LENGTH = 33;
+
 function assertSignature(buf: Uint8Array): void {
-  if (buf.length < 24) throw new Error('not a png: too short');
+  if (buf.length < MIN_IHDR_LENGTH) throw new Error('not a png: too short');
   for (let i = 0; i < SIGNATURE.length; i++) {
     if (buf[i] !== SIGNATURE[i]) throw new Error('not a png: bad signature');
   }
+}
+
+function isPngSignature(buf: Uint8Array): boolean {
+  if (buf.length < SIGNATURE.length) return false;
+  for (let i = 0; i < SIGNATURE.length; i++) {
+    if (buf[i] !== SIGNATURE[i]) return false;
+  }
+  return true;
 }
 
 function readU32(buf: Uint8Array, off: number): number {
@@ -75,6 +90,15 @@ function decodeRgba(buf: Uint8Array): { width: number; height: number; data: Uin
   if (colorType !== 6 || bitDepth !== 8) {
     throw new Error(`expected 8-bit RGBA (colour type 6), got colour type ${colorType} depth ${bitDepth}`);
   }
+  // IHDR byte 28 (0-indexed from the start of the file): the interlace method.
+  // The scanline-filter loop below only implements the non-interlaced layout
+  // (Adam7 interleaves 7 sub-images with different strides/dimensions).
+  const interlaceMethod = buf[28];
+  if (interlaceMethod !== 0) {
+    throw new Error(
+      `expected non-interlaced PNG (interlace method 0), got interlace method ${interlaceMethod}`
+    );
+  }
   const raw = new Uint8Array(inflateSync(collectIdat(buf)));
   const bpp = 4;
   const stride = width * bpp;
@@ -111,4 +135,59 @@ export function readPixelAlpha(buf: Uint8Array, x: number, y: number): number {
     throw new Error(`pixel (${x},${y}) out of bounds for ${width}x${height}`);
   }
   return data[y * width * 4 + x * 4 + 3];
+}
+
+const ICNS_MAGIC = [0x69, 0x63, 0x6e, 0x73]; // 'icns'
+const ICNS_HEADER_LENGTH = 8; // magic (4) + total file length (4)
+const ICNS_RECORD_HEADER_LENGTH = 8; // type code (4) + record total length (4)
+
+export interface IcnsPng {
+  type: string;
+  data: Uint8Array;
+}
+
+/**
+ * Extract every embedded PNG payload from an .icns icon bundle.
+ *
+ * Layout: an 8-byte file header (magic 'icns' followed by a big-endian
+ * uint32 total file length), then a flat sequence of records. Each record is
+ * a 4-byte type code, a big-endian uint32 giving the record's TOTAL length
+ * (including these 8 header bytes), then the payload.
+ *
+ * Not every record holds a PNG — legacy raw/RLE formats and masks (e.g.
+ * 'il32', 'l8mk', 'is32', 's8mk') predate PNG support in .icns, and 'TOC '
+ * is a table of contents, not image data. Members are therefore identified
+ * by sniffing the PNG signature on the payload itself rather than by
+ * hardcoding a list of "these type codes are PNG" — Apple has added new
+ * PNG-backed type codes over time (ic07..ic14 and beyond) and a hardcoded
+ * list would silently miss whichever one macOS actually renders next.
+ */
+export function extractIcnsPngs(buf: Uint8Array): IcnsPng[] {
+  if (buf.length < ICNS_HEADER_LENGTH) throw new Error('not an icns: too short');
+  for (let i = 0; i < ICNS_MAGIC.length; i++) {
+    if (buf[i] !== ICNS_MAGIC[i]) throw new Error('not an icns: bad magic');
+  }
+  const fileLength = readU32(buf, 4);
+  if (fileLength !== buf.length) {
+    throw new Error(`icns file length mismatch: header says ${fileLength}, buffer is ${buf.length} bytes`);
+  }
+
+  const images: IcnsPng[] = [];
+  let off = ICNS_HEADER_LENGTH;
+  while (off < buf.length) {
+    if (off + ICNS_RECORD_HEADER_LENGTH > buf.length) {
+      throw new Error(`icns record header runs past end of buffer at offset ${off}`);
+    }
+    const type = String.fromCharCode(buf[off], buf[off + 1], buf[off + 2], buf[off + 3]);
+    const recordLength = readU32(buf, off + 4);
+    if (recordLength < ICNS_RECORD_HEADER_LENGTH || off + recordLength > buf.length) {
+      throw new Error(`icns malformed record length ${recordLength} for type '${type}' at offset ${off}`);
+    }
+    if (type !== 'TOC ') {
+      const payload = buf.subarray(off + ICNS_RECORD_HEADER_LENGTH, off + recordLength);
+      if (isPngSignature(payload)) images.push({ type, data: payload });
+    }
+    off += recordLength;
+  }
+  return images;
 }
