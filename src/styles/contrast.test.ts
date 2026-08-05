@@ -42,3 +42,17 @@ describe.each(['light', 'dark'] as const)('contrast — %s theme', (theme) => {
     expect(ratio(t['--fg-faint'], t['--surface'])).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe.each(['light', 'dark'] as const)('interaction states — %s theme', (theme) => {
+  const t = block(theme);
+  it('hover is perceptibly different from rest', () => {
+    // Hover feedback the eye cannot detect is the same as no hover feedback.
+    // Light mode nearly shipped at 0.96% because accent and accent-hover were
+    // both pulled dark by the same white-text contrast constraint.
+    const delta = Math.abs(lum(t['--accent']) - lum(t['--accent-hover'])) * 100;
+    expect(delta, `accent ${t['--accent']} vs hover ${t['--accent-hover']}`).toBeGreaterThan(3);
+  });
+  it('hover still meets AA against accent-fg', () => {
+    expect(ratio(t['--accent-hover'], t['--accent-fg'])).toBeGreaterThanOrEqual(4.5);
+  });
+});

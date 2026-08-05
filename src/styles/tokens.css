@@ -21,7 +21,15 @@
      the same failing value for the same white-text-on-fill usage. */
   --accent: #a36415;
   --accent-border: #a35f0d;
-  --accent-hover: #a35f0d;
+  /* #87520d, not #a35f0d: the brief's hover value converged with the
+     contrast-adjusted --accent above (both pulled dark by the same
+     white-text constraint) to a 0.96% luminance delta -- imperceptible, so
+     hovering a filled button reads as dead. Darkened further (still passes
+     AA at 6.48:1 against --accent-fg) to a 5.74% delta, comfortably in the
+     perceptible band. --accent-border is left at #a35f0d -- it's a
+     boundary colour, not an interactive state, so its convergence with
+     --accent is harmless. */
+  --accent-hover: #87520d;
   --accent-fg: #ffffff;
   --seg-active-bg: #a36415;
   --seg-active-fg: #ffffff;
