@@ -17,17 +17,24 @@ describe('bundled font', () => {
     expect(existsSync(resolve(STYLES, 'fonts/LICENSE.md'))).toBe(true);
   });
 
-  it('declares real cuts for both weights AND both styles', () => {
-    // Missing a cut means the browser synthesises it, which looks materially
-    // worse than the system font this replaces.
-    const css = read('fonts.css');
-    const faces = css.split('@font-face').slice(1);
-    const have = faces.map((f) => [
-      /font-weight:\s*(\d+)/.exec(f)?.[1],
-      /font-style:\s*(\w+)/.exec(f)?.[1],
-    ].join('/'));
-    for (const want of ['400/normal', '400/italic', '600/normal', '600/italic']) {
-      expect(have, `no @font-face for ${want}`).toContain(want);
+  it('covers both weights and both styles with real faces (range or discrete)', () => {
+    // A variable font declares a weight RANGE; static cuts declare discrete
+    // values. Either is fine. What must never happen is a weight/style the
+    // browser has to synthesise, which looks materially worse than the system
+    // font this replaces.
+    const faces = read('fonts.css').split('@font-face').slice(1);
+    const covers = (weight: number, style: string) =>
+      faces.some((f) => {
+        const st = /font-style:\s*(\w+)/.exec(f)?.[1];
+        if (st !== style) return false;
+        const nums = [...f.matchAll(/font-weight:\s*([\d\s]+);/g)]
+          .flatMap((m) => m[1].trim().split(/\s+/).map(Number));
+        if (nums.length === 0) return false;
+        if (nums.length === 1) return nums[0] === weight;
+        return weight >= Math.min(...nums) && weight <= Math.max(...nums);
+      });
+    for (const [w, s] of [[400, 'normal'], [400, 'italic'], [600, 'normal'], [600, 'italic']] as const) {
+      expect(covers(w, s), `no face covers weight ${w} ${s}`).toBe(true);
     }
   });
 

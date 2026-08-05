@@ -7,41 +7,30 @@
    upright+italic pair (297,068 B) is SMALLER than the four static cuts
    (551,480 B, same OTF flavour) -- variable wins outright.
 
-   Each weight gets its OWN @font-face pinned to a single (non-range)
-   font-weight/font-style, all four pointing at just these two physical files.
-   Per the CSS Fonts 4 matching algorithm (and MDN's variable-fonts guide,
-   which uses this exact family as its worked example), a single-value
-   font-weight descriptor on a variable-font resource instances that face's
-   'wght' axis at that value for rendering -- so 600 here is the type
-   designer's real Semibold interpolation, not the browser's synthetic
-   faux-bold. Real cuts for every weight/style the UI uses: 400 normal,
-   400 italic, 600 normal, 600 italic. The browser must never synthesise
-   bold or italic, which looks materially worse. */
+   Two faces, not four: each variable file covers the ENTIRE weight range for
+   its style, declared as a font-weight RANGE (200 900), not a discrete value.
+   A single-value font-weight on a variable-font resource does not reliably
+   instance the 'wght' axis at that value -- there is a real risk the engine
+   just renders the font's default instance regardless, which would mean no
+   visible bold at all. A range has no such ambiguity: it tells the engine to
+   interpolate across the axis, so 400 and 600 are both real designed
+   interpolations of Source Sans's own weight axis, not separate cuts and not
+   the browser's synthetic faux-bold. format('woff2') (not the legacy
+   'woff2-variations' hint) so an engine that doesn't recognise a
+   variations-specific format string can't skip the face and silently fall
+   back to the system font. The browser must never synthesise bold or
+   italic, which looks materially worse. */
 @font-face {
   font-family: 'Source Sans 3';
-  src: url('./fonts/SourceSans3VF-Upright.otf.woff2') format('woff2-variations');
-  font-weight: 400;
+  src: url('./fonts/SourceSans3VF-Upright.otf.woff2') format('woff2');
+  font-weight: 200 900;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: 'Source Sans 3';
-  src: url('./fonts/SourceSans3VF-Italic.otf.woff2') format('woff2-variations');
-  font-weight: 400;
-  font-style: italic;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Source Sans 3';
-  src: url('./fonts/SourceSans3VF-Upright.otf.woff2') format('woff2-variations');
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Source Sans 3';
-  src: url('./fonts/SourceSans3VF-Italic.otf.woff2') format('woff2-variations');
-  font-weight: 600;
+  src: url('./fonts/SourceSans3VF-Italic.otf.woff2') format('woff2');
+  font-weight: 200 900;
   font-style: italic;
   font-display: swap;
 }
