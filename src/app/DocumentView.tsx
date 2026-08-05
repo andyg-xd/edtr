@@ -21,10 +21,26 @@ import { copyImageIntoAssets, resolveImageDisplaySrc, IMAGE_EXTS } from '../file
 import { insertImage, canInsertImage as mdCanInsertImage } from '../commands/markdownInlineCommands';
 import { insertImage as htmlInsertImage, canInsertImage as htmlCanInsertImage } from '../commands/htmlInlineCommands';
 import type { OpenDoc } from '../files/openDocuments';
+import { StatusBar } from './StatusBar';
 
 export interface DocumentViewHandle {
   /** Flush live edits into doc.session.currentText. Returns false if a serializer throw aborted it. */
   flushToSource: () => boolean;
+}
+
+/**
+ * Derives a status-bar position from a ProseMirror selection, shared by both
+ * Live views (Markdown and HTML) since both mount a plain EditorView and route
+ * every transaction — including selection-only ones — through onStateChange.
+ * "Line" has no literal meaning in rich text, so it's the 1-based index of the
+ * cursor's TOP-LEVEL block (paragraph/heading/list/table/…) — honest and
+ * stable, unlike a source line number the view has no way to know. "Column" is
+ * the 1-based offset within that block's immediate parent node.
+ */
+function livePosition(view: EditorView | null): { line: number; column: number } | null {
+  if (!view) return null;
+  const $head = view.state.selection.$head;
+  return { line: $head.index(0) + 1, column: $head.parentOffset + 1 };
 }
 
 interface DocumentViewProps {
@@ -50,6 +66,10 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   const [liveView, setLiveView] = useState<EditorView | null>(null);
   const [, bumpRibbon] = useReducer((x: number) => x + 1, 0);
   const [linkRequest, bumpLinkRequest] = useReducer((x: number) => x + 1, 0);
+  // Code view's caret position, for the status bar. Reset on every Code<->Live
+  // transition so a stale position from before the switch is never shown —
+  // CodeView reports its real position again the instant it (re)mounts.
+  const [codeCursor, setCodeCursor] = useState<{ line: number; column: number } | null>(null);
 
   const handleChange = useCallback((text: string) => {
     session.setCurrentText(text);
@@ -92,6 +112,8 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showLive]);
+
+  useEffect(() => { setCodeCursor(null); }, [showLive]);
 
   const liveViewRef = useRef(liveView); liveViewRef.current = liveView;
   const showLiveRef = useRef(showLive); showLiveRef.current = showLive;
@@ -157,6 +179,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   useImperativeHandle(ref, () => ({ flushToSource }), [flushToSource]);
 
   if (showLive && session.format === 'html' && liveHtml && liveHtml.ok) {
+    const pos = livePosition(liveView);
     return (
       <>
         {liveView && (
@@ -173,10 +196,12 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
           editable docPath={session.path ?? null}
           onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={bumpRibbon} onLinkShortcut={bumpLinkRequest} onError={onError}
         />
+        <StatusBar format={session.format} line={pos?.line} column={pos?.column} />
       </>
     );
   }
   if (showLive && live && live.ok) {
+    const pos = livePosition(liveView);
     return (
       <>
         {liveView && (
@@ -192,10 +217,17 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
           doc={live.doc} editable
           onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={bumpRibbon} onLinkShortcut={bumpLinkRequest} docPath={session.path ?? null} onError={onError}
         />
+        <StatusBar format={session.format} line={pos?.line} column={pos?.column} />
       </>
     );
   }
   return (
-    <CodeView key={`code-${doc.id}`} initialText={session.text} format={session.format} effectiveTheme={effectiveTheme} onChange={handleChange} />
+    <>
+      <CodeView
+        key={`code-${doc.id}`} initialText={session.text} format={session.format} effectiveTheme={effectiveTheme}
+        onChange={handleChange} onCursorChange={(line, column) => setCodeCursor({ line, column })}
+      />
+      <StatusBar format={session.format} line={codeCursor?.line} column={codeCursor?.column} />
+    </>
   );
 });

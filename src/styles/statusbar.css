@@ -1,0 +1,22 @@
+/* Status bar — bottom of the document pane. [format] [Ln n, Col n] ……… [counts].
+   Height is not set directly (no literal px): padding + the --text-xs line box
+   land it at ~22px. Spans the canvas only — it's a child of .doc-pane, not
+   .editor-body, so the sidebar sits beside it untouched. */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-2) var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface);
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  flex: none;
+  user-select: none;
+}
+
+/* Right-aligned slot, intentionally empty here — 6c-ii fills it with word
+   count. margin-left: auto pushes it to the far edge without a spacer node. */
+.status-bar-counts {
+  margin-left: auto;
+}

@@ -10,6 +10,11 @@ interface CodeViewProps {
   format: EditorFormat;
   effectiveTheme: EffectiveTheme;
   onChange: (text: string) => void;
+  /**
+   * Fires with the caret's 1-based line/column on mount, and again after every
+   * transaction that moves the caret or changes the doc (status bar, 6d-ii).
+   */
+  onCursorChange?: (line: number, column: number) => void;
 }
 
 /**
@@ -19,17 +24,25 @@ interface CodeViewProps {
  * place via themeCompartment.reconfigure when `effectiveTheme` changes — no
  * remount, so cursor/selection/history survive a theme toggle.
  */
-export function CodeView({ initialText, format, effectiveTheme, onChange }: CodeViewProps) {
+export function CodeView({ initialText, format, effectiveTheme, onChange, onCursorChange }: CodeViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onCursorChangeRef = useRef(onCursorChange);
+  onCursorChangeRef.current = onCursorChange;
   // Read the latest theme inside the mount-once effect without re-running it.
   const themeRef = useRef(effectiveTheme);
   themeRef.current = effectiveTheme;
 
   useEffect(() => {
     if (!host.current) return;
+    const reportCursor = (state: EditorState) => {
+      if (!onCursorChangeRef.current) return;
+      const pos = state.selection.main.head;
+      const line = state.doc.lineAt(pos);
+      onCursorChangeRef.current(line.number, pos - line.from + 1);
+    };
     const view = new EditorView({
       parent: host.current,
       state: EditorState.create({
@@ -38,11 +51,13 @@ export function CodeView({ initialText, format, effectiveTheme, onChange }: Code
           ...buildCodeViewExtensions(format, themeRef.current),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) onChangeRef.current(u.state.doc.toString());
+            if (u.docChanged || u.selectionSet) reportCursor(u.state);
           }),
         ],
       }),
     });
     viewRef.current = view;
+    reportCursor(view.state); // initial caret position (Ln 1, Col 1 on a fresh doc)
     return () => {
       view.destroy();
       viewRef.current = null;
