@@ -6,7 +6,7 @@
 .code-view .cm-editor {
   height: 100%;
 }
-.live-view { flex: 1; overflow: auto; padding: 16px 24px; }
+.live-view { flex: 1; overflow: auto; padding: var(--space-6) var(--space-7); }
 .live-view .ProseMirror { outline: none; max-width: 60rem; }
 
 /* Like .code-view/.live-view: scroll the rendered page internally so the
@@ -15,11 +15,11 @@
 .html-live-view { flex: 1; overflow: auto; }
 .live-view .ProseMirror:focus { outline: none; }
 .md-verbatim {
-  background: var(--surface-2); border: 1px dashed var(--verbatim-border); border-radius: 4px;
-  padding: 8px 12px; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 13px;
+  background: var(--surface-2); border: 1px dashed var(--verbatim-border); border-radius: var(--radius-sm);
+  padding: var(--space-4) var(--space-5); white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 13px;
 }
 /* Task-list item: checkbox and text on one line (the task body is a block div). */
-.live-view .task-item { list-style: none; display: flex; align-items: flex-start; gap: 6px; }
+.live-view .task-item { list-style: none; display: flex; align-items: flex-start; gap: var(--space-3); }
 .live-view .task-item input { margin: 0; flex: none; }
 .live-view .task-body { flex: 1; }
 .live-view .task-body > p { margin: 0; }
@@ -31,14 +31,14 @@
 .live-view pre:not(.md-verbatim) {
   background: var(--code-bg);
   border: 1px solid var(--code-border);
-  border-radius: 6px;
-  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  padding: var(--space-5) var(--space-6);
   overflow-x: auto;
   white-space: pre;
 }
 .live-view code {
   background: var(--inline-code-bg);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 0.1em 0.3em;
   font-size: 0.9em;
 }
