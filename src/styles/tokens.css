@@ -14,6 +14,8 @@
   --border-strong: #b9b9b9;
   --accent: #4a90d9;
   --accent-border: #3f7fc0;
+  --accent-hover: #3f7fc0;
+  --accent-fg: #ffffff;
   --seg-active-bg: #1a1a1a;
   --seg-active-fg: #ffffff;
   --btn-hover-bg: rgba(0, 0, 0, 0.06);
@@ -72,6 +74,8 @@
   --border-strong: #4a4a4a;
   --accent: #4c8ed6;
   --accent-border: #3f7fc0;
+  --accent-hover: #3f7fc0;
+  --accent-fg: #ffffff;
   --seg-active-bg: #37373d;
   --seg-active-fg: #ffffff;
   --btn-hover-bg: rgba(255, 255, 255, 0.08);
