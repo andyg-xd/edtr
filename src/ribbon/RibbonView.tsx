@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import type { EditorView } from 'prosemirror-view';
 import type { Command, EditorState } from 'prosemirror-state';
 import type { RibbonControl, PopoverValues } from './RibbonModel';
@@ -64,38 +64,47 @@ export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Forma
 
   return (
     <div className="ribbon" role="toolbar" aria-label={ariaLabel}>
-      {controls.map((c) => {
+      {controls.map((c, i) => {
+        // A divider marks a group boundary; none leads or trails the row
+        // since i > 0 excludes the first control.
+        const divider = i > 0 && controls[i - 1].group !== c.group
+          ? <span className="ribbon-divider" aria-hidden="true" />
+          : null;
         const isEnabled = c.isEnabled(view.state);
         if (c.action.kind === 'dropdown') {
           const action = c.action;
           return (
-            <select
-              key={c.id}
-              className="ribbon-select"
-              aria-label={c.ariaLabel}
-              disabled={!isEnabled}
-              value={action.getValue(view.state)}
-              onMouseDown={(e) => e.stopPropagation()}
-              onChange={(e) => { runCommand(action.run(e.target.value)); }}
-            >
-              {action.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+            <Fragment key={c.id}>
+              {divider}
+              <select
+                className="ribbon-select"
+                aria-label={c.ariaLabel}
+                disabled={!isEnabled}
+                value={action.getValue(view.state)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onChange={(e) => { runCommand(action.run(e.target.value)); }}
+              >
+                {action.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </Fragment>
           );
         }
         const active = c.isActive(view.state);
         return (
-          <button
-            key={c.id}
-            type="button"
-            className={`ribbon-btn${active ? ' is-active' : ''}`}
-            aria-label={c.ariaLabel}
-            aria-pressed={active}
-            disabled={!isEnabled}
-            onMouseDown={(e) => e.preventDefault()} // keep the editor selection on click
-            onClick={() => activate(c)}
-          >
-            {c.label}
-          </button>
+          <Fragment key={c.id}>
+            {divider}
+            <button
+              type="button"
+              className={`ribbon-btn${active ? ' is-active' : ''}`}
+              aria-label={c.ariaLabel}
+              aria-pressed={active}
+              disabled={!isEnabled}
+              onMouseDown={(e) => e.preventDefault()} // keep the editor selection on click
+              onClick={() => activate(c)}
+            >
+              {c.label}
+            </button>
+          </Fragment>
         );
       })}
       {popover && popover.control.action.kind === 'popover' && (

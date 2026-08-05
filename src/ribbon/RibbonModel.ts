@@ -30,12 +30,19 @@ export type RibbonAction =
       buildCommand: (rows: number, cols: number) => Command;
     };
 
+/** Which cluster a control belongs to. Dividers are drawn between groups. */
+export type RibbonGroup = 'inline' | 'insert' | 'block' | 'structure';
+
 export interface RibbonControl {
   id: string;
   /** Visible glyph / short text shown in the button. */
   label: string;
   /** Full accessible name. */
   ariaLabel: string;
+  /** Cluster this control belongs to; controls are rendered in group order. */
+  group: RibbonGroup;
+  /** Display form of the keyboard shortcut, e.g. '⌘B'. Shown in the tooltip. */
+  shortcut?: string;
   isActive: (state: EditorState) => boolean;
   isEnabled: (state: EditorState) => boolean;
   action: RibbonAction;

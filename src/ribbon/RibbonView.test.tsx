@@ -3,8 +3,15 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import type { ReactElement } from 'react';
-import type { RibbonControl } from './RibbonModel';
+import { EditorState } from 'prosemirror-state';
+import type { RibbonControl, RibbonGroup } from './RibbonModel';
 import { RibbonView } from './RibbonView';
+import { liveSchema } from '../views/liveSchema';
+import { buildLiveDoc } from '../views/liveModel';
+import { markdownRibbon } from './markdownRibbon';
+import { htmlRibbon } from './htmlRibbon';
+import { markdownTableRibbon } from './markdownTableRibbon';
+import { htmlTableRibbon } from './htmlTableRibbon';
 
 let container: HTMLDivElement | null = null;
 afterEach(() => { container?.remove(); container = null; });
@@ -27,7 +34,7 @@ function fakeView() {
 }
 
 const cmdControl = (id: string, opts: Partial<RibbonControl> = {}): RibbonControl => ({
-  id, label: id[0].toUpperCase(), ariaLabel: id,
+  id, label: id[0].toUpperCase(), ariaLabel: id, group: 'inline',
   isActive: () => false, isEnabled: () => true,
   action: { kind: 'command', run: () => true },
   ...opts,
@@ -66,7 +73,7 @@ describe('RibbonView', () => {
   it('opens the popover for an inactive popover control, then runs buildCommand on confirm', async () => {
     const built = vi.fn(() => true);
     const link: RibbonControl = {
-      id: 'link', label: '🔗', ariaLabel: 'Link', isActive: () => false, isEnabled: () => true,
+      id: 'link', label: '🔗', ariaLabel: 'Link', group: 'insert', isActive: () => false, isEnabled: () => true,
       action: { kind: 'popover', popover: 'link', buildCommand: () => built },
     };
     const view = fakeView();
@@ -87,7 +94,7 @@ describe('RibbonView', () => {
   it('runs whenActiveRun (not the popover) when a popover control is active', async () => {
     const remove = vi.fn(() => true);
     const link: RibbonControl = {
-      id: 'link', label: '🔗', ariaLabel: 'Link', isActive: () => true, isEnabled: () => true,
+      id: 'link', label: '🔗', ariaLabel: 'Link', group: 'insert', isActive: () => true, isEnabled: () => true,
       action: { kind: 'popover', popover: 'link', buildCommand: () => () => true, whenActiveRun: remove },
     };
     const view = fakeView();
@@ -100,7 +107,7 @@ describe('RibbonView', () => {
 
   it('a linkRequest bump opens the link popover', async () => {
     const link: RibbonControl = {
-      id: 'link', label: '🔗', ariaLabel: 'Link', isActive: () => false, isEnabled: () => true,
+      id: 'link', label: '🔗', ariaLabel: 'Link', group: 'insert', isActive: () => false, isEnabled: () => true,
       action: { kind: 'popover', popover: 'link', buildCommand: () => () => true },
     };
     const view = fakeView();
@@ -112,7 +119,7 @@ describe('RibbonView', () => {
 
   it('linkRequest nonzero on mount does NOT open the popover; only an increase does', async () => {
     const link: RibbonControl = {
-      id: 'link', label: '🔗', ariaLabel: 'Link', isActive: () => false, isEnabled: () => true,
+      id: 'link', label: '🔗', ariaLabel: 'Link', group: 'insert', isActive: () => false, isEnabled: () => true,
       action: { kind: 'popover', popover: 'link', buildCommand: () => () => true },
     };
     const view = fakeView();
@@ -128,7 +135,7 @@ describe('RibbonView', () => {
   it('keeps popover open and does not refocus when buildCommand returns false', async () => {
     const builtFalse = vi.fn(() => false);
     const link: RibbonControl = {
-      id: 'link', label: '🔗', ariaLabel: 'Link', isActive: () => false, isEnabled: () => true,
+      id: 'link', label: '🔗', ariaLabel: 'Link', group: 'insert', isActive: () => false, isEnabled: () => true,
       action: { kind: 'popover', popover: 'link', buildCommand: () => builtFalse },
     };
     const view = fakeView();
@@ -151,7 +158,7 @@ describe('RibbonView', () => {
   it('closes popover and refocuses when buildCommand returns true', async () => {
     const builtTrue = vi.fn(() => true);
     const link: RibbonControl = {
-      id: 'link', label: '🔗', ariaLabel: 'Link', isActive: () => false, isEnabled: () => true,
+      id: 'link', label: '🔗', ariaLabel: 'Link', group: 'insert', isActive: () => false, isEnabled: () => true,
       action: { kind: 'popover', popover: 'link', buildCommand: () => builtTrue },
     };
     const view = fakeView();
@@ -172,7 +179,7 @@ describe('RibbonView', () => {
     const built = vi.fn(() => true);
     const buildCommand = vi.fn(() => built);
     const control: RibbonControl = {
-      id: 'insertTable', label: '⊞', ariaLabel: 'Insert table',
+      id: 'insertTable', label: '⊞', ariaLabel: 'Insert table', group: 'structure',
       isActive: () => false, isEnabled: () => true,
       action: { kind: 'sizePicker', buildCommand },
     };
@@ -191,7 +198,7 @@ describe('RibbonView', () => {
   it('renders a dropdown control as a <select> and runs the command on change', async () => {
     const runFor = vi.fn(() => () => true);
     const control: RibbonControl = {
-      id: 'heading', label: 'Paragraph', ariaLabel: 'Text style',
+      id: 'heading', label: 'Paragraph', ariaLabel: 'Text style', group: 'block',
       isActive: () => false, isEnabled: () => true,
       action: { kind: 'dropdown',
         options: [{ label: 'Paragraph', value: 'paragraph' }, { label: 'Heading 2', value: 'h2' }],
@@ -206,5 +213,81 @@ describe('RibbonView', () => {
     await act(async () => { setter.call(select, 'h2'); select.dispatchEvent(new Event('change', { bubbles: true })); });
     expect(runFor).toHaveBeenCalledWith('h2');
     expect(view.focus).toHaveBeenCalled();
+  });
+
+  it('renders a divider exactly at each group boundary, never leading or trailing the row', async () => {
+    const controls = [
+      cmdControl('a', { group: 'inline' }),
+      cmdControl('b', { group: 'inline' }),
+      cmdControl('c', { group: 'insert' }),
+      cmdControl('d', { group: 'block' }),
+      cmdControl('e', { group: 'block' }),
+    ];
+    const { container } = await render(<RibbonView view={fakeView()} controls={controls} />);
+    const row = container.querySelector('.ribbon')!;
+    const kinds = Array.from(row.children).map((el) =>
+      el.classList.contains('ribbon-divider') ? 'divider' : 'control');
+    // a, b, divider(inline→insert), c, divider(insert→block), d, e
+    expect(kinds).toEqual(['control', 'control', 'divider', 'control', 'divider', 'control', 'control']);
+    expect(container.querySelectorAll('.ribbon-divider').length).toBe(2);
+    expect(kinds[0]).toBe('control'); // never leads
+    expect(kinds[kinds.length - 1]).toBe('control'); // never trails
+  });
+
+  it('a run of same-group controls gets no divider between them', async () => {
+    const controls = [cmdControl('a', { group: 'inline' }), cmdControl('b', { group: 'inline' })];
+    const { container } = await render(<RibbonView view={fakeView()} controls={controls} />);
+    expect(container.querySelectorAll('.ribbon-divider').length).toBe(0);
+  });
+
+  it('dividers are aria-hidden so screen readers do not announce them', async () => {
+    const controls = [cmdControl('a', { group: 'inline' }), cmdControl('b', { group: 'insert' })];
+    const { container } = await render(<RibbonView view={fakeView()} controls={controls} />);
+    const divider = container.querySelector('.ribbon-divider')!;
+    expect(divider.getAttribute('aria-hidden')).toBe('true');
+  });
+});
+
+describe('ribbon grouping', () => {
+  const allRibbons: [string, RibbonControl[]][] = [
+    ['markdownRibbon', markdownRibbon],
+    ['htmlRibbon', htmlRibbon],
+    ['markdownTableRibbon', markdownTableRibbon],
+    ['htmlTableRibbon', htmlTableRibbon],
+  ];
+  const validGroups: RibbonGroup[] = ['inline', 'insert', 'block', 'structure'];
+
+  it('every control in all four ribbons has a valid group', () => {
+    for (const [name, ribbon] of allRibbons) {
+      for (const c of ribbon) {
+        expect(validGroups, `${name}.${c.id} has group ${String(c.group)}`).toContain(c.group);
+      }
+    }
+  });
+
+  it('shortcut is set on exactly bold/italic/link (all ribbons) and underline (HTML only)', () => {
+    const withShortcut = (ribbon: RibbonControl[]) =>
+      ribbon.filter((c) => c.shortcut !== undefined).map((c) => c.id).sort();
+    expect(withShortcut(markdownRibbon)).toEqual(['bold', 'italic', 'link']);
+    expect(withShortcut(htmlRibbon)).toEqual(['bold', 'italic', 'link', 'underline']);
+    expect(withShortcut(markdownTableRibbon)).toEqual([]);
+    expect(withShortcut(htmlTableRibbon)).toEqual([]);
+  });
+
+  it('markdownRibbon renders exactly 3 dividers across its 4 groups', async () => {
+    const r = buildLiveDoc('hello\n');
+    if (!r.ok) throw new Error('degraded');
+    const state = EditorState.create({ doc: r.doc, schema: liveSchema });
+    const view = { state, dispatch: vi.fn(), focus: vi.fn() } as any;
+    const { container } = await render(<RibbonView view={view} controls={markdownRibbon} />);
+    const row = container.querySelector('.ribbon')!;
+    // one control element per ribbon control (button or select) + one divider per group boundary
+    expect(row.querySelectorAll('.ribbon-btn, select.ribbon-select').length).toBe(markdownRibbon.length);
+    expect(row.querySelectorAll('.ribbon-divider').length).toBe(3);
+    expect(new Set(markdownRibbon.map((c) => c.group)).size).toBe(4);
+    // never leads or trails
+    const children = Array.from(row.children);
+    expect(children[0].classList.contains('ribbon-divider')).toBe(false);
+    expect(children[children.length - 1].classList.contains('ribbon-divider')).toBe(false);
   });
 });

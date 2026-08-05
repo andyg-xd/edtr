@@ -18,9 +18,22 @@
   color: inherit;
   transition: background var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease);
 }
-.ribbon-btn:hover:not(:disabled) { background: var(--btn-hover-bg); }
-.ribbon-btn.is-active { background: var(--btn-active-bg); border-color: var(--btn-active-border); }
+.ribbon-btn:hover:not(:disabled) { background: var(--btn-hover-bg); border-color: var(--border-strong); }
+.ribbon-btn.is-active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .ribbon-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* Group divider — clusters related controls (inline / insert / block /
+   structure) instead of bordering every button (rejected in mockup: 13
+   bordered boxes read as loud beside prose; dividers give the row structure
+   without visual noise). Never leads or trails the row (RibbonView only
+   emits one between two controls of different groups). */
+.ribbon-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: var(--space-1) var(--space-2);
+  background: var(--border);
+  flex: none;
+}
 .ribbon-select {
   height: 28px;
   border: 1px solid transparent;
