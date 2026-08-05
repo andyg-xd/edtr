@@ -48,13 +48,14 @@
 .ribbon-select:hover:not(:disabled) { background: var(--btn-hover-bg); }
 .ribbon-select:disabled { opacity: 0.4; cursor: default; }
 
-/* Insert link/image popover */
+/* Insert link/image popover. Positioned via anchorTo (InsertPopover.tsx) --
+   `left`/`top` are set inline per-open, computed from the triggering
+   control's rect, the same way the tooltip positions itself. `fixed` takes
+   it out of `.ribbon`'s containing block so those viewport coordinates
+   apply directly. */
 .insert-popover {
-  position: absolute;
-  top: 100%;
-  left: 8px;
+  position: fixed;
   z-index: 10;
-  margin-top: var(--space-2);
   padding: var(--space-5);
   display: flex;
   flex-direction: column;

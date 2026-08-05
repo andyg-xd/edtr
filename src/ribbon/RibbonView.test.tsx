@@ -274,6 +274,97 @@ describe('ribbon grouping', () => {
     expect(withShortcut(htmlTableRibbon)).toEqual([]);
   });
 
+});
+
+// Task 6: the popover must open beneath the control that was actually
+// clicked, not always flush to the ribbon's left edge. InsertPopover.test.tsx
+// proves InsertPopover positions correctly given a triggerRect; these tests
+// prove RibbonView captures the RIGHT rect for whichever control opened it
+// (not the first control, not a stale one from a previous open).
+describe('popover triggerRect wiring (Task 6)', () => {
+  function fakeRect(left: number): DOMRect {
+    return { left, right: left + 32, top: 0, bottom: 28, width: 32, height: 28 } as DOMRect;
+  }
+  function zeroRect(): DOMRect {
+    return { left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 } as DOMRect;
+  }
+
+  // jsdom's real getBoundingClientRect() always returns zeroes regardless of
+  // layout, so a per-element spy is the only way to give two different
+  // controls two different (deterministic) rects in this environment.
+  function withFakeRects(rectsByAriaLabel: Record<string, DOMRect>) {
+    return vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const label = this.getAttribute?.('aria-label');
+      return (label ? rectsByAriaLabel[label] : undefined) ?? zeroRect();
+    });
+  }
+
+  function withViewport<T>(width: number, height: number, fn: () => T): T {
+    const prevW = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+    const prevH = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+    Object.defineProperty(window, 'innerWidth', { value: width, configurable: true });
+    Object.defineProperty(window, 'innerHeight', { value: height, configurable: true });
+    try {
+      return fn();
+    } finally {
+      if (prevW) Object.defineProperty(window, 'innerWidth', prevW); else delete (window as any).innerWidth;
+      if (prevH) Object.defineProperty(window, 'innerHeight', prevH); else delete (window as any).innerHeight;
+    }
+  }
+
+  const popoverControl = (id: string, ariaLabel: string): RibbonControl => ({
+    id, label: id, ariaLabel, group: 'insert', isActive: () => false, isEnabled: () => true,
+    action: { kind: 'popover', popover: 'link', buildCommand: () => () => true },
+  });
+
+  it("uses the clicked control's own rect, not the first control in the ribbon", async () => {
+    const linkA = popoverControl('linkA', 'Link A');
+    const linkB = popoverControl('linkB', 'Link B');
+    const view = fakeView();
+    const { container } = await render(<RibbonView view={view} controls={[linkA, linkB]} />);
+
+    const spy = withFakeRects({ 'Link A': fakeRect(50), 'Link B': fakeRect(400) });
+    try {
+      await withViewport(1000, 800, async () => {
+        await act(async () => { btn(container, 'Link B').click(); });
+      });
+      const popover = container.querySelector('.insert-popover') as HTMLElement;
+      // Link B: left 400, width 32 -> centre 416. The popover's own measured
+      // size is 0 in jsdom (its root div has no 'Link A'/'Link B' aria-label,
+      // so the spy falls through to zeroRect()), so anchorTo centres it
+      // exactly on 416 -- not on Link A's rect, and not the old fixed 8px.
+      expect(popover.style.left).toBe('416px');
+      expect(popover.style.left).not.toBe('8px');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('a second, later click on a different control repositions the popover (no stale rect)', async () => {
+    const linkA = popoverControl('linkA', 'Link A');
+    const linkB = popoverControl('linkB', 'Link B');
+    const view = fakeView();
+    const { container } = await render(<RibbonView view={view} controls={[linkA, linkB]} />);
+
+    const spy = withFakeRects({ 'Link A': fakeRect(50), 'Link B': fakeRect(400) });
+    try {
+      await withViewport(1000, 800, async () => {
+        await act(async () => { btn(container, 'Link A').click(); });
+      });
+      const firstLeft = (container.querySelector('.insert-popover') as HTMLElement).style.left;
+      await withViewport(1000, 800, async () => {
+        await act(async () => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); }); // dismiss
+        await act(async () => { btn(container, 'Link B').click(); });
+      });
+      const secondLeft = (container.querySelector('.insert-popover') as HTMLElement).style.left;
+      expect(secondLeft).not.toBe(firstLeft);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe('markdownRibbon grouping', () => {
   it('markdownRibbon renders exactly 3 dividers across its 4 groups', async () => {
     const r = buildLiveDoc('hello\n');
     if (!r.ok) throw new Error('degraded');

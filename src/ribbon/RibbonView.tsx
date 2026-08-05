@@ -21,12 +21,29 @@ interface RibbonViewProps {
 }
 
 export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Formatting', docPath = null, onError, canInsertImage }: RibbonViewProps) {
-  const [popover, setPopover] = useState<{ control: RibbonControl; initialText: string } | null>(null);
+  const [popover, setPopover] = useState<{ control: RibbonControl; initialText: string; triggerRect: DOMRect } | null>(null);
   const [sizePicker, setSizePicker] = useState<RibbonControl | null>(null);
+  const ribbonRef = useRef<HTMLDivElement>(null);
 
   function runCommand(cmd: Command) {
     cmd(view.state, view.dispatch);
     view.focus();
+  }
+
+  // Looks the control's button up by data-control-id rather than a ref
+  // stored on the button element itself: each button is rendered as the
+  // child of a Tooltip, which clones its child and overwrites `ref` with
+  // its own (to track hover/focus for showing the tooltip) -- a ref placed
+  // directly on the button here would silently never reach the DOM.
+  // Querying by attribute sidesteps that without touching Tooltip. Works
+  // uniformly for both a click (control is on-screen and rendered) and a
+  // programmatic activation (⌘K), since neither needs the triggering event.
+  function findTriggerRect(controlId: string): DOMRect {
+    // controlId always comes from a RibbonControl defined in source (e.g.
+    // 'link', 'image', 'heading'), never user input, so a plain attribute
+    // selector is safe without CSS.escape.
+    const el = ribbonRef.current?.querySelector<HTMLElement>(`[data-control-id="${controlId}"]`);
+    return el?.getBoundingClientRect() ?? new DOMRect();
   }
 
   function activate(control: RibbonControl) {
@@ -36,7 +53,7 @@ export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Forma
       if (action.whenActiveRun && control.isActive(view.state)) { runCommand(action.whenActiveRun); return; }
       const { from, to } = view.state.selection;
       const initialText = action.popover === 'link' ? view.state.doc.textBetween(from, to) : '';
-      setPopover({ control, initialText });
+      setPopover({ control, initialText, triggerRect: findTriggerRect(control.id) });
       return;
     }
     if (action.kind === 'sizePicker') { setSizePicker(control); return; }
@@ -64,7 +81,7 @@ export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Forma
   }
 
   return (
-    <div className="ribbon" role="toolbar" aria-label={ariaLabel}>
+    <div className="ribbon" role="toolbar" aria-label={ariaLabel} ref={ribbonRef}>
       {controls.map((c, i) => {
         // A divider marks a group boundary; none leads or trails the row
         // since i > 0 excludes the first control.
@@ -98,6 +115,7 @@ export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Forma
             {divider}
             <Tooltip label={c.ariaLabel} shortcut={c.shortcut} id={`tip-${c.id}`}>
               <button
+                data-control-id={c.id}
                 type="button"
                 className={`ribbon-btn${active ? ' is-active' : ''}`}
                 aria-label={c.ariaLabel}
@@ -116,6 +134,7 @@ export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Forma
         <InsertPopover
           kind={popover.control.action.popover}
           initialText={popover.initialText}
+          triggerRect={popover.triggerRect}
           docPath={docPath}
           onConfirm={confirmPopover}
           onCancel={() => { setPopover(null); view.focus(); }}
