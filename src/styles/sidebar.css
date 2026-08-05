@@ -1,0 +1,19 @@
+.sidebar { flex: 0 0 200px; overflow-y: auto; background: var(--surface-2); border-right: 1px solid var(--border); }
+.sidebar-list { list-style: none; margin: 0; padding: 4px; }
+.sidebar-item { display: flex; align-items: center; border-radius: 6px; }
+.sidebar-item:hover { background: var(--btn-hover-bg); }
+.sidebar-item.is-active { background: var(--btn-active-bg); }
+.sidebar-select {
+  flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0;
+  background: none; border: none; text-align: left; padding: 6px 8px;
+  color: var(--fg); font-size: 13px; cursor: pointer;
+}
+.sidebar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-dot { color: var(--accent); font-size: 10px; flex: none; line-height: 1; }
+.sidebar-close {
+  background: none; border: none; color: var(--fg-faint);
+  cursor: pointer; padding: 2px 8px; font-size: 15px; line-height: 1;
+}
+.sidebar-close:hover { color: var(--fg); }
+.sidebar-item.is-unopened .sidebar-name { color: var(--fg-faint); }
+.sidebar-empty { padding: 12px 10px; color: var(--fg-faint); font-size: 13px; }

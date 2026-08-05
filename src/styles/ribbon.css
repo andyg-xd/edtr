@@ -1,0 +1,78 @@
+/* Ribbon toolbar (Live view only) */
+.ribbon {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  position: relative;
+}
+.ribbon-btn {
+  min-width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  font-size: 13px;
+  cursor: pointer;
+  color: inherit;
+}
+.ribbon-btn:hover:not(:disabled) { background: var(--btn-hover-bg); }
+.ribbon-btn.is-active { background: var(--btn-active-bg); border-color: var(--btn-active-border); }
+.ribbon-btn:disabled { opacity: 0.4; cursor: default; }
+.ribbon-select {
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  font-size: 13px;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.ribbon-select:hover:not(:disabled) { background: var(--btn-hover-bg); }
+.ribbon-select:disabled { opacity: 0.4; cursor: default; }
+
+/* Insert link/image popover */
+.insert-popover {
+  position: absolute;
+  top: 100%;
+  left: 8px;
+  z-index: 10;
+  margin-top: 4px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 240px;
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px var(--shadow);
+}
+.insert-popover-field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.insert-popover-field input { padding: 4px 6px; font-size: 13px; }
+.insert-popover-actions { display: flex; justify-content: flex-end; gap: 6px; }
+/* Contextual table toolbar — a second ribbon row shown only inside a table. */
+.ribbon-context { border-bottom: 1px solid var(--border-subtle); }
+.ribbon-context .ribbon { background: var(--surface-2); }
+
+/* Insert-table size picker. */
+.table-size-picker {
+  position: absolute;
+  z-index: 30;
+  margin-top: 4px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: 0 2px 10px var(--shadow);
+}
+.tsp-grid { display: grid; gap: 3px; }
+.tsp-cell {
+  width: 16px; height: 16px;
+  border: 1px solid var(--border-strong); background: var(--surface); cursor: pointer;
+}
+.tsp-cell.tsp-on { background: var(--accent); border-color: var(--accent-border); }
+.tsp-caption { margin-top: 6px; text-align: center; font-size: 12px; color: var(--fg-muted); }

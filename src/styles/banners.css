@@ -1,0 +1,107 @@
+.notice-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+  font-size: 13px;
+}
+
+/* Recovery action button inside a notice banner (e.g. "Save As…" after a
+   failed save). Mirrors .reload-banner button's filled-accent notice-action
+   styling so buttons-in-notices read consistently across the app. */
+.notice-action {
+  margin-left: 4px;
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.notice-action:hover { opacity: 0.9; }
+.notice-action:active { opacity: 0.8; }
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal {
+  background: var(--surface);
+  color: var(--fg);
+  border-radius: 8px;
+  padding: 20px;
+  min-width: 320px;
+  box-shadow: 0 8px 32px var(--shadow);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+.notice-info { padding: 8px 12px; background: var(--info-bg); color: var(--info-fg); font-size: 13px; }
+/* Reload banner — external file change notification. */
+.reload-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  background: var(--info-bg);
+  color: var(--info-fg);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.reload-banner__msg {
+  flex: 1;
+  min-width: 0;
+}
+
+.reload-banner__actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.reload-banner button {
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.reload-banner button:hover {
+  opacity: 0.9;
+}
+
+.reload-banner button:active {
+  opacity: 0.8;
+}
+
+.reload-banner__dismiss {
+  background: none;
+  color: var(--info-fg);
+  padding: 0 0.3rem;
+  font-size: 1.2rem;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.reload-banner__dismiss:hover {
+  opacity: 1;
+}

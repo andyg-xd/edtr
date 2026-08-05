@@ -1,0 +1,40 @@
+.editor-window {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.window-chrome {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
+  user-select: none;
+}
+
+.dirty-dot {
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+.empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.chrome-spacer { flex: 1; }
+
+.view-toggle,
+.theme-control { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.view-toggle button,
+.theme-control button {
+  border: 0; background: var(--surface); color: var(--fg); padding: 2px 10px; font-size: 12px; cursor: pointer;
+}
+.view-toggle button.active,
+.theme-control button.active { background: var(--seg-active-bg); color: var(--seg-active-fg); }
+.view-toggle button:disabled,
+.theme-control button:disabled { color: var(--fg-disabled); cursor: default; }
+.editor-body { display: flex; flex: 1; min-height: 0; }
+.doc-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; }
