@@ -43,6 +43,35 @@ const cmdControl = (id: string, opts: Partial<RibbonControl> = {}): RibbonContro
 const btn = (el: HTMLElement, aria: string) =>
   Array.from(el.querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === aria)! as HTMLButtonElement;
 
+// Shared by the Task 6 triggerRect-wiring tests (popover AND size picker):
+// jsdom's real getBoundingClientRect() always returns zeroes regardless of
+// layout, so a per-element spy keyed by aria-label is the only way to give
+// two different controls two different (deterministic) rects here.
+function fakeRect(left: number): DOMRect {
+  return { left, right: left + 32, top: 0, bottom: 28, width: 32, height: 28 } as DOMRect;
+}
+function zeroRect(): DOMRect {
+  return { left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 } as DOMRect;
+}
+function withFakeRects(rectsByAriaLabel: Record<string, DOMRect>) {
+  return vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    const label = this.getAttribute?.('aria-label');
+    return (label ? rectsByAriaLabel[label] : undefined) ?? zeroRect();
+  });
+}
+function withViewport<T>(width: number, height: number, fn: () => T): T {
+  const prevW = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+  const prevH = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+  Object.defineProperty(window, 'innerWidth', { value: width, configurable: true });
+  Object.defineProperty(window, 'innerHeight', { value: height, configurable: true });
+  try {
+    return fn();
+  } finally {
+    if (prevW) Object.defineProperty(window, 'innerWidth', prevW); else delete (window as any).innerWidth;
+    if (prevH) Object.defineProperty(window, 'innerHeight', prevH); else delete (window as any).innerHeight;
+  }
+}
+
 describe('RibbonView', () => {
   it('renders a toolbar with one button per control', async () => {
     const { container } = await render(<RibbonView view={fakeView()} controls={[cmdControl('bold'), cmdControl('italic')]} />);
@@ -282,36 +311,6 @@ describe('ribbon grouping', () => {
 // prove RibbonView captures the RIGHT rect for whichever control opened it
 // (not the first control, not a stale one from a previous open).
 describe('popover triggerRect wiring (Task 6)', () => {
-  function fakeRect(left: number): DOMRect {
-    return { left, right: left + 32, top: 0, bottom: 28, width: 32, height: 28 } as DOMRect;
-  }
-  function zeroRect(): DOMRect {
-    return { left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 } as DOMRect;
-  }
-
-  // jsdom's real getBoundingClientRect() always returns zeroes regardless of
-  // layout, so a per-element spy is the only way to give two different
-  // controls two different (deterministic) rects in this environment.
-  function withFakeRects(rectsByAriaLabel: Record<string, DOMRect>) {
-    return vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
-      const label = this.getAttribute?.('aria-label');
-      return (label ? rectsByAriaLabel[label] : undefined) ?? zeroRect();
-    });
-  }
-
-  function withViewport<T>(width: number, height: number, fn: () => T): T {
-    const prevW = Object.getOwnPropertyDescriptor(window, 'innerWidth');
-    const prevH = Object.getOwnPropertyDescriptor(window, 'innerHeight');
-    Object.defineProperty(window, 'innerWidth', { value: width, configurable: true });
-    Object.defineProperty(window, 'innerHeight', { value: height, configurable: true });
-    try {
-      return fn();
-    } finally {
-      if (prevW) Object.defineProperty(window, 'innerWidth', prevW); else delete (window as any).innerWidth;
-      if (prevH) Object.defineProperty(window, 'innerHeight', prevH); else delete (window as any).innerHeight;
-    }
-  }
-
   const popoverControl = (id: string, ariaLabel: string): RibbonControl => ({
     id, label: id, ariaLabel, group: 'insert', isActive: () => false, isEnabled: () => true,
     action: { kind: 'popover', popover: 'link', buildCommand: () => () => true },
@@ -357,6 +356,65 @@ describe('popover triggerRect wiring (Task 6)', () => {
         await act(async () => { btn(container, 'Link B').click(); });
       });
       const secondLeft = (container.querySelector('.insert-popover') as HTMLElement).style.left;
+      expect(secondLeft).not.toBe(firstLeft);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+// Finding 2 (coordinator review): TableSizePicker has the identical
+// pre-existing bug -- it's rendered as the ribbon's last child with no
+// `left` at all, so it falls at its static DOM position instead of under
+// the ⊞ control that opened it. Fixed the same way as the popover; these
+// tests prove RibbonView supplies the size picker's ACTUAL trigger's rect,
+// not a constant / the wrong control's.
+describe('sizePicker triggerRect wiring (Task 6, Finding 2)', () => {
+  const sizePickerControl = (id: string, ariaLabel: string): RibbonControl => ({
+    id, label: '⊞', ariaLabel, group: 'structure', isActive: () => false, isEnabled: () => true,
+    action: { kind: 'sizePicker', buildCommand: () => () => true },
+  });
+
+  it("uses the clicked control's own rect, not a constant or the wrong control's", async () => {
+    const insertA = sizePickerControl('insertTableA', 'Insert table A');
+    const insertB = sizePickerControl('insertTableB', 'Insert table B');
+    const view = fakeView();
+    const { container } = await render(<RibbonView view={view} controls={[insertA, insertB]} />);
+
+    const spy = withFakeRects({ 'Insert table A': fakeRect(50), 'Insert table B': fakeRect(400) });
+    try {
+      await withViewport(1000, 800, async () => {
+        await act(async () => { btn(container, 'Insert table B').click(); });
+      });
+      const picker = container.querySelector('.table-size-picker') as HTMLElement;
+      // Insert table B: left 400, width 32 -> centre 416. The picker's own
+      // measured size is 0 in jsdom (its root div has no 'Insert table
+      // A'/'Insert table B' aria-label, so the spy falls through to
+      // zeroRect()), so anchorTo centres it exactly on 416 -- not on A's
+      // rect, and not the old static (no-left) position.
+      expect(picker.style.left).toBe('416px');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('a second, later click on a different control repositions the picker (no stale rect)', async () => {
+    const insertA = sizePickerControl('insertTableA', 'Insert table A');
+    const insertB = sizePickerControl('insertTableB', 'Insert table B');
+    const view = fakeView();
+    const { container } = await render(<RibbonView view={view} controls={[insertA, insertB]} />);
+
+    const spy = withFakeRects({ 'Insert table A': fakeRect(50), 'Insert table B': fakeRect(400) });
+    try {
+      await withViewport(1000, 800, async () => {
+        await act(async () => { btn(container, 'Insert table A').click(); });
+      });
+      const firstLeft = (container.querySelector('.table-size-picker') as HTMLElement).style.left;
+      await withViewport(1000, 800, async () => {
+        await act(async () => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); }); // dismiss
+        await act(async () => { btn(container, 'Insert table B').click(); });
+      });
+      const secondLeft = (container.querySelector('.table-size-picker') as HTMLElement).style.left;
       expect(secondLeft).not.toBe(firstLeft);
     } finally {
       spy.mockRestore();

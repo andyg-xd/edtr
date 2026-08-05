@@ -76,7 +76,22 @@ export function Tooltip({ label, shortcut, id, children }: TooltipProps) {
   }, [phase]);
 
   const child = cloneElement(children, {
-    ref: (node: HTMLElement | null) => { triggerRef.current = node; },
+    // Compose rather than replace: the child may already carry a ref (e.g.
+    // RibbonView querying it up by attribute doesn't need this, but any
+    // other future caller might), and silently dropping it makes any ref on
+    // a tooltip-wrapped element permanently null -- the same reasoning as
+    // every event handler composed below. React 19 exposes a passed-in ref
+    // as `children.props.ref` (a regular prop); reading `children.ref`
+    // directly is deprecated and logs a console warning in this React
+    // version, even though it still returns the value.
+    ref: (node: HTMLElement | null) => {
+      triggerRef.current = node;
+      const inherited = (children.props as { ref?: unknown }).ref;
+      if (typeof inherited === 'function') inherited(node);
+      else if (inherited && typeof inherited === 'object') {
+        (inherited as { current: HTMLElement | null }).current = node;
+      }
+    },
     'aria-describedby': id,
     onMouseEnter: (e: MouseEvent) => { children.props.onMouseEnter?.(e); scheduleShow(); },
     onMouseLeave: (e: MouseEvent) => { children.props.onMouseLeave?.(e); hide(); },

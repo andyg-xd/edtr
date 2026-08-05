@@ -22,7 +22,7 @@ interface RibbonViewProps {
 
 export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Formatting', docPath = null, onError, canInsertImage }: RibbonViewProps) {
   const [popover, setPopover] = useState<{ control: RibbonControl; initialText: string; triggerRect: DOMRect } | null>(null);
-  const [sizePicker, setSizePicker] = useState<RibbonControl | null>(null);
+  const [sizePicker, setSizePicker] = useState<{ control: RibbonControl; triggerRect: DOMRect } | null>(null);
   const ribbonRef = useRef<HTMLDivElement>(null);
 
   function runCommand(cmd: Command) {
@@ -56,7 +56,7 @@ export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Forma
       setPopover({ control, initialText, triggerRect: findTriggerRect(control.id) });
       return;
     }
-    if (action.kind === 'sizePicker') { setSizePicker(control); return; }
+    if (action.kind === 'sizePicker') { setSizePicker({ control, triggerRect: findTriggerRect(control.id) }); return; }
   }
 
   const prevLinkRequest = useRef(linkRequest);
@@ -142,11 +142,12 @@ export function RibbonView({ view, controls, linkRequest = 0, ariaLabel = 'Forma
           canInsertImage={canInsertImage ? () => canInsertImage(view.state) : undefined}
         />
       )}
-      {sizePicker && sizePicker.action.kind === 'sizePicker' && (
+      {sizePicker && sizePicker.control.action.kind === 'sizePicker' && (
         <TableSizePicker
+          triggerRect={sizePicker.triggerRect}
           onSelect={(rows, cols) => {
-            if (sizePicker.action.kind === 'sizePicker') {
-              sizePicker.action.buildCommand(rows, cols)(view.state, view.dispatch);
+            if (sizePicker.control.action.kind === 'sizePicker') {
+              sizePicker.control.action.buildCommand(rows, cols)(view.state, view.dispatch);
             }
             setSizePicker(null);
             view.focus();

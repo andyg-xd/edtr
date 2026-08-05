@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { createRoot } from 'react-dom/client';
-import { act } from 'react';
+import { act, createRef } from 'react';
 import type { ReactElement } from 'react';
 import { EditorState } from 'prosemirror-state';
 import { Tooltip } from './Tooltip';
@@ -59,6 +59,21 @@ describe('Tooltip', () => {
     const { container } = await renderTooltip();
     expect(container.querySelector('button')!.getAttribute('aria-describedby')).toBe('tip-bold');
     expect(container.querySelector('[role="tooltip"]')).toBeNull();
+  });
+
+  // Regression: cloneElement used to replace the child's `ref` outright
+  // instead of composing it, so any ref a caller placed on a tooltip-wrapped
+  // element was silently null forever -- this bit RibbonView's Task 6
+  // popover-positioning fix in the real app, not just in a test.
+  it("composes the child's own ref instead of discarding it", async () => {
+    const myRef = createRef<HTMLButtonElement>();
+    const { container } = await render(
+      <Tooltip label="Bold" shortcut="⌘B" id="tip-bold">
+        <button type="button" ref={myRef}>B</button>
+      </Tooltip>,
+    );
+    expect(myRef.current).not.toBeNull();
+    expect(myRef.current).toBe(container.querySelector('button'));
   });
 
   // Native 'mouseenter'/'mouseleave'/'focus'/'blur' don't bubble, and React

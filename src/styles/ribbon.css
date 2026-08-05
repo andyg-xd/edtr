@@ -74,11 +74,12 @@
 .ribbon-context { border-bottom: 1px solid var(--border-subtle); }
 .ribbon-context .ribbon { background: var(--surface-2); }
 
-/* Insert-table size picker. */
+/* Insert-table size picker. Positioned via anchorTo (TableSizePicker.tsx) --
+   `left`/`top` are set inline per-open from the ⊞ control's rect, the same
+   way the insert-link/image popover and the tooltip position themselves. */
 .table-size-picker {
-  position: absolute;
+  position: fixed;
   z-index: 30;
-  margin-top: var(--space-2);
   padding: var(--space-4);
   background: var(--surface);
   border: 1px solid var(--border-strong);
