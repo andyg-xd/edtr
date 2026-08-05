@@ -18,7 +18,7 @@ export const emptyDocs: OpenDocsState = { docs: [], activeId: null };
 
 /** Append a document and make it active. `id` is supplied by the caller (the hook mints ids). */
 export function open(state: OpenDocsState, session: DocumentSession, id: string): OpenDocsState {
-  const doc: OpenDoc = { id, session, viewMode: 'code' };
+  const doc: OpenDoc = { id, session, viewMode: 'live' };
   return { docs: [...state.docs, doc], activeId: id };
 }
 

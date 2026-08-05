@@ -15,7 +15,7 @@ interface WindowChromeProps {
   onSetThemeMode: (mode: ThemeMode) => void;
 }
 
-/** Top bar: filename + dirty dot + Code/Live toggle + theme control. Keeps the OS title in sync. */
+/** Top bar: filename + dirty dot + Live/Code toggle + theme control. Keeps the OS title in sync. */
 export function WindowChrome({
   name,
   dirty,
@@ -42,14 +42,6 @@ export function WindowChrome({
       <div className="view-toggle" role="group" aria-label="View mode">
         <button
           type="button"
-          className={viewMode === 'code' ? 'active' : ''}
-          aria-pressed={viewMode === 'code'}
-          onClick={() => onSetViewMode('code')}
-        >
-          Code
-        </button>
-        <button
-          type="button"
           className={viewMode === 'live' ? 'active' : ''}
           aria-pressed={viewMode === 'live'}
           disabled={liveDisabled}
@@ -57,6 +49,14 @@ export function WindowChrome({
           onClick={() => onSetViewMode('live')}
         >
           Live
+        </button>
+        <button
+          type="button"
+          className={viewMode === 'code' ? 'active' : ''}
+          aria-pressed={viewMode === 'code'}
+          onClick={() => onSetViewMode('code')}
+        >
+          Code
         </button>
       </div>
       <ThemeControl mode={themeMode} onSetMode={onSetThemeMode} />

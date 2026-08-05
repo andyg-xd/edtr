@@ -4,16 +4,29 @@ import {
   emptyDocs, open, close, setActive, setViewMode, activeDoc, anyDirty,
   docIsDirty, windowIsDirty, rebind,
 } from './openDocuments';
+import { toLive } from '../views/ViewSync';
+import { toLiveHtml } from '../views/htmlModel';
 
 const sess = (path: string, text = 'x') =>
   new DocumentSession({ path, format: 'markdown', meta: { eol: 'lf', hadBom: false }, text });
 
+const htmlSess = (path: string, text = '<p>x</p>') =>
+  new DocumentSession({ path, format: 'html', meta: { eol: 'lf', hadBom: false }, text });
+
+const plaintextSess = (path: string, text = 'just text') =>
+  new DocumentSession({ path, format: 'plaintext', meta: { eol: 'lf', hadBom: false }, text });
+
 describe('openDocuments store', () => {
-  it('open appends a doc, activates it, defaults viewMode to code', () => {
+  it('open appends a doc, activates it, opens Markdown in Live', () => {
     const s = open(emptyDocs, sess('/a.md'), 'd0');
     expect(s.docs.map((d) => d.id)).toEqual(['d0']);
     expect(s.activeId).toBe('d0');
-    expect(activeDoc(s)!.viewMode).toBe('code');
+    expect(activeDoc(s)!.viewMode).toBe('live');
+  });
+
+  it('opens HTML in Live', () => {
+    const s = open(emptyDocs, htmlSess('/a.html'), 'd0');
+    expect(activeDoc(s)!.viewMode).toBe('live');
   });
 
   it('open supports N docs, activating the newest (used by 5b)', () => {
@@ -39,9 +52,9 @@ describe('openDocuments store', () => {
 
   it('setViewMode changes only the targeted doc', () => {
     let s = open(open(emptyDocs, sess('/a.md'), 'd0'), sess('/b.md'), 'd1');
-    s = setViewMode(s, 'd0', 'live');
-    expect(s.docs.find((d) => d.id === 'd0')!.viewMode).toBe('live');
-    expect(s.docs.find((d) => d.id === 'd1')!.viewMode).toBe('code');
+    s = setViewMode(s, 'd0', 'code');
+    expect(s.docs.find((d) => d.id === 'd0')!.viewMode).toBe('code');
+    expect(s.docs.find((d) => d.id === 'd1')!.viewMode).toBe('live'); // untouched, still its Live default
   });
 
   it('anyDirty is true iff some doc session is dirty', () => {
@@ -49,6 +62,46 @@ describe('openDocuments store', () => {
     expect(anyDirty(s)).toBe(false);
     activeDoc(s)!.session.setCurrentText('y'); // now dirty
     expect(anyDirty(s)).toBe(true);
+  });
+});
+
+// The store's default viewMode is now uniformly 'live' regardless of format —
+// what actually renders Code for a document Live can't handle is the gate in
+// DocumentView.tsx (~line 93-96):
+//   liveAvailable = (format === 'markdown' && live.ok) || (format === 'html' && liveHtml.ok)
+//   showLive      = viewMode === 'live' && liveAvailable
+// Replicated here (not imported — DocumentView doesn't export it as a standalone
+// function) so this store-level test file still proves the two-layer contract:
+// a new doc's *stored* mode is 'live', but the *rendered* view falls back to
+// Code whenever Live is unavailable.
+function showLiveFor(session: DocumentSession, viewMode: 'code' | 'live'): boolean {
+  const live = session.format === 'markdown' ? toLive(session.text, session.path) : null;
+  const liveHtml = session.format === 'html' ? toLiveHtml(session.text, session.path) : null;
+  const liveAvailable =
+    (session.format === 'markdown' && !!live && live.ok) ||
+    (session.format === 'html' && !!liveHtml && liveHtml.ok);
+  return viewMode === 'live' && liveAvailable;
+}
+
+describe('Live-by-default: stored mode vs. rendered view', () => {
+  it('opens plain text in Live but renders Code, since Live is unavailable for plaintext', () => {
+    const plain = plaintextSess('/a.txt');
+    const s = open(emptyDocs, plain, 'd0');
+    expect(activeDoc(s)!.viewMode).toBe('live'); // store default is uniform
+    expect(showLiveFor(plain, activeDoc(s)!.viewMode)).toBe(false); // gate renders Code
+  });
+
+  it('renders Code for HTML that degrades', () => {
+    // A <frameset> document has no <body> element (HTML5: frameset replaces
+    // body, it doesn't sit alongside it) — a real, non-contrived trigger for
+    // toLiveHtml's whole-document degrade path (htmlModel.ts: "no <body> element").
+    // (A JS-SPA shell like `<div id="root"></div><script>…</script>` does NOT
+    // trigger this in the current parser — it still renders live, just with an
+    // empty editable body — so it wouldn't prove this gate.)
+    const degraded = htmlSess('/app.html', '<html><frameset><frame src="a.html"></frame></frameset></html>');
+    const s = open(emptyDocs, degraded, 'd0');
+    expect(activeDoc(s)!.viewMode).toBe('live'); // store default is uniform
+    expect(showLiveFor(degraded, activeDoc(s)!.viewMode)).toBe(false); // gate renders Code
   });
 });
 
