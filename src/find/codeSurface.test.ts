@@ -93,6 +93,19 @@ describe('codeSurface', () => {
     expect(codeSurface(v).selectedText()).toBe('');
   });
 
+  it('ignores a match that outlived the document instead of throwing', () => {
+    // A match can outlive the document it was computed against: the recompute
+    // is debounced, so a shrinking edit plus a Cmd-G can reach reveal() with a
+    // dead position. CodeMirror rejects an out-of-range selection, and this
+    // throws out of a React passive effect if it is not contained here -- which
+    // takes the whole window down. A stale reveal must do nothing, silently.
+    const v = mount('short');
+    const before = v.state.selection.main;
+    expect(() => codeSurface(v).reveal({ from: 100, to: 120 })).not.toThrow();
+    expect(v.state.selection.main.from).toBe(before.from); // and moved nothing
+    expect(v.state.doc.toString()).toBe('short');
+  });
+
   it('keeps highlights on their text when the document changes ahead of them', () => {
     // Without mapping, typing at the top would leave every highlight pointing
     // at whatever slid into those offsets.

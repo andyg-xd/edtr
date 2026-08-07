@@ -146,4 +146,19 @@ describe('pmSurface', () => {
     const span = highlightSpans(v)[0];
     expect(span?.textContent).toBe('two');
   });
+
+  it('ignores a match that outlived the document instead of throwing', () => {
+    // A match can outlive the document it was computed against: the recompute
+    // is debounced, so a shrinking edit plus a Cmd-G can reach reveal() with a
+    // dead position. `.resolve()` throws a RangeError on an out-of-bounds
+    // position, and this throws out of a React passive effect if it is not
+    // contained here -- which takes the whole window down. A stale reveal must
+    // do nothing, silently.
+    const v = mount('short');
+    const before = v.state.doc;
+    const beforeSelection = v.state.selection.from;
+    expect(() => pmSurface(v).reveal({ from: 100, to: 120 })).not.toThrow();
+    expect(v.state.selection.from).toBe(beforeSelection); // moved nothing
+    expect(v.state.doc.eq(before)).toBe(true);
+  });
 });
