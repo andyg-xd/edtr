@@ -3,7 +3,15 @@ import { describe, it, expect } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
-import { selectNextOccurrence } from '@codemirror/search';
+import {
+  selectNextOccurrence,
+  selectSelectionMatches,
+  openSearchPanel,
+  findNext,
+  findPrevious,
+  gotoLine,
+  closeSearchPanel,
+} from '@codemirror/search';
 import { buildCodeViewExtensions, themeCompartment, themeExtensionFor } from './codeViewExtensions';
 import { findHighlightField } from '../find/codeSurface';
 
@@ -70,7 +78,7 @@ describe('CodeMirror search disposition (6c-i-a §5.6)', () => {
   const bindings = () =>
     EditorState.create({ extensions: buildCodeViewExtensions('markdown') })
       .facet(keymap)
-      .flat() as Array<{ key?: string; run?: unknown }>;
+      .flat() as Array<{ key?: string; run?: unknown; shift?: unknown }>;
 
   const boundKeys = () => bindings().map((b) => b.key).filter(Boolean) as string[];
 
@@ -80,15 +88,34 @@ describe('CodeMirror search disposition (6c-i-a §5.6)', () => {
     expect(boundKeys()).not.toContain('Mod-f');
   });
 
-  it('does NOT bind Mod-g or Shift-Mod-g to CodeMirror find', () => {
-    // These read CodeMirror's internal query, which our bar never sets — they
-    // would navigate a different search than the one on screen.
-    expect(boundKeys()).not.toContain('Mod-g');
-    expect(boundKeys()).not.toContain('Shift-Mod-g');
+  it('installs NONE of CodeMirror search\'s panel commands', () => {
+    // Asserted by RUN-FUNCTION IDENTITY, not by key string. CodeMirror
+    // synthesizes shift variants from a `shift:` property on the base binding
+    // at keydown time, so a literal 'Shift-Mod-g' key NEVER appears in the
+    // extension array -- asserting on that string can never fail, whatever is
+    // bound. Identity closes that hole and covers every alias at once
+    // (Mod-g/F3 share one run function, as do Shift-Mod-g/Shift-F3).
+    const runs = bindings().flatMap((b) => [b.run, (b as { shift?: unknown }).shift]);
+    for (const command of [openSearchPanel, findNext, findPrevious, gotoLine, closeSearchPanel]) {
+      expect(runs, command.name).not.toContain(command);
+    }
   });
 
-  it('does NOT bind Mod-Alt-g (go to line is a non-goal)', () => {
-    expect(boundKeys()).not.toContain('Mod-Alt-g');
+  it('does NOT bind Mod-g, Mod-Alt-g, or F3', () => {
+    // These read CodeMirror's INTERNAL query, which our bar never sets, so
+    // leaving them would navigate a different search than the one on screen.
+    const keys = boundKeys();
+    expect(keys).not.toContain('Mod-g');
+    expect(keys).not.toContain('Mod-Alt-g');
+    expect(keys).not.toContain('F3');
+  });
+
+  it('leaves Escape to defaultKeymap, never to closeSearchPanel', () => {
+    // Escape IS legitimately bound (defaultKeymap -> simplifySelection), so the
+    // key must NOT be asserted absent -- what must be absent is search's panel
+    // command. Our find bar owns Escape at the React layer.
+    expect(bindings().filter((b) => b.key === 'Escape').map((b) => b.run))
+      .not.toContain(closeSearchPanel);
   });
 
   it('KEEPS Mod-d and Mod-Shift-l — they work off the selection', () => {
@@ -97,6 +124,8 @@ describe('CodeMirror search disposition (6c-i-a §5.6)', () => {
     expect(keys).toContain('Mod-Shift-l');
     const runs = bindings().filter((b) => b.key === 'Mod-d').map((b) => b.run);
     expect(runs).toContain(selectNextOccurrence);
+    const shiftLRuns = bindings().filter((b) => b.key === 'Mod-Shift-l').map((b) => b.run);
+    expect(shiftLRuns).toContain(selectSelectionMatches);
   });
 
   it('installs the find-highlight field so it never needs appendConfig', () => {

@@ -83,11 +83,17 @@ export function buildCodeViewExtensions(
     // dialog ships the same unstyled buttons this phase removes). Kept: Mod-d
     // and Mod-Shift-l, which work off the selection and are unrelated to the
     // panel — dropping them would silently remove shortcuts that work today.
+    // These two flags mirror upstream searchKeymap EXACTLY, not just the key
+    // and run: preventDefault only fires when the command returns false, and
+    // selectSelectionMatches returns false on a bare caret (a common case) —
+    // setting preventDefault on it would swallow a keypress that falls
+    // through to the browser today. Copying upstream's flags verbatim is how
+    // "keeps working exactly as it does today" is satisfied for both.
     keymap.of([
       ...defaultKeymap,
       ...historyKeymap,
       { key: 'Mod-d', run: selectNextOccurrence, preventDefault: true },
-      { key: 'Mod-Shift-l', run: selectSelectionMatches, preventDefault: true },
+      { key: 'Mod-Shift-l', run: selectSelectionMatches },
     ]),
   ];
 }
