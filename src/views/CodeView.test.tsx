@@ -70,5 +70,7 @@ describe('CodeView onViewReady', () => {
     // destroyed one moments earlier — destroy() had not yet run when null was
     // reported.
     expect(destroyedWhenNullReported).toBe(false);
+    // And the view really was destroyed by the end.
+    expect(viewDestroyed).toBe(true);
   });
 });

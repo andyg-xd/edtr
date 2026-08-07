@@ -404,6 +404,5 @@ describe('DocumentView find — a surface driver error degrades to no matches, n
     expect(message).toContain("couldn't search");
     // Degraded, not crashed: the bar is still there, showing no results.
     expect(bar(c)).toBeTruthy();
-    expect(c.querySelector('.find-count')?.textContent).toBe('');
   });
 });

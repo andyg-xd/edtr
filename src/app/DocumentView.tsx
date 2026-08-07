@@ -267,7 +267,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
         // leaves find silently, permanently dead. Surface it through the
         // banner instead of swallowing it (5f's lesson).
         run = { matches: [], capped: false, invalid: false };
-        onError(`Edtr couldn't search this document. Close and reopen Find to try again. ${String(e)}`);
+        onError(`Edtr couldn't search this document—try switching to Code view, which always works for searching. ${String(e)}`);
       }
       setFind((prev) => setResult(prev.query, run, findAnchorRef.current));
       setFindFor(surface);

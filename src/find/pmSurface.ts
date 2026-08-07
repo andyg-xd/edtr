@@ -60,7 +60,7 @@ export function findDecorationsPlugin(): Plugin<FindDecoState> {
  * regions, and it is the design's main load-bearing claim (§5.2). Do not add an
  * HTML-specific branch here.
  *
- * Searches the VISIBLE text, flattened per top-level block: in Live view the
+ * Searches the VISIBLE text, flattened per visible block: in Live view the
  * user would otherwise be searching bytes they cannot see (`**`, tags,
  * attribute text), and a highlight could land inside markup with no visual
  * counterpart.
