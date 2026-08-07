@@ -57,6 +57,14 @@ export function codeSurface(view: EditorView): FindSurface {
       view.dispatch({ effects: setFindHighlights.of({ matches, current }) });
     },
     reveal(match) {
+      // A match can outlive the document it was computed against -- the
+      // caller debounces its recompute, so a match is always momentarily able
+      // to describe a document version that no longer exists (an edit, or a
+      // Live<->Code toggle to a shorter projection). CodeMirror rejects an
+      // out-of-range selection, and that throw would come out of a passive
+      // effect and take the whole window down. A stale reveal is not worth a
+      // crash, so it does nothing instead.
+      if (match.to > view.state.doc.length) return;
       view.dispatch({
         selection: { anchor: match.from, head: match.to },
         effects: EditorView.scrollIntoView(match.from, { y: 'center' }),

@@ -2,6 +2,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act, createRef, type RefObject } from 'react';
+import { EditorView as CMEditorView } from '@codemirror/view';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
 import { DocumentSession } from '../files/documentSession';
 import { formatForPath } from '../files/fileTypes';
@@ -255,6 +256,14 @@ describe('DocumentView find — Code<->Live toggle (HTML, does not crash)', () =
     // Let the debounced recompute catch up to the new (Live) projection.
     await act(async () => { await new Promise((r) => setTimeout(r, 200)); });
     expect(container.querySelector('.find-count')?.textContent).toBe('1/2');
+    // Not just the count string: the fixture yields 2 matches in BOTH
+    // projections, so '1/2' reads the same whether find recovered or got
+    // permanently stuck on the pre-toggle surface (proven by probe: stamping
+    // `findFor` with `(prev) => prev ?? surface` -- never recovering, never
+    // re-highlighting -- left all toggle assertions passing on count alone).
+    // Only the highlight effect requires the stamps to match, so a stuck
+    // guard yields exactly 0 decorations here.
+    expect(highlightEls(container).length).toBeGreaterThan(0);
   });
 
   it('toggling live -> code with an open, populated find bar does not throw', async () => {
@@ -275,5 +284,49 @@ describe('DocumentView find — Code<->Live toggle (HTML, does not crash)', () =
     await rerender(root, ref, { ...doc, viewMode: 'code' });
     await act(async () => { await new Promise((r) => setTimeout(r, 200)); });
     expect(container.querySelector('.find-count')?.textContent).toBe('1/2');
+    // Same rationale as the code -> live case above: count alone can't tell a
+    // recovered guard from a permanently stuck one when both projections
+    // yield the same match count.
+    expect(highlightEls(container).length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Regression for a second, independent reachable crash: a stale match within
+ * the SAME surface (no toggle at all). `findFor === surface` alone survives
+ * an in-place edit -- `surface` doesn't change identity just because the
+ * document did -- so `findEpoch`/`findForEpoch` is what actually protects
+ * this path. ⌘G/⇧⌘G are always live through the native menu, independent of
+ * whatever the find bar itself is doing, so a user really can press one
+ * inside the ~120ms debounce window after an edit.
+ */
+describe('DocumentView find — stale match after an in-place edit (does not crash)', () => {
+  it('findNext before the debounce settles, right after an edit that removes the matched text, does not throw (Code view)', async () => {
+    const PREFIX = 'a'.repeat(10);
+    // Two matches, both inside the region the edit below deletes -- so
+    // whichever one `findNext()` lands on next is equally stale.
+    const BODY = 'hello world, hello again';
+    const NEAR_END = PREFIX + BODY;
+    const { ref, container: c } = await mount('/tmp/stale-edit.md', NEAR_END, 'code');
+    await act(async () => { ref.current!.openFind(); });
+    await type(c, 'hello'); // settles: 2 matches inside BODY, current = 0
+
+    // Drive a REAL edit through the mounted CodeMirror view -- not a
+    // re-render (CodeView is uncontrolled after mount: the parent remounts
+    // via `key` on file change, so a text-prop-only re-render would not touch
+    // its live content). Delete BODY entirely, shrinking the document down to
+    // just PREFIX -- both matches' positions are now past the new doc end.
+    const cmView = CMEditorView.findFromDOM(c.querySelector('.cm-editor')!)!;
+    await act(async () => {
+      cmView.dispatch({ changes: { from: PREFIX.length, to: NEAR_END.length, insert: '' } });
+    });
+
+    // BEFORE the 120ms debounce settles: ⌘G. `find.matches`/`find.current`
+    // are still the PRE-edit run; `findFor` still equals `surface` (an
+    // in-place edit never changes surface identity), so `findForEpoch` vs the
+    // now-bumped `findEpoch` is the only thing that can catch this. A bare
+    // `await` is the "does not throw" assertion -- a rejection here fails the
+    // test with the underlying error.
+    await act(async () => { ref.current!.findNext(); });
   });
 });

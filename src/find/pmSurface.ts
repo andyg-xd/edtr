@@ -79,6 +79,14 @@ export function pmSurface(view: EditorView): FindSurface {
       view.dispatch(view.state.tr.setMeta(FIND_META, { matches, current }));
     },
     reveal(match) {
+      // A match can outlive the document it was computed against -- the
+      // caller debounces its recompute, so a match is always momentarily
+      // able to describe a document version that no longer exists (an edit,
+      // or a Code<->Live toggle to a shorter projection). `.resolve()` throws
+      // a RangeError on an out-of-bounds position, and that throw would come
+      // out of a passive effect and take the whole window down. A stale
+      // reveal is not worth a crash, so it does nothing instead.
+      if (match.from < 0 || match.to > view.state.doc.content.size) return;
       const { tr } = view.state;
       // `between`, not `create`: `between` resolves whatever it is given to
       // the nearest selectable pair, so reveal cannot throw on an endpoint the

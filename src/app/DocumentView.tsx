@@ -106,6 +106,15 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   // resolves an out-of-range position and throws out of a passive effect,
   // which takes the whole window down.
   const [findFor, setFindFor] = useState<FindSurface | null>(null);
+  // Which document VERSION `find.matches` describes, alongside `findFor`.
+  // `findFor === surface` alone catches a projection swap but not an edit
+  // WITHIN one projection: after an in-place edit, `bumpFindEpoch` only
+  // reschedules the debounced recompute -- `find.matches` stays stale while
+  // `findFor` is still the (unchanged) current surface, so that guard alone
+  // would pass. ⌘G/⇧⌘G are always live through the native menu, so a user can
+  // land on a stale `find.current` inside that window and reveal() a position
+  // the just-edited document no longer has.
+  const [findForEpoch, setFindForEpoch] = useState(-1);
   const [findFocusToken, bumpFindFocus] = useReducer((x: number) => x + 1, 0);
   // Bumped ONLY by a real document change (see the two call sites). Highlighting
   // and revealing must never bump it: both dispatch transactions, so a recompute
@@ -233,43 +242,56 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   // Recompute matches — debounced, and safe to re-run.
   useEffect(() => {
     if (!findOpen || !surface) return;
+    const epoch = findEpoch; // the version this run describes — captured now,
+    // so the timer callback can't read a NEWER value if another edit lands
+    // before it fires (that later edit reschedules its own effect run anyway).
     const timer = setTimeout(() => {
       const run = matchSegments(surface.getSegments(), find.query, { multiline: surface.multiline });
       setFind((prev) => setResult(prev.query, run, surface.cursorPos()));
       setFindFor(surface);
+      setFindForEpoch(epoch);
     }, FIND_DEBOUNCE_MS);
     return () => clearTimeout(timer);
     // `find.query` is compared by reference and setResult carries the same
     // object through, so this cannot re-trigger itself.
   }, [findOpen, surface, find.query, findEpoch]);
 
+  // Matches describe one projection at one document version. Consuming them
+  // against any other is how reveal() resolves a position that no longer
+  // exists and throws out of a passive effect, taking the window down.
+  const findFresh = findFor === surface && findForEpoch === findEpoch;
+
   useEffect(() => {
-    // `findFor !== surface` is the stale-matches guard (see `findFor`'s
-    // declaration): on a Code<->Live toggle, `surface` has already swapped to
-    // the new projection in THIS commit, but `find.matches` is still the old
-    // projection's positions until the debounced recompute lands. Highlighting
-    // those against the new surface is the same class of bug as the reveal()
-    // crash below, just silent instead of throwing.
-    if (!surface || findFor !== surface) return;
+    // `findFresh` is the stale-matches guard: on a Code<->Live toggle,
+    // `surface` has already swapped to the new projection in THIS commit, and
+    // on an in-place edit `findEpoch` has already bumped in this commit too —
+    // in both cases `find.matches` is still the PREVIOUS run's positions until
+    // the debounced recompute lands. Highlighting those against the current
+    // surface/version is the same class of bug as the reveal() crash below,
+    // just silent instead of throwing.
+    if (!surface || !findFresh) return;
     // Clearing is guaranteed by `clear()` emptying `matches` in the same render
     // that closes the bar -- no separate close branch is needed, and one would
     // be redundant. The user-visible guarantee is covered by the
     // 'closes on Escape and clears its highlights' test.
     surface.highlight(find.matches, find.current);
-  }, [surface, findFor, find.matches, find.current]);
+  }, [surface, findFresh, find.matches, find.current]);
 
   // Reveal the current match — incremental search scrolls to it as the user types.
   useEffect(() => {
     // Same stale-matches guard as the highlight effect above: without it, a
-    // Code<->Live toggle resolves a source offset against the Live doc (or
-    // vice versa), which is out of range and throws — this is the exact crash
-    // the regression test below reproduces.
-    if (!findOpen || !surface || findFor !== surface) return;
+    // Code<->Live toggle OR an in-place edit (⌘G before the debounce settles)
+    // resolves a position the current projection/version doesn't have, which
+    // is out of range and throws — this is the exact crash the regression
+    // tests below reproduce. `reveal()` itself also bounds-checks (defense in
+    // depth, see pmSurface.ts/codeSurface.ts) — this guard is what keeps a
+    // stale match from being shown at all, not just from crashing.
+    if (!findOpen || !surface || !findFresh) return;
     const match = currentMatch(find);
     if (match) surface.reveal(match);
     // Deps are the current match's identity, not `find` — revealing must not
     // re-run for an unrelated state change.
-  }, [findOpen, surface, findFor, find.current, find.matches]);
+  }, [findOpen, surface, findFresh, find.current, find.matches]);
 
   const openFind = useCallback(() => {
     const selected = surfaceRef.current?.selectedText() ?? '';
@@ -284,20 +306,22 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   const closeFind = useCallback(() => {
     setFindOpen(false);
     setFind((prev) => clearFind(prev));
-    // Stamp the CURRENT surface (not null) alongside the query clear: `null`
-    // would make the highlight effect's `findFor !== surface` guard trip on
-    // every close too, since a surface is never `=== null` — which blocks the
-    // very `highlight([], -1)` call that clears what's on screen. What
-    // actually prevents a reopened bar from briefly consuming a stale run is
-    // `clearFind` emptying `matches` in this same commit, not the specific
-    // value stamped here; stamping the current surface keeps that guarantee
-    // AND lets the effect run once more to clear the display.
+    // Stamp BOTH to their current values (not e.g. null/-1): a stamp that
+    // can never match `findFresh` would make the highlight effect's guard
+    // trip on every close too, since it would never equal the live surface or
+    // epoch — which blocks the very `highlight([], -1)` call that clears
+    // what's on screen. What actually prevents a reopened bar from briefly
+    // consuming a stale run is `clearFind` emptying `matches` in this same
+    // commit, not the specific values stamped here; stamping the current
+    // surface/epoch keeps that guarantee AND lets the effect run once more to
+    // clear the display.
     setFindFor(surfaceRef.current);
+    setFindForEpoch(findEpoch);
     // Closing must never leave focus nowhere — losing focus is part of what
     // made CodeMirror's panel feel unclosable. The cursor is already at the
     // current match, because reveal selected it.
     surfaceRef.current && (showLive ? liveView?.focus() : codeView?.focus());
-  }, [showLive, liveView, codeView]);
+  }, [showLive, liveView, codeView, findEpoch]);
 
   const goNext = useCallback(() => setFind((prev) => nextMatch(prev)), []);
   const goPrev = useCallback(() => setFind((prev) => prevMatch(prev)), []);
