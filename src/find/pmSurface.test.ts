@@ -116,9 +116,7 @@ describe('pmSurface', () => {
     expect(pmSurface(v).selectedText()).toBe('');
   });
 
-  it('survives a match whose endpoints are not both plain text positions', () => {
-    // A match that spans an excluded image has endpoints PM may not accept as
-    // a strict TextSelection. It must not throw — find has to keep working.
+  it('maps and reveals a match that spans an excluded atom', () => {
     const doc = s.node('doc', null, [
       s.node('paragraph', { blockId: 'b0' }, [
         s.text('ca'), s.node('image', { src: 'x.png' }), s.text('t'),
@@ -131,7 +129,10 @@ describe('pmSurface', () => {
     });
     const surface = pmSurface(view);
     const run = matchSegments(surface.getSegments(), { ...emptyQuery, text: 'cat' }, { multiline: false });
-    expect(run.matches.length).toBe(1);
+    // The image contributes no text but DOES occupy a position, so the match's
+    // end is past where plain string arithmetic would put it. That offset is
+    // what the map exists to get right, and it is what this test guards.
+    expect(run.matches).toEqual([{ from: 1, to: 5 }]);
     expect(() => {
       surface.highlight(run.matches, 0);
       surface.reveal(run.matches[0]);

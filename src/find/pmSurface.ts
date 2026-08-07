@@ -80,9 +80,14 @@ export function pmSurface(view: EditorView): FindSurface {
     },
     reveal(match) {
       const { tr } = view.state;
-      // `between`, not `create`: a match spanning an excluded atom can have
-      // endpoints that are not both valid text positions, and `between`
-      // resolves to the nearest selectable pair instead of throwing.
+      // `between`, not `create`: `between` resolves whatever it is given to
+      // the nearest selectable pair, so reveal cannot throw on an endpoint the
+      // schema will not accept as a text selection. For the matches
+      // flattenBlocks produces today, both endpoints always land in inline
+      // content and `create` would accept them too -- this is tolerance we are
+      // not currently relying on, kept because reveal must never be the thing
+      // that breaks find. (Verified empirically: a match spanning an inline
+      // image resolves to endpoints `create` accepts.)
       const selection = TextSelection.between(
         tr.doc.resolve(match.from),
         tr.doc.resolve(match.to),
