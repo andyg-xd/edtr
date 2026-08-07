@@ -13,6 +13,7 @@ import { splitCommand, softBreakCommand } from '../commands/markdownStructureCom
 import { goToNextCell, arrowVertical } from '../commands/markdownTableCommands';
 import { writeImageIntoAssets, resolveImageDisplaySrc } from '../files/imageAssets';
 import { insertImage, canInsertImage } from '../commands/markdownInlineCommands';
+import { findDecorationsPlugin } from '../find/pmSurface';
 
 interface LiveViewProps {
   doc: PMNode;
@@ -74,8 +75,12 @@ export function LiveView({
           keymap(baseKeymap),
           blockIdentityPlugin(),
           dirtyTrackingPlugin(),
+          // Find highlighting. Decoration only — it cannot change the document.
+          findDecorationsPlugin(),
         ]
-      : [];
+      // Find must work in a read-only view too, so the plugin is present here
+      // as well: an empty list means no decorations at all.
+      : [findDecorationsPlugin()];
     const view = new EditorView(host.current, {
       state: EditorState.create({ doc, schema: liveSchema, plugins }),
       editable: () => editable,

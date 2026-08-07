@@ -82,6 +82,23 @@ describe('LiveView', () => {
     });
     expect(onStateChange.mock.calls.length).toBeGreaterThan(before);
   });
+
+  it('installs find highlighting in both editable and read-only views', async () => {
+    for (const editable of [true, false]) {
+      const seen: Array<unknown> = [];
+      const c = document.createElement('div');
+      document.body.appendChild(c);
+      const root = createRoot(c);
+      await act(async () => root.render(
+        <LiveView doc={docFor('hello world\n')} editable={editable} onViewReady={(v) => { if (v) seen.push(v); }} />,
+      ));
+      const view = seen[0] as { state: { plugins: Array<{ spec: { key?: unknown } }> } };
+      const hasFind = view.state.plugins.some((p) => String((p as { key?: string }).key ?? '').includes('edtrFind'));
+      expect(hasFind, `editable=${editable}`).toBe(true);
+      await act(async () => root.unmount());
+      c.remove();
+    }
+  });
 });
 
 function editState(src: string) {

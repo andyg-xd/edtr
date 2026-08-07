@@ -1,0 +1,93 @@
+import { Plugin, PluginKey, TextSelection } from 'prosemirror-state';
+import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
+import { flattenBlocks } from './flattenBlocks';
+import type { FindMatch, FindSurface } from './types';
+
+interface FindDecoState {
+  deco: DecorationSet;
+}
+
+const findKey = new PluginKey<FindDecoState>('edtrFind');
+
+/** Transaction meta carrying a new highlight set. Meta only — never a step. */
+const FIND_META = 'edtrFindHighlights';
+
+/**
+ * Holds find highlights as ProseMirror decorations.
+ *
+ * Decorations are view-level: this plugin never changes the document, and a
+ * highlight transaction carries meta and no steps, so `tr.docChanged` is false
+ * and dirtyTracking — which returns its previous value unless the doc changed —
+ * cannot see it. That invariant is asserted by test, not assumed (design §6).
+ *
+ * Install it in BOTH the editable and read-only plugin lists: find must work in
+ * a read-only HTML preview, and an empty plugin list means no decorations.
+ */
+export function findDecorationsPlugin(): Plugin<FindDecoState> {
+  return new Plugin<FindDecoState>({
+    key: findKey,
+    state: {
+      init: () => ({ deco: DecorationSet.empty }),
+      apply(tr, value) {
+        const payload = tr.getMeta(FIND_META) as
+          | { matches: FindMatch[]; current: number }
+          | undefined;
+        if (payload) {
+          const { matches, current } = payload;
+          return {
+            deco: DecorationSet.create(
+              tr.doc,
+              matches.map((m, i) => Decoration.inline(m.from, m.to, {
+                class: i === current ? 'edtr-find edtr-find-current' : 'edtr-find',
+              })),
+            ),
+          };
+        }
+        // Map through document changes so highlights follow their text rather
+        // than pointing at whatever has since moved into those positions.
+        return { deco: value.deco.map(tr.mapping, tr.doc) };
+      },
+    },
+    props: {
+      decorations: (state) => findKey.getState(state)?.deco ?? DecorationSet.empty,
+    },
+  });
+}
+
+/**
+ * Find over a Live view — Markdown or HTML, the SAME code for both. That
+ * sharing is why HTML Live costs almost nothing beyond excluding its verbatim
+ * regions, and it is the design's main load-bearing claim (§5.2). Do not add an
+ * HTML-specific branch here.
+ *
+ * Searches the VISIBLE text, flattened per top-level block: in Live view the
+ * user would otherwise be searching bytes they cannot see (`**`, tags,
+ * attribute text), and a highlight could land inside markup with no visual
+ * counterpart.
+ */
+export function pmSurface(view: EditorView): FindSurface {
+  return {
+    // Per-block segments ⇒ ^/$ anchor to BLOCKS here (design §5.3).
+    multiline: false,
+    getSegments: () => flattenBlocks(view.state.doc),
+    cursorPos: () => view.state.selection.head,
+    selectedText() {
+      const { from, to, empty } = view.state.selection;
+      return empty ? '' : view.state.doc.textBetween(from, to, '\n', '\n');
+    },
+    highlight(matches, current) {
+      view.dispatch(view.state.tr.setMeta(FIND_META, { matches, current }));
+    },
+    reveal(match) {
+      const { tr } = view.state;
+      // `between`, not `create`: a match spanning an excluded atom can have
+      // endpoints that are not both valid text positions, and `between`
+      // resolves to the nearest selectable pair instead of throwing.
+      const selection = TextSelection.between(
+        tr.doc.resolve(match.from),
+        tr.doc.resolve(match.to),
+      );
+      view.dispatch(tr.setSelection(selection).scrollIntoView());
+    },
+  };
+}

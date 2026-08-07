@@ -16,6 +16,7 @@ import {
   toggleStrong, toggleEm, toggleUnderline, insertImage, canInsertImage,
 } from '../commands/htmlInlineCommands';
 import { writeImageIntoAssets, resolveImageDisplaySrc } from '../files/imageAssets';
+import { findDecorationsPlugin } from '../find/pmSurface';
 
 /**
  * Edit-only fallback so an UNSTYLED table (e.g. one the user just inserted) is
@@ -28,6 +29,17 @@ import { writeImageIntoAssets, resolveImageDisplaySrc } from '../files/imageAsse
 const TABLE_EDIT_AFFORDANCE_CSS =
   'table{border-collapse:collapse}' +
   'th,td{border:1px solid rgba(128,128,128,0.4);min-width:2.5em;padding:0.25em 0.5em}';
+
+/**
+ * Find highlighting for the shadow render. `findbar.css` cannot reach inside a
+ * shadow root, so the same two rules are injected here — appended LAST, after
+ * the file's own <style>, because a highlight the file's CSS can override is no
+ * highlight at all. Custom properties inherit across the shadow boundary, so
+ * these still resolve to Edtr's themed tokens.
+ */
+const FIND_HIGHLIGHT_CSS =
+  '.edtr-find{background:var(--find-match-bg);border-radius:var(--radius-sm)}' +
+  '.edtr-find-current{background:var(--find-current-bg);color:var(--find-current-fg)}';
 
 /**
  * Browser-default reset for the shadow render, injected FIRST (lowest priority)
@@ -125,6 +137,12 @@ export function HtmlLiveView({
     style.textContent = styleText.replace(/:root\b/g, ':host');
     shadow.appendChild(style);
 
+    // Appended after the file's style so the file cannot override a highlight.
+    const findStyle = document.createElement('style');
+    findStyle.setAttribute('data-edtr-find', '');
+    findStyle.textContent = FIND_HIGHLIGHT_CSS;
+    shadow.appendChild(findStyle);
+
     const applyAttrs = (el: Element, attrs: Record<string, string>) => {
       for (const [k, v] of Object.entries(safeAttrs(attrs))) {
         try { el.setAttribute(k, v); } catch { /* invalid attr name — skip */ }
@@ -159,8 +177,12 @@ export function HtmlLiveView({
           keymap(baseKeymap),
           blockIdentityPlugin(),
           dirtyTrackingPlugin(),
+          // Find highlighting. Decoration only — it cannot change the document.
+          findDecorationsPlugin(),
         ]
-      : [];
+      // Find must work in a read-only view too, so the plugin is present here
+      // as well: an empty list means no decorations at all.
+      : [findDecorationsPlugin()];
 
     const view = new EditorView(bodyEl, {
       state: EditorState.create({ doc, schema: htmlSchema, plugins }),

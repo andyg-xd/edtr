@@ -128,6 +128,21 @@ describe('HtmlLiveView', () => {
     expect(css).toContain(':host{--accent:red}');
     expect(css).not.toContain(':root');
   });
+
+  it('injects find-highlight CSS AFTER the file style, using tokens not literals', async () => {
+    // A highlight the file's own CSS can override is no highlight at all — and
+    // findbar.css cannot cross the shadow boundary, hence the injection.
+    const res = toLiveHtml('<html><body><p>hi</p></body></html>');
+    if (!res.ok) throw new Error('expected ok');
+    const c = await render(<HtmlLiveView doc={res.doc} styleText="p { color: red }" />);
+    const shadow = (c.querySelector('.html-live-view') as HTMLElement).shadowRoot!;
+    const styles = Array.from(shadow.querySelectorAll('style'));
+    const findIndex = styles.findIndex((s) => s.hasAttribute('data-edtr-find'));
+    const fileIndex = styles.findIndex((s) => (s.textContent ?? '').includes('color: red'));
+    expect(findIndex).toBeGreaterThan(fileIndex);
+    expect(styles[findIndex].textContent).toContain('var(--find-match-bg)');
+    expect(styles[findIndex].textContent).not.toMatch(/#[0-9a-f]{3,8}|rgba?\(/i);
+  });
 });
 
 type MountedRoot = { container: HTMLDivElement; root: ReturnType<typeof createRoot> };
