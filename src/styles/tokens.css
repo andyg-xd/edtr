@@ -49,6 +49,13 @@
   --overlay: rgba(0, 0, 0, 0.3);
   --shadow: rgba(0, 0, 0, 0.2);
 
+  /* Find highlighting. All matches at 32% accent, the current match solid
+     (design §4). Literals live here because tokens.css is the only file
+     allowed to hold a colour — a component-level rgba() fails tokens.test.ts. */
+  --find-match-bg: rgba(163, 100, 21, 0.32);
+  --find-current-bg: #a36415;
+  --find-current-fg: #ffffff;
+
   /* Spacing scale — replaces 12+ ad-hoc padding combinations. */
   --space-1: 2px;
   --space-2: 4px;
@@ -120,6 +127,10 @@
   --th-bg: rgba(255, 255, 255, 0.05);
   --overlay: rgba(0, 0, 0, 0.5);
   --shadow: rgba(0, 0, 0, 0.55);
+
+  --find-match-bg: rgba(228, 146, 46, 0.32);
+  --find-current-bg: #e4922e;
+  --find-current-fg: #1a1008;
 }
 
 /* Respect the OS "reduce motion" setting. Collapsing the duration tokens here

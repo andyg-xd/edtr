@@ -1,0 +1,79 @@
+/* Find bar — a flex child of .doc-pane between the ribbon and the canvas, so
+   opening it SHIFTS the canvas down rather than covering text (design §4).
+   `flex: none` against the views' `flex: 1` is what produces the shift. */
+.find-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  flex: none;
+}
+
+.find-input {
+  flex: 1;
+  min-width: 0;
+  max-width: 22rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--text-base);
+}
+
+.find-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Fixed width so the bar's controls don't shuffle sideways as the count
+   changes between '1/7', 'No results', and 'Invalid pattern'. */
+.find-count {
+  min-width: 8em;
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+/* The × CodeMirror's panel never gave us: an explicit colour in both themes.
+   Its base theme sets background and font to `inherit` but never `color`, so
+   its × renders UA-default black on the dark panel — present, 10x18px, and
+   invisible. That defect is what started this phase. */
+.find-prev,
+.find-next,
+.find-toggle,
+.find-close {
+  padding: var(--space-1) var(--space-3);
+  color: var(--fg);
+}
+
+.find-toggle {
+  font-size: var(--text-sm);
+  min-width: 2.2em;
+}
+
+.find-toggle.is-active {
+  background: var(--seg-active-bg);
+  border-color: var(--accent-border);
+  color: var(--seg-active-fg);
+}
+
+/* Match highlighting, shared by both engines. CodeMirror decorations land in
+   the light DOM so these selectors reach them; HTML Live's ProseMirror runs in
+   a shadow root that this stylesheet cannot cross, so HtmlLiveView injects the
+   same two rules into its shadow (custom properties DO inherit across the
+   boundary, so the tokens still resolve there). */
+.cm-edtr-find,
+.edtr-find {
+  background: var(--find-match-bg);
+  border-radius: var(--radius-sm);
+}
+
+.cm-edtr-find-current,
+.edtr-find-current {
+  background: var(--find-current-bg);
+  color: var(--find-current-fg);
+}
