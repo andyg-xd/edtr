@@ -26,7 +26,6 @@ export const emptyFindState: FindState = {
  * past the last one.
  */
 export function setResult(
-  state: FindState,
   query: FindQuery,
   run: MatchRun,
   cursorPos = 0,

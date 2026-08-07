@@ -16,35 +16,35 @@ const run = (froms: number[], over: Partial<MatchRun> = {}): MatchRun => ({
 describe('setResult', () => {
   it('starts at the first match at or after the cursor', () => {
     // Search starts where the user is looking, not at the top of the file.
-    const s = setResult(emptyFindState, q({ text: 'a' }), run([0, 10, 20]), 10);
+    const s = setResult(q({ text: 'a' }), run([0, 10, 20]), 10);
     expect(s.current).toBe(1);
   });
 
   it('wraps to the first match when the cursor is past the last one', () => {
-    const s = setResult(emptyFindState, q({ text: 'a' }), run([0, 10]), 99);
+    const s = setResult(q({ text: 'a' }), run([0, 10]), 99);
     expect(s.current).toBe(0);
   });
 
   it('starts at the top when no cursor is given', () => {
-    expect(setResult(emptyFindState, q({ text: 'a' }), run([5, 9])).current).toBe(0);
+    expect(setResult(q({ text: 'a' }), run([5, 9])).current).toBe(0);
   });
 
   it('has no current match when nothing matched', () => {
-    const s = setResult(emptyFindState, q({ text: 'zz' }), run([]));
+    const s = setResult(q({ text: 'zz' }), run([]));
     expect(s.current).toBe(-1);
     expect(currentMatch(s)).toBeNull();
   });
 
   it('carries capped and invalid through', () => {
-    const s = setResult(emptyFindState, q({ text: '(' }), run([], { invalid: true }));
+    const s = setResult(q({ text: '(' }), run([], { invalid: true }));
     expect(s.invalid).toBe(true);
-    const c = setResult(emptyFindState, q({ text: 'a' }), run([0], { capped: true }));
+    const c = setResult(q({ text: 'a' }), run([0], { capped: true }));
     expect(c.capped).toBe(true);
   });
 });
 
 describe('next / prev', () => {
-  const base = setResult(emptyFindState, q({ text: 'a' }), run([0, 10, 20]));
+  const base = setResult(q({ text: 'a' }), run([0, 10, 20]));
 
   it('advances', () => {
     expect(next(base).current).toBe(1);
@@ -59,7 +59,7 @@ describe('next / prev', () => {
   });
 
   it('does nothing when there are no matches', () => {
-    const none = setResult(emptyFindState, q({ text: 'z' }), run([]));
+    const none = setResult(q({ text: 'z' }), run([]));
     expect(next(none)).toBe(none);
     expect(prev(none)).toBe(none);
   });
@@ -67,7 +67,7 @@ describe('next / prev', () => {
 
 describe('clear', () => {
   it('drops the matches but keeps the query, so reopening keeps the term', () => {
-    const s = setResult(emptyFindState, q({ text: 'a' }), run([0, 10]));
+    const s = setResult(q({ text: 'a' }), run([0, 10]));
     const c = clear(s);
     expect(c.matches).toEqual([]);
     expect(c.current).toBe(-1);
@@ -77,16 +77,16 @@ describe('clear', () => {
 
 describe('countLabel', () => {
   it('shows position out of total', () => {
-    expect(countLabel(setResult(emptyFindState, q({ text: 'a' }), run([0, 10, 20])))).toBe('1/3');
+    expect(countLabel(setResult(q({ text: 'a' }), run([0, 10, 20])))).toBe('1/3');
   });
 
   it('says No results in plain language', () => {
-    expect(countLabel(setResult(emptyFindState, q({ text: 'z' }), run([])))).toBe('No results');
+    expect(countLabel(setResult(q({ text: 'z' }), run([])))).toBe('No results');
   });
 
   it('says Invalid pattern rather than No results', () => {
     // These are different problems and the user fixes them differently.
-    expect(countLabel(setResult(emptyFindState, q({ text: '(' }), run([], { invalid: true }))))
+    expect(countLabel(setResult(q({ text: '(' }), run([], { invalid: true }))))
       .toBe('Invalid pattern');
   });
 
@@ -95,7 +95,7 @@ describe('countLabel', () => {
   });
 
   it('marks a capped total with a trailing +', () => {
-    const s = setResult(emptyFindState, q({ text: 'a' }), run([0, 10], { capped: true }));
+    const s = setResult(q({ text: 'a' }), run([0, 10], { capped: true }));
     expect(countLabel(s)).toBe('1/2+');
   });
 });
