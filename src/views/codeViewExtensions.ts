@@ -8,12 +8,13 @@ import {
 } from '@codemirror/view';
 import { history, historyKeymap, defaultKeymap } from '@codemirror/commands';
 import { bracketMatching, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
-import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+import { highlightSelectionMatches, selectNextOccurrence, selectSelectionMatches } from '@codemirror/search';
 import { markdown } from '@codemirror/lang-markdown';
 import { html } from '@codemirror/lang-html';
 import type { EditorFormat } from '../files/fileTypes';
 import { darkEditorTheme, darkHighlightStyle } from './codeTheme';
 import type { EffectiveTheme } from '../settings/theme';
+import { findHighlightField } from '../find/codeSurface';
 
 function languageExtension(format: EditorFormat): Extension {
   // Disable the language packs' own format-on-type: markdown's addKeymap
@@ -50,6 +51,10 @@ export function themeExtensionFor(effective: EffectiveTheme): Extension {
  * false }) removes the Enter→markup-continuation and Backspace→delete-markup
  * bindings; html({ autoCloseTags: false }) removes the auto-closing-tag input
  * handler. The inert contract (§5.1) holds across all formats.
+ *
+ * CodeMirror's own search panel is never installed and never opened (search()
+ * is absent, and nothing here calls openSearchPanel) — so its invisible close
+ * button (6c-i-a's motivating defect) can never appear.
  */
 export function buildCodeViewExtensions(
   format: EditorFormat,
@@ -66,6 +71,23 @@ export function buildCodeViewExtensions(
     themeCompartment.of(themeExtensionFor(effective)),
     EditorState.lineSeparator.of('\n'),
     languageExtension(format),
-    keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+    // Find highlighting, installed at construction: a StateField cannot join a
+    // running editor without appendConfig, and configuring an editor at runtime
+    // is the kind of thing that works until it doesn't.
+    findHighlightField,
+    // CodeMirror's searchKeymap is REPLACED by an explicit selection, not
+    // dropped wholesale, so nothing disappears by accident (design §5.6).
+    // Dropped: Mod-f (the native Edit menu owns it), Mod-g / Shift-Mod-g / F3
+    // (they navigate CodeMirror's internal query, which our bar never sets),
+    // Escape (our bar owns it), Mod-Alt-g (go to line is a non-goal, and its
+    // dialog ships the same unstyled buttons this phase removes). Kept: Mod-d
+    // and Mod-Shift-l, which work off the selection and are unrelated to the
+    // panel — dropping them would silently remove shortcuts that work today.
+    keymap.of([
+      ...defaultKeymap,
+      ...historyKeymap,
+      { key: 'Mod-d', run: selectNextOccurrence, preventDefault: true },
+      { key: 'Mod-Shift-l', run: selectSelectionMatches, preventDefault: true },
+    ]),
   ];
 }

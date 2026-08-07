@@ -34,3 +34,23 @@ describe('CodeView theme reconfigure', () => {
     expect(after).toBe(before);
   });
 });
+
+describe('CodeView onViewReady', () => {
+  it('reports its EditorView on mount and null on unmount', async () => {
+    const seen: Array<unknown> = [];
+    const { root } = await mount(
+      <CodeView
+        initialText={'x\n'}
+        format="markdown"
+        effectiveTheme="light"
+        onChange={() => {}}
+        onViewReady={(v) => seen.push(v)}
+      />,
+    );
+    expect(seen.length).toBe(1);
+    expect(seen[0]).toBeTruthy();
+    await act(async () => root.unmount());
+    // Null LAST, before destroy — a consumer must never hold a destroyed view.
+    expect(seen[seen.length - 1]).toBeNull();
+  });
+});

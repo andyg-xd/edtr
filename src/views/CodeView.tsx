@@ -15,6 +15,8 @@ interface CodeViewProps {
    * transaction that moves the caret or changes the doc (status bar, 6d-ii).
    */
   onCursorChange?: (line: number, column: number) => void;
+  /** Reports the EditorView on mount, and null on unmount — lets the parent drive find. */
+  onViewReady?: (view: EditorView | null) => void;
 }
 
 /**
@@ -24,13 +26,15 @@ interface CodeViewProps {
  * place via themeCompartment.reconfigure when `effectiveTheme` changes — no
  * remount, so cursor/selection/history survive a theme toggle.
  */
-export function CodeView({ initialText, format, effectiveTheme, onChange, onCursorChange }: CodeViewProps) {
+export function CodeView({ initialText, format, effectiveTheme, onChange, onCursorChange, onViewReady }: CodeViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const onCursorChangeRef = useRef(onCursorChange);
   onCursorChangeRef.current = onCursorChange;
+  const onViewReadyRef = useRef(onViewReady);
+  onViewReadyRef.current = onViewReady;
   // Read the latest theme inside the mount-once effect without re-running it.
   const themeRef = useRef(effectiveTheme);
   themeRef.current = effectiveTheme;
@@ -58,7 +62,9 @@ export function CodeView({ initialText, format, effectiveTheme, onChange, onCurs
     });
     viewRef.current = view;
     reportCursor(view.state); // initial caret position (Ln 1, Col 1 on a fresh doc)
+    onViewReadyRef.current?.(view);
     return () => {
+      onViewReadyRef.current?.(null);
       view.destroy();
       viewRef.current = null;
     };

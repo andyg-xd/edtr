@@ -3,7 +3,9 @@ import { describe, it, expect } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
+import { selectNextOccurrence } from '@codemirror/search';
 import { buildCodeViewExtensions, themeCompartment, themeExtensionFor } from './codeViewExtensions';
+import { findHighlightField } from '../find/codeSurface';
 
 describe('buildCodeViewExtensions', () => {
   it('round-trips \\n text unchanged (lineSeparator is \\n)', () => {
@@ -61,5 +63,44 @@ describe('theme compartment', () => {
     const effect = themeCompartment.reconfigure(themeExtensionFor('dark'));
     const next = state.update({ effects: effect }).state;
     expect(next.doc.toString()).toBe('x\n'); // reconfigure is content-preserving
+  });
+});
+
+describe('CodeMirror search disposition (6c-i-a §5.6)', () => {
+  const bindings = () =>
+    EditorState.create({ extensions: buildCodeViewExtensions('markdown') })
+      .facet(keymap)
+      .flat() as Array<{ key?: string; run?: unknown }>;
+
+  const boundKeys = () => bindings().map((b) => b.key).filter(Boolean) as string[];
+
+  it('does NOT bind Mod-f — the native Edit menu owns it', () => {
+    // macOS offers a key equivalent to the menu FIRST, so a webview binding
+    // would never fire; binding it in both places double-handles.
+    expect(boundKeys()).not.toContain('Mod-f');
+  });
+
+  it('does NOT bind Mod-g or Shift-Mod-g to CodeMirror find', () => {
+    // These read CodeMirror's internal query, which our bar never sets — they
+    // would navigate a different search than the one on screen.
+    expect(boundKeys()).not.toContain('Mod-g');
+    expect(boundKeys()).not.toContain('Shift-Mod-g');
+  });
+
+  it('does NOT bind Mod-Alt-g (go to line is a non-goal)', () => {
+    expect(boundKeys()).not.toContain('Mod-Alt-g');
+  });
+
+  it('KEEPS Mod-d and Mod-Shift-l — they work off the selection', () => {
+    const keys = boundKeys();
+    expect(keys).toContain('Mod-d');
+    expect(keys).toContain('Mod-Shift-l');
+    const runs = bindings().filter((b) => b.key === 'Mod-d').map((b) => b.run);
+    expect(runs).toContain(selectNextOccurrence);
+  });
+
+  it('installs the find-highlight field so it never needs appendConfig', () => {
+    const state = EditorState.create({ doc: 'abc', extensions: buildCodeViewExtensions('markdown') });
+    expect(state.field(findHighlightField, false)).toBeDefined();
   });
 });
