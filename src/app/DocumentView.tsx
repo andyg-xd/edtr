@@ -96,6 +96,16 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   const [codeView, setCodeView] = useState<CMEditorView | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [find, setFind] = useState<FindState>(emptyFindState);
+  // Which surface produced `find.matches`. A Code<->Live toggle deliberately
+  // KEEPS the query and the open bar (design §5.4), but the matches are
+  // document positions belonging to the projection that produced them -- a
+  // source offset means nothing in the Live doc, and vice versa. `surface`
+  // swaps identity in the same commit as the toggle, while the recompute is a
+  // debounce behind, so anything that consumes matches must first check that
+  // they belong to the surface it is about to touch. Without this, reveal()
+  // resolves an out-of-range position and throws out of a passive effect,
+  // which takes the whole window down.
+  const [findFor, setFindFor] = useState<FindSurface | null>(null);
   const [findFocusToken, bumpFindFocus] = useReducer((x: number) => x + 1, 0);
   // Bumped ONLY by a real document change (see the two call sites). Highlighting
   // and revealing must never bump it: both dispatch transactions, so a recompute
@@ -226,6 +236,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     const timer = setTimeout(() => {
       const run = matchSegments(surface.getSegments(), find.query, { multiline: surface.multiline });
       setFind((prev) => setResult(prev.query, run, surface.cursorPos()));
+      setFindFor(surface);
     }, FIND_DEBOUNCE_MS);
     return () => clearTimeout(timer);
     // `find.query` is compared by reference and setResult carries the same
@@ -233,22 +244,32 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   }, [findOpen, surface, find.query, findEpoch]);
 
   useEffect(() => {
-    if (!surface) return;
+    // `findFor !== surface` is the stale-matches guard (see `findFor`'s
+    // declaration): on a Code<->Live toggle, `surface` has already swapped to
+    // the new projection in THIS commit, but `find.matches` is still the old
+    // projection's positions until the debounced recompute lands. Highlighting
+    // those against the new surface is the same class of bug as the reveal()
+    // crash below, just silent instead of throwing.
+    if (!surface || findFor !== surface) return;
     // Clearing is guaranteed by `clear()` emptying `matches` in the same render
     // that closes the bar -- no separate close branch is needed, and one would
-    // be unreachable. The user-visible guarantee is covered by the
+    // be redundant. The user-visible guarantee is covered by the
     // 'closes on Escape and clears its highlights' test.
     surface.highlight(find.matches, find.current);
-  }, [surface, find.matches, find.current]);
+  }, [surface, findFor, find.matches, find.current]);
 
   // Reveal the current match — incremental search scrolls to it as the user types.
   useEffect(() => {
-    if (!findOpen || !surface) return;
+    // Same stale-matches guard as the highlight effect above: without it, a
+    // Code<->Live toggle resolves a source offset against the Live doc (or
+    // vice versa), which is out of range and throws — this is the exact crash
+    // the regression test below reproduces.
+    if (!findOpen || !surface || findFor !== surface) return;
     const match = currentMatch(find);
     if (match) surface.reveal(match);
     // Deps are the current match's identity, not `find` — revealing must not
     // re-run for an unrelated state change.
-  }, [findOpen, surface, find.current, find.matches]);
+  }, [findOpen, surface, findFor, find.current, find.matches]);
 
   const openFind = useCallback(() => {
     const selected = surfaceRef.current?.selectedText() ?? '';
@@ -263,6 +284,15 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   const closeFind = useCallback(() => {
     setFindOpen(false);
     setFind((prev) => clearFind(prev));
+    // Stamp the CURRENT surface (not null) alongside the query clear: `null`
+    // would make the highlight effect's `findFor !== surface` guard trip on
+    // every close too, since a surface is never `=== null` — which blocks the
+    // very `highlight([], -1)` call that clears what's on screen. What
+    // actually prevents a reopened bar from briefly consuming a stale run is
+    // `clearFind` emptying `matches` in this same commit, not the specific
+    // value stamped here; stamping the current surface keeps that guarantee
+    // AND lets the effect run once more to clear the display.
+    setFindFor(surfaceRef.current);
     // Closing must never leave focus nowhere — losing focus is part of what
     // made CodeMirror's panel feel unclosable. The cursor is already at the
     // current match, because reveal selected it.

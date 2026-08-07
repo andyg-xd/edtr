@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createRoot } from 'react-dom/client';
-import { act, createRef } from 'react';
+import { act, createRef, type RefObject } from 'react';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
 import { DocumentSession } from '../files/documentSession';
 import { formatForPath } from '../files/fileTypes';
@@ -83,7 +83,10 @@ function makeDoc(path: string, text: string, viewMode: ViewMode): OpenDoc {
   return { id: 'find-test-doc', session, viewMode };
 }
 
-async function mount(path: string, text: string, viewMode: ViewMode) {
+async function mount(
+  path: string, text: string, viewMode: ViewMode,
+  onDirtyChange: (dirty: boolean) => void = () => {},
+) {
   container = document.createElement('div');
   document.body.appendChild(container);
   const ref = createRef<DocumentViewHandle>();
@@ -93,10 +96,22 @@ async function mount(path: string, text: string, viewMode: ViewMode) {
   await act(async () => root.render(
     <DocumentView
       ref={ref} doc={doc} effectiveTheme="light"
-      onDirtyChange={() => {}} onLiveAvailableChange={() => {}} onError={() => {}}
+      onDirtyChange={onDirtyChange} onLiveAvailableChange={() => {}} onError={() => {}}
     />,
   ));
   return { ref, doc, container: container! };
+}
+
+/** Re-render the SAME root with a new `doc` -- the exact shape of a real
+ * Code<->Live toggle (EditorWindow flips `doc.viewMode`, not `DocumentView`'s
+ * `key`; see EditorWindow.tsx's `key={`${active.id}:${activeNonce}`}`). */
+async function rerender(root: ReturnType<typeof createRoot>, ref: RefObject<DocumentViewHandle | null>, doc: OpenDoc) {
+  await act(async () => root.render(
+    <DocumentView
+      ref={ref} doc={doc} effectiveTheme="light"
+      onDirtyChange={() => {}} onLiveAvailableChange={() => {}} onError={() => {}}
+    />,
+  ));
 }
 
 const bar = (c: HTMLElement) => c.querySelector('.find-bar');
@@ -107,11 +122,17 @@ const field = (c: HTMLElement) => c.querySelector<HTMLInputElement>('.find-input
  * both mount directly into the light DOM; HTML Live renders ProseMirror inside
  * a shadow root (see `HtmlLiveView.test.tsx`), so its highlights live there
  * instead — the find bar itself stays in the light DOM for all three cases.
+ *
+ * Substring match, not an exact class token: `codeSurface`'s current-match
+ * decoration carries ONLY `cm-edtr-find-current` (never also `cm-edtr-find`),
+ * so an exact `.cm-edtr-find` selector counts ordinary Code-view matches but
+ * silently misses the current one — a regression that cleared ordinary
+ * highlights while leaving the current one behind would pass unnoticed.
  */
 function highlightEls(c: HTMLElement): Element[] {
-  const light = Array.from(c.querySelectorAll('.cm-edtr-find, .edtr-find'));
+  const light = Array.from(c.querySelectorAll('[class*="cm-edtr-find"], [class*="edtr-find"]'));
   const shadow = c.querySelector('.html-live-view')?.shadowRoot;
-  const inShadow = shadow ? Array.from(shadow.querySelectorAll('.edtr-find')) : [];
+  const inShadow = shadow ? Array.from(shadow.querySelectorAll('[class*="edtr-find"]')) : [];
   return [...light, ...inShadow];
 }
 
@@ -162,9 +183,12 @@ describe.each(CASES)('DocumentView find — $label', ({ path, text, viewMode }) 
 
   it('NEVER dirties the document — searching, navigating, closing, all of it', async () => {
     // THE load-bearing test (design §6). If this ever fails, stop: find has
-    // started writing to files.
+    // started writing to files. `onDirtyChange` is threaded into `mount` (not
+    // the default no-op) so the assertion below is on a spy the component can
+    // actually call — a spy wired to nothing would never fail no matter what
+    // find did.
     const onDirtyChange = vi.fn();
-    const { ref, doc, container: c } = await mount(path, text, viewMode);
+    const { ref, doc, container: c } = await mount(path, text, viewMode, onDirtyChange);
     await act(async () => { ref.current!.openFind(); });
     await type(c, 'hello');
     await act(async () => { ref.current!.findNext(); });
@@ -179,6 +203,9 @@ describe.each(CASES)('DocumentView find — $label', ({ path, text, viewMode }) 
     const { ref, container: c } = await mount(path, text, viewMode);
     await act(async () => { ref.current!.openFind(); });
     await type(c, 'hello');
+    // Assert highlights actually EXISTED first -- otherwise the clearing
+    // assertion below rests on 0 === 0 and defends nothing.
+    expect(highlightEls(c).length).toBeGreaterThan(0);
     await act(async () => { field(c).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
     expect(bar(c)).toBeNull();
     expect(highlightEls(c).length).toBe(0);
@@ -194,5 +221,59 @@ describe.each(CASES)('DocumentView find — $label', ({ path, text, viewMode }) 
     const first = c.querySelector('.find-count')?.textContent;
     await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
     expect(c.querySelector('.find-count')?.textContent).toBe(first);
+  });
+});
+
+/**
+ * Regression: every case above mounts ONE view mode and never toggles, which
+ * is exactly why a Code<->Live crash got through review. A real toggle
+ * (EditorWindow flips `doc.viewMode`, keeping DocumentView's `key`) swaps
+ * `surface` to the new projection in the SAME commit that the highlight/reveal
+ * effects run in, while the debounced recompute is still 120ms behind holding
+ * the OLD projection's positions. HTML is the fixture that actually throws:
+ * its Live doc hides `<head>`/tags, so source offsets exceed the Live doc's
+ * content size. `findFor` (tagging matches with the surface that produced
+ * them) is what makes both effects refuse to touch a stale run.
+ */
+describe('DocumentView find — Code<->Live toggle (HTML, does not crash)', () => {
+  it('toggling code -> live with an open, populated find bar does not throw', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    const ref = createRef<DocumentViewHandle>();
+    const path = '/tmp/find.html';
+    const session = new DocumentSession({ path, format: formatForPath(path), meta: { eol: 'lf', hadBom: false }, text: HTML });
+    const doc: OpenDoc = { id: 'toggle-doc', session, viewMode: 'code' };
+    const root = createRoot(container);
+    currentRoot = root;
+    await rerender(root, ref, doc);
+    await act(async () => { ref.current!.openFind(); });
+    await type(container, 'hello');
+    // The toggle itself: a bare `await` is the "does not throw" assertion —
+    // if the passive effect throws (the RangeError this test reproduces), the
+    // rejection propagates here and the test fails with it.
+    await rerender(root, ref, { ...doc, viewMode: 'live' });
+    // Let the debounced recompute catch up to the new (Live) projection.
+    await act(async () => { await new Promise((r) => setTimeout(r, 200)); });
+    expect(container.querySelector('.find-count')?.textContent).toBe('1/2');
+  });
+
+  it('toggling live -> code with an open, populated find bar does not throw', async () => {
+    // The mirror direction: flagged by review as the same class of bug but
+    // unprobed (CodeMirror rejects out-of-range selections too), so covered
+    // here rather than assumed safe from the other direction alone.
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    const ref = createRef<DocumentViewHandle>();
+    const path = '/tmp/find.html';
+    const session = new DocumentSession({ path, format: formatForPath(path), meta: { eol: 'lf', hadBom: false }, text: HTML });
+    const doc: OpenDoc = { id: 'toggle-doc-2', session, viewMode: 'live' };
+    const root = createRoot(container);
+    currentRoot = root;
+    await rerender(root, ref, doc);
+    await act(async () => { ref.current!.openFind(); });
+    await type(container, 'hello');
+    await rerender(root, ref, { ...doc, viewMode: 'code' });
+    await act(async () => { await new Promise((r) => setTimeout(r, 200)); });
+    expect(container.querySelector('.find-count')?.textContent).toBe('1/2');
   });
 });
