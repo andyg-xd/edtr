@@ -1,7 +1,10 @@
 import type { OpenPayload } from '../files/openPayload';
 
 /** The native-menu commands the Rust side emits as `menu://<command>` events. */
-export type MenuCommand = 'open' | 'open-folder' | 'save' | 'save-as' | 'close' | 'quit-poll' | 'quit-abort';
+export type MenuCommand =
+  | 'open' | 'open-folder' | 'save' | 'save-as' | 'close'
+  | 'quit-poll' | 'quit-abort'
+  | 'find' | 'find-next' | 'find-prev';
 
 /** App-level handlers the menu (and window close button) drive. */
 export interface MenuHandlers {
@@ -16,6 +19,12 @@ export interface MenuHandlers {
   onQuitAbort: () => void;
   /** An OS/warm open delivered a payload to this (focused) window. */
   onOpenPayload: (payload: OpenPayload) => void;
+  /** ⌘F — open the find bar (or refocus it if it is already open). */
+  onFind: () => void;
+  /** ⌘G — go to the next match. */
+  onFindNext: () => void;
+  /** ⇧⌘G — go to the previous match. */
+  onFindPrev: () => void;
 }
 
 /**
@@ -32,5 +41,8 @@ export function dispatchMenuCommand(command: MenuCommand, handlers: MenuHandlers
     case 'close': handlers.onCloseRequest(); break;
     case 'quit-poll': handlers.onQuitPoll(); break;
     case 'quit-abort': handlers.onQuitAbort(); break;
+    case 'find': handlers.onFind(); break;
+    case 'find-next': handlers.onFindNext(); break;
+    case 'find-prev': handlers.onFindPrev(); break;
   }
 }

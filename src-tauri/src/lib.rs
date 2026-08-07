@@ -97,14 +97,7 @@ pub fn run() {
                 });
                 return;
             }
-            let event_name = match id.as_str() {
-                "open" => "menu://open",
-                "open-folder" => "menu://open-folder",
-                "save" => "menu://save",
-                "save-as" => "menu://save-as",
-                "close" => "menu://close",
-                _ => return,
-            };
+            let Some(event_name) = menu::menu_event_name(id.as_str()) else { return };
             // Deliver to the FOCUSED window only. `emit_to(<label>, …)` targets
             // that label; only that window's window-scoped listener (see
             // MenuBridge) fires. (Plain `.emit()` is a global broadcast — do not

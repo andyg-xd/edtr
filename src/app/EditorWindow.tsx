@@ -434,6 +434,9 @@ export function EditorWindow() {
     onQuitPoll,
     onQuitAbort,
     onOpenPayload: handleOpenPayload,
+    onFind: () => viewRef.current?.openFind(),
+    onFindNext: () => viewRef.current?.findNext(),
+    onFindPrev: () => viewRef.current?.findPrev(),
   });
 
   const effectiveViewMode: ViewMode = active && active.viewMode === 'live' && activeLiveAvailable ? 'live' : 'code';

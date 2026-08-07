@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { dispatchMenuCommand, type MenuCommand, type MenuHandlers } from './menuCommands';
 
 function tracked(): MenuHandlers & { calls: string[] } {
@@ -13,16 +13,52 @@ function tracked(): MenuHandlers & { calls: string[] } {
     onQuitPoll: () => calls.push('quit-poll'),
     onQuitAbort: () => calls.push('quit-abort'),
     onOpenPayload: () => {},
+    onFind: () => calls.push('find'),
+    onFindNext: () => calls.push('find-next'),
+    onFindPrev: () => calls.push('find-prev'),
+  };
+}
+
+/** Every MenuHandlers key as its own vi.fn() spy, for the exclusivity check below. */
+function makeHandlers(): MenuHandlers {
+  return {
+    onOpen: vi.fn(),
+    onOpenFolder: vi.fn(),
+    onSave: vi.fn(),
+    onSaveAs: vi.fn(),
+    onCloseRequest: vi.fn(),
+    onQuitPoll: vi.fn(),
+    onQuitAbort: vi.fn(),
+    onOpenPayload: vi.fn(),
+    onFind: vi.fn(),
+    onFindNext: vi.fn(),
+    onFindPrev: vi.fn(),
   };
 }
 
 describe('dispatchMenuCommand', () => {
   it('routes each command to exactly its own handler', () => {
-    const all = ['open', 'open-folder', 'save', 'save-as', 'close', 'quit-poll', 'quit-abort'] as const satisfies readonly MenuCommand[];
+    const all = [
+      'open', 'open-folder', 'save', 'save-as', 'close', 'quit-poll', 'quit-abort',
+      'find', 'find-next', 'find-prev',
+    ] as const satisfies readonly MenuCommand[];
     for (const cmd of all) {
       const h = tracked();
       dispatchMenuCommand(cmd, h);
       expect(h.calls).toEqual([cmd]);
+    }
+  });
+
+  it.each([
+    ['find', 'onFind'],
+    ['find-next', 'onFindNext'],
+    ['find-prev', 'onFindPrev'],
+  ] as const)('routes %s to %s and nothing else', (command, handler) => {
+    const handlers = makeHandlers();
+    dispatchMenuCommand(command, handlers);
+    expect(handlers[handler]).toHaveBeenCalledTimes(1);
+    for (const [name, fn] of Object.entries(handlers)) {
+      if (name !== handler) expect(fn, name).not.toHaveBeenCalled();
     }
   });
 });

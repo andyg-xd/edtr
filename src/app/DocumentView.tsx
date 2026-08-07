@@ -3,6 +3,7 @@ import {
 } from 'react';
 import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
+import type { EditorView as CMEditorView } from '@codemirror/view';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { CodeView } from '../views/CodeView';
 import { LiveView } from '../views/LiveView';
@@ -22,10 +23,31 @@ import { insertImage, canInsertImage as mdCanInsertImage } from '../commands/mar
 import { insertImage as htmlInsertImage, canInsertImage as htmlCanInsertImage } from '../commands/htmlInlineCommands';
 import type { OpenDoc } from '../files/openDocuments';
 import { StatusBar } from './StatusBar';
+import { FindBar } from '../find/FindBar';
+import { codeSurface } from '../find/codeSurface';
+import { pmSurface } from '../find/pmSurface';
+import { matchSegments } from '../find/matchText';
+import type { FindQuery } from '../find/findQuery';
+import {
+  clear as clearFind, countLabel, currentMatch, emptyFindState,
+  next as nextMatch, prev as prevMatch, setResult, type FindState,
+} from '../find/findState';
+import type { FindSurface } from '../find/types';
+
+/**
+ * Matching is debounced so a fast typist doesn't re-scan the document on every
+ * keystroke. 120ms mirrors --motion-fast; a pathological pattern on a large
+ * document can still stall briefly (design §7.2).
+ */
+const FIND_DEBOUNCE_MS = 120;
 
 export interface DocumentViewHandle {
   /** Flush live edits into doc.session.currentText. Returns false if a serializer throw aborted it. */
   flushToSource: () => boolean;
+  /** ⌘F — open the find bar, seeding it from the selection, or refocus it if already open. */
+  openFind: () => void;
+  findNext: () => void;
+  findPrev: () => void;
 }
 
 /**
@@ -71,8 +93,18 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   // CodeView reports its real position again the instant it (re)mounts.
   const [codeCursor, setCodeCursor] = useState<{ line: number; column: number } | null>(null);
 
+  const [codeView, setCodeView] = useState<CMEditorView | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [find, setFind] = useState<FindState>(emptyFindState);
+  const [findFocusToken, bumpFindFocus] = useReducer((x: number) => x + 1, 0);
+  // Bumped ONLY by a real document change (see the two call sites). Highlighting
+  // and revealing must never bump it: both dispatch transactions, so a recompute
+  // triggered by them would re-highlight and loop forever.
+  const [findEpoch, bumpFindEpoch] = useReducer((x: number) => x + 1, 0);
+
   const handleChange = useCallback((text: string) => {
     session.setCurrentText(text);
+    bumpFindEpoch(); // a real document change — find must re-scan
     tick();
   }, [session]);
 
@@ -154,9 +186,15 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   }, []);
 
   const handleLiveEdit = useCallback((d: PMNode, dirtyIds: Set<string>) => {
+    // A highlight transaction carries meta and no steps, so the doc node is
+    // the SAME object. HtmlLiveView fires onEdit for those (it gates on state
+    // identity, deliberately), so identity is what separates a real edit from a
+    // highlight — and what stops find from re-triggering itself.
+    const docChanged = d !== liveDocRef.current;
     liveDocRef.current = d;
     liveDirtyRef.current = dirtyIds;
     setLiveHasEdits(dirtyIds.size > 0);
+    if (docChanged) bumpFindEpoch();
   }, []);
 
   const flushToSource = useCallback((): boolean => {
@@ -176,7 +214,77 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     }
   }, [session, onError]);
 
-  useImperativeHandle(ref, () => ({ flushToSource }), [flushToSource]);
+  const surface = useMemo<FindSurface | null>(() => {
+    if (showLive) return liveView ? pmSurface(liveView) : null;
+    return codeView ? codeSurface(codeView) : null;
+  }, [showLive, liveView, codeView]);
+  const surfaceRef = useRef(surface); surfaceRef.current = surface;
+
+  // Recompute matches — debounced, and safe to re-run.
+  useEffect(() => {
+    if (!findOpen || !surface) return;
+    const timer = setTimeout(() => {
+      const run = matchSegments(surface.getSegments(), find.query, { multiline: surface.multiline });
+      setFind((prev) => setResult(prev.query, run, surface.cursorPos()));
+    }, FIND_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+    // `find.query` is compared by reference and setResult carries the same
+    // object through, so this cannot re-trigger itself.
+  }, [findOpen, surface, find.query, findEpoch]);
+
+  // Push highlights, and clear them when the bar closes.
+  useEffect(() => {
+    if (!surface) return;
+    if (!findOpen) { surface.highlight([], -1); return; }
+    surface.highlight(find.matches, find.current);
+  }, [surface, findOpen, find.matches, find.current]);
+
+  // Reveal the current match — incremental search scrolls to it as the user types.
+  useEffect(() => {
+    if (!findOpen || !surface) return;
+    const match = currentMatch(find);
+    if (match) surface.reveal(match);
+    // Deps are the current match's identity, not `find` — revealing must not
+    // re-run for an unrelated state change.
+  }, [findOpen, surface, find.current, find.matches]);
+
+  const openFind = useCallback(() => {
+    const selected = surfaceRef.current?.selectedText() ?? '';
+    // Seed from the selection when there is one; otherwise keep the last term.
+    if (selected !== '' && !selected.includes('\n')) {
+      setFind((prev) => ({ ...prev, query: { ...prev.query, text: selected } }));
+    }
+    setFindOpen(true);
+    bumpFindFocus(); // ⌘F while already open refocuses and selects the field
+  }, []);
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false);
+    setFind((prev) => clearFind(prev));
+    // Closing must never leave focus nowhere — losing focus is part of what
+    // made CodeMirror's panel feel unclosable. The cursor is already at the
+    // current match, because reveal selected it.
+    surfaceRef.current && (showLive ? liveView?.focus() : codeView?.focus());
+  }, [showLive, liveView, codeView]);
+
+  const goNext = useCallback(() => setFind((prev) => nextMatch(prev)), []);
+  const goPrev = useCallback(() => setFind((prev) => prevMatch(prev)), []);
+
+  useImperativeHandle(ref, () => ({
+    flushToSource, openFind, findNext: goNext, findPrev: goPrev,
+  }), [flushToSource, openFind, goNext, goPrev]);
+
+  const findBar = findOpen && surface ? (
+    <FindBar
+      query={find.query}
+      count={countLabel(find)}
+      focusToken={findFocusToken}
+      onQueryChange={(query: FindQuery) => setFind((prev) => ({ ...prev, query }))}
+      onNext={goNext}
+      onPrev={goPrev}
+      onClose={closeFind}
+    />
+  ) : null;
 
   if (showLive && session.format === 'html' && liveHtml && liveHtml.ok) {
     const pos = livePosition(liveView);
@@ -190,6 +298,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
             <RibbonView view={liveView} controls={htmlTableRibbon} ariaLabel="Table tools" docPath={session.path ?? null} onError={onError} />
           </div>
         )}
+        {findBar}
         <HtmlLiveView
           key={`htmllive-${doc.id}`}
           doc={liveHtml.doc} styleText={liveHtml.styleText} bodyAttrs={liveHtml.bodyAttrs} rootAttrs={liveHtml.rootAttrs}
@@ -212,6 +321,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
             <RibbonView view={liveView} controls={markdownTableRibbon} ariaLabel="Table tools" docPath={session.path ?? null} onError={onError} />
           </div>
         )}
+        {findBar}
         <LiveView
           key={`live-${doc.id}`}
           doc={live.doc} editable
@@ -223,9 +333,11 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   }
   return (
     <>
+      {findBar}
       <CodeView
         key={`code-${doc.id}`} initialText={session.text} format={session.format} effectiveTheme={effectiveTheme}
-        onChange={handleChange} onCursorChange={(line, column) => setCodeCursor({ line, column })}
+        onChange={handleChange} onViewReady={setCodeView}
+        onCursorChange={(line, column) => setCodeCursor({ line, column })}
       />
       <StatusBar format={session.format} line={codeCursor?.line} column={codeCursor?.column} />
     </>

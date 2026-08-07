@@ -69,6 +69,25 @@ fn build_recent_submenu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry])
     builder.separator().item(&clear).build()
 }
 
+/// Map a custom menu item's id to the `menu://` event the frontend listens for.
+///
+/// Extracted from `lib.rs`'s `on_menu_event` closure so the mapping is unit
+/// testable: a typo here is otherwise a silent no-op at runtime. `quit` and
+/// `recent:*` are intercepted before this is reached, so both return None.
+pub fn menu_event_name(id: &str) -> Option<&'static str> {
+    Some(match id {
+        "open" => "menu://open",
+        "open-folder" => "menu://open-folder",
+        "save" => "menu://save",
+        "save-as" => "menu://save-as",
+        "close" => "menu://close",
+        "find" => "menu://find",
+        "find-next" => "menu://find-next",
+        "find-prev" => "menu://find-prev",
+        _ => return None,
+    })
+}
+
 /// Build the native macOS menu bar.
 ///
 /// Quit / Open / Save / Close are CUSTOM `MenuItem`s (with ids) — deliberately
@@ -76,8 +95,11 @@ fn build_recent_submenu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry])
 /// fire an `on_menu_event` we can guard instead of the OS terminating the
 /// process. ⌘Q in particular is a special Apple event Tauri does not otherwise
 /// deliver to window/exit events, so owning the menu item is the only robust
-/// interception (see the design spec). The Edit submenu uses PREDEFINED items
-/// so the editors keep copy/paste/cut/undo/redo/select-all.
+/// interception (see the design spec). The Edit submenu keeps the PREDEFINED
+/// editing items (copy/paste/cut/undo/redo/select-all) and adds three custom
+/// Find items that need `on_menu_event` delivery, for the same reason: macOS
+/// offers a key equivalent to the menu before the webview, so ⌘F must be owned
+/// by a native menu item rather than a webview keymap binding.
 pub fn build_menu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry]) -> tauri::Result<Menu<R>> {
     let quit = MenuItem::with_id(app, "quit", "Quit Edtr", true, Some("Cmd+Q"))?;
     let open = MenuItem::with_id(app, "open", "Open…", true, Some("Cmd+O"))?;
@@ -85,6 +107,9 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry]) -> ta
     let save = MenuItem::with_id(app, "save", "Save", true, Some("Cmd+S"))?;
     let save_as = MenuItem::with_id(app, "save-as", "Save As…", true, Some("Cmd+Shift+S"))?;
     let close = MenuItem::with_id(app, "close", "Close Window", true, Some("Cmd+W"))?;
+    let find = MenuItem::with_id(app, "find", "Find…", true, Some("Cmd+F"))?;
+    let find_next = MenuItem::with_id(app, "find-next", "Find Next", true, Some("Cmd+G"))?;
+    let find_prev = MenuItem::with_id(app, "find-prev", "Find Previous", true, Some("Cmd+Shift+G"))?;
     let recent_menu = build_recent_submenu(app, recents)?;
 
     let app_menu = SubmenuBuilder::new(app, "Edtr")
@@ -109,6 +134,11 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry]) -> ta
         .item(&close)
         .build()?;
 
+    // The Edit submenu keeps the PREDEFINED items so the editors keep
+    // copy/paste/cut/undo/redo/select-all, then gains our three custom Find
+    // items. The native menu must own ⌘F: macOS offers a key equivalent to the
+    // menu before the webview, so a webview binding would never fire (the same
+    // reason ⌘Q needed a custom item in Phase 5).
     let edit_menu = SubmenuBuilder::new(app, "Edit")
         .undo()
         .redo()
@@ -117,6 +147,10 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry]) -> ta
         .copy()
         .paste()
         .select_all()
+        .separator()
+        .item(&find)
+        .item(&find_next)
+        .item(&find_prev)
         .build()?;
 
     let window_menu = SubmenuBuilder::new(app, "Window")
@@ -169,5 +203,34 @@ mod recent_id_tests {
     fn rejects_non_recent_ids() {
         assert!(parse_recent_id("open").is_none());
         assert!(parse_recent_id("recent:bogus:/p").is_none());
+    }
+}
+
+#[cfg(test)]
+mod menu_event_name_tests {
+    use super::menu_event_name;
+
+    #[test]
+    fn maps_every_custom_item_to_its_event() {
+        for (id, event) in [
+            ("open", "menu://open"),
+            ("open-folder", "menu://open-folder"),
+            ("save", "menu://save"),
+            ("save-as", "menu://save-as"),
+            ("close", "menu://close"),
+            ("find", "menu://find"),
+            ("find-next", "menu://find-next"),
+            ("find-prev", "menu://find-prev"),
+        ] {
+            assert_eq!(menu_event_name(id), Some(event), "id {id}");
+        }
+    }
+
+    #[test]
+    fn returns_none_for_ids_handled_elsewhere_or_unknown() {
+        // "quit" and "recent:*" are intercepted before this mapping runs.
+        assert_eq!(menu_event_name("quit"), None);
+        assert_eq!(menu_event_name("recent:clear"), None);
+        assert_eq!(menu_event_name("nonsense"), None);
     }
 }
