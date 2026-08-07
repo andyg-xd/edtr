@@ -63,8 +63,11 @@ export function codeSurface(view: EditorView): FindSurface {
       // Live<->Code toggle to a shorter projection). CodeMirror rejects an
       // out-of-range selection, and that throw would come out of a passive
       // effect and take the whole window down. A stale reveal is not worth a
-      // crash, so it does nothing instead.
-      if (match.to > view.state.doc.length) return;
+      // crash, so it does nothing instead. The caller (DocumentView's
+      // `findFresh` guard) already refuses to pass a stale match under normal
+      // operation -- this check is defense in depth, not redundant with it,
+      // since it is what keeps THIS surface safe if that guard is ever wrong.
+      if (match.from < 0 || match.to > view.state.doc.length) return;
       view.dispatch({
         selection: { anchor: match.from, head: match.to },
         effects: EditorView.scrollIntoView(match.from, { y: 'center' }),

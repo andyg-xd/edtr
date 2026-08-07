@@ -15,14 +15,20 @@ export interface MatchRun {
 }
 
 /**
- * Every non-overlapping match of `re` in `text`, in order.
+ * Every non-overlapping match of `re` in `text`, in order, up to `budget`
+ * matches.
  *
  * Zero-length matches are DROPPED and stepped over. A pattern like `a*` or `^`
  * matches empty at every position: without the guard `exec` never advances and
  * the loop hangs, and an empty highlight is nothing a user could see or
  * navigate to anyway.
+ *
+ * `budget` bounds the WORK, not just the result: the loop stops calling
+ * `exec` the moment it is reached, rather than running to completion and
+ * having the caller discard the excess. Defaults to unbounded for callers
+ * (tests, mostly) that want every match regardless of how many there are.
  */
-export function matchText(text: string, re: RegExp): TextMatch[] {
+export function matchText(text: string, re: RegExp, budget = Infinity): TextMatch[] {
   const rx = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
   const out: TextMatch[] = [];
   rx.lastIndex = 0;
@@ -34,6 +40,7 @@ export function matchText(text: string, re: RegExp): TextMatch[] {
       continue;
     }
     out.push({ start: m.index, end: m.index + m[0].length });
+    if (out.length >= budget) break;
   }
   return out;
 }
@@ -57,7 +64,12 @@ export function matchSegments(
   }
   const matches: FindMatch[] = [];
   for (const segment of segments) {
-    for (const tm of matchText(segment.text, compiled.re)) {
+    // The remaining room under the cap, passed down as this segment's
+    // budget: `matchText` stops AT that many raw matches instead of scanning
+    // the whole segment and having the push loop below discard the rest — the
+    // cap is what stands between a pathological pattern and a full scan of a
+    // 200k-character document (design §7.2).
+    for (const tm of matchText(segment.text, compiled.re, cap - matches.length)) {
       const from = mapStart(segment.map, tm.start);
       const to = mapEnd(segment.map, tm.end);
       // An unmappable offset means the segment and its map disagree. Skip it

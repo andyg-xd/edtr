@@ -85,7 +85,11 @@ export function pmSurface(view: EditorView): FindSurface {
       // or a Code<->Live toggle to a shorter projection). `.resolve()` throws
       // a RangeError on an out-of-bounds position, and that throw would come
       // out of a passive effect and take the whole window down. A stale
-      // reveal is not worth a crash, so it does nothing instead.
+      // reveal is not worth a crash, so it does nothing instead. The caller
+      // (DocumentView's `findFresh` guard) already refuses to pass a stale
+      // match under normal operation -- this check is defense in depth, not
+      // redundant with it, since it is what keeps THIS surface safe if that
+      // guard is ever wrong.
       if (match.from < 0 || match.to > view.state.doc.content.size) return;
       const { tr } = view.state;
       // `between`, not `create`: `between` resolves whatever it is given to

@@ -38,19 +38,37 @@ describe('CodeView theme reconfigure', () => {
 describe('CodeView onViewReady', () => {
   it('reports its EditorView on mount and null on unmount', async () => {
     const seen: Array<unknown> = [];
+    let viewDestroyed = false;
+    let destroyedWhenNullReported: boolean | null = null;
     const { root } = await mount(
       <CodeView
         initialText={'x\n'}
         format="markdown"
         effectiveTheme="light"
         onChange={() => {}}
-        onViewReady={(v) => seen.push(v)}
+        onViewReady={(v) => {
+          seen.push(v);
+          if (v) {
+            // Spy on the real view's destroy() so that when null arrives
+            // below, the test can tell whether destroy() had already run.
+            // "null last" alone can't prove that: it would be true even if
+            // destroy() ran FIRST, since destroy() never itself calls
+            // onViewReady.
+            const real = v.destroy.bind(v);
+            v.destroy = () => { viewDestroyed = true; real(); };
+          } else {
+            destroyedWhenNullReported = viewDestroyed;
+          }
+        }}
       />,
     );
     expect(seen.length).toBe(1);
     expect(seen[0]).toBeTruthy();
     await act(async () => root.unmount());
-    // Null LAST, before destroy — a consumer must never hold a destroyed view.
     expect(seen[seen.length - 1]).toBeNull();
+    // The real claim: a consumer told "no view" must never have been handed a
+    // destroyed one moments earlier — destroy() had not yet run when null was
+    // reported.
+    expect(destroyedWhenNullReported).toBe(false);
   });
 });

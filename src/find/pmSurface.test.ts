@@ -81,16 +81,20 @@ describe('pmSurface', () => {
   it('a highlight transaction reports no document change', () => {
     const v = mount('abc');
     let sawDocChange = false;
-    const original = v.dispatch.bind(v);
+    let sawTransaction = false;
     v.setProps({
       dispatchTransaction(tr) {
+        sawTransaction = true;
         if (tr.docChanged) sawDocChange = true;
         v!.updateState(v!.state.apply(tr));
       },
     });
     pmSurface(v).highlight([{ from: 1, to: 2 }], 0);
+    // Both halves matter: without `sawTransaction`, a `highlight()` that
+    // dispatched NOTHING would pass this test too — it needs to have actually
+    // run through `dispatchTransaction` and still report no doc change.
+    expect(sawTransaction).toBe(true);
     expect(sawDocChange).toBe(false);
-    void original;
   });
 
   it('reveal selects the match so closing the bar leaves the cursor there', () => {

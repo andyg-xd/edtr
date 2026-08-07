@@ -120,6 +120,17 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   // and revealing must never bump it: both dispatch transactions, so a recompute
   // triggered by them would re-highlight and loop forever.
   const [findEpoch, bumpFindEpoch] = useReducer((x: number) => x + 1, 0);
+  // Where `setResult` starts looking for "the match nearest the user" — set
+  // once when find opens, and again on each empty->non-empty query transition
+  // (both capture sites are below), NEVER read live from the surface at
+  // recompute time. By the time the debounced recompute runs, `reveal()` has
+  // already moved the selection to the PREVIOUS current match, so a live
+  // `surface.cursorPos()` would anchor every keystroke's search on where the
+  // LAST keystroke's match landed rather than where the user actually is —
+  // under typing slower than the debounce, the current match hunts forward
+  // and eventually wraps instead of staying still. Do not "simplify" this
+  // back to a live read.
+  const findAnchorRef = useRef(0);
 
   const handleChange = useCallback((text: string) => {
     session.setCurrentText(text);
@@ -246,15 +257,26 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     // so the timer callback can't read a NEWER value if another edit lands
     // before it fires (that later edit reschedules its own effect run anyway).
     const timer = setTimeout(() => {
-      const run = matchSegments(surface.getSegments(), find.query, { multiline: surface.multiline });
-      setFind((prev) => setResult(prev.query, run, surface.cursorPos()));
+      let run: ReturnType<typeof matchSegments>;
+      try {
+        run = matchSegments(surface.getSegments(), find.query, { multiline: surface.multiline });
+      } catch (e) {
+        // A surface driver meeting a node it doesn't understand degrades to
+        // "no matches" rather than throwing out of a timer (design §7.3) — an
+        // uncaught throw here has no passive-effect boundary to land in and
+        // leaves find silently, permanently dead. Surface it through the
+        // banner instead of swallowing it (5f's lesson).
+        run = { matches: [], capped: false, invalid: false };
+        onError(`Edtr couldn't search this document. Close and reopen Find to try again. ${String(e)}`);
+      }
+      setFind((prev) => setResult(prev.query, run, findAnchorRef.current));
       setFindFor(surface);
       setFindForEpoch(epoch);
     }, FIND_DEBOUNCE_MS);
     return () => clearTimeout(timer);
     // `find.query` is compared by reference and setResult carries the same
     // object through, so this cannot re-trigger itself.
-  }, [findOpen, surface, find.query, findEpoch]);
+  }, [findOpen, surface, find.query, findEpoch, onError]);
 
   // Matches describe one projection at one document version. Consuming them
   // against any other is how reveal() resolves a position that no longer
@@ -294,6 +316,9 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   }, [findOpen, surface, findFresh, find.current, find.matches]);
 
   const openFind = useCallback(() => {
+    // Capture site 1/2 for findAnchorRef: the caret as it is the moment find
+    // opens, before anything below can move it.
+    findAnchorRef.current = surfaceRef.current?.cursorPos() ?? 0;
     const selected = surfaceRef.current?.selectedText() ?? '';
     // Seed from the selection when there is one; otherwise keep the last term.
     if (selected !== '' && !selected.includes('\n')) {
@@ -335,7 +360,16 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
       query={find.query}
       count={countLabel(find)}
       focusToken={findFocusToken}
-      onQueryChange={(query: FindQuery) => setFind((prev) => ({ ...prev, query }))}
+      onQueryChange={(query: FindQuery) => {
+        // Capture site 2/2 for findAnchorRef: the first character of a FRESH
+        // search, not every keystroke — a live read here would re-anchor to
+        // wherever the PREVIOUS keystroke's reveal() left the caret instead of
+        // where the user actually is.
+        if (find.query.text === '' && query.text !== '') {
+          findAnchorRef.current = surfaceRef.current?.cursorPos() ?? 0;
+        }
+        setFind((prev) => ({ ...prev, query }));
+      }}
       onNext={goNext}
       onPrev={goPrev}
       onClose={closeFind}

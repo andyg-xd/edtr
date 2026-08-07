@@ -34,6 +34,16 @@ describe('matchText', () => {
   it('returns nothing for text with no match', () => {
     expect(matchText('abc', /z/g)).toEqual([]);
   });
+
+  it('stops early once the budget is reached, instead of matching to completion', () => {
+    // A thousand 'a's, but the caller only wants 3 — proof the budget bounds
+    // the WORK, not just the returned array (a truncated result could also be
+    // produced by matching everything and slicing afterward).
+    const text = 'a'.repeat(1000);
+    expect(matchText(text, /a/g, 3)).toEqual([
+      { start: 0, end: 1 }, { start: 1, end: 2 }, { start: 2, end: 3 },
+    ]);
+  });
 });
 
 describe('matchSegments', () => {

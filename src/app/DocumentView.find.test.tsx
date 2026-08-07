@@ -7,6 +7,7 @@ import { DocumentView, type DocumentViewHandle } from './DocumentView';
 import { DocumentSession } from '../files/documentSession';
 import { formatForPath } from '../files/fileTypes';
 import type { OpenDoc, ViewMode } from '../files/openDocuments';
+import { codeSurface } from '../find/codeSurface';
 
 // DocumentView unconditionally wires a window-level drag/drop listener via
 // getCurrentWebview() (image-drop support) on every mount — nothing to do with
@@ -16,6 +17,15 @@ import type { OpenDoc, ViewMode } from '../files/openDocuments';
 vi.mock('@tauri-apps/api/webview', () => ({
   getCurrentWebview: () => ({ onDragDropEvent: () => new Promise<() => void>(() => {}) }),
 }));
+
+// `codeSurface` as a spy that calls through to the real implementation by
+// default — every existing test below still gets the real surface. Only the
+// FIX 9 regression test overrides it, for exactly one call, to reproduce a
+// surface driver meeting a node it doesn't understand.
+vi.mock('../find/codeSurface', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../find/codeSurface')>();
+  return { ...actual, codeSurface: vi.fn(actual.codeSurface) };
+});
 
 // jsdom implements Element.getClientRects but not Range.getClientRects (real
 // browsers have both). CodeMirror's periodic text-measurement pass calls the
@@ -87,6 +97,7 @@ function makeDoc(path: string, text: string, viewMode: ViewMode): OpenDoc {
 async function mount(
   path: string, text: string, viewMode: ViewMode,
   onDirtyChange: (dirty: boolean) => void = () => {},
+  onError: (msg: string | null) => void = () => {},
 ) {
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -97,7 +108,7 @@ async function mount(
   await act(async () => root.render(
     <DocumentView
       ref={ref} doc={doc} effectiveTheme="light"
-      onDirtyChange={onDirtyChange} onLiveAvailableChange={() => {}} onError={() => {}}
+      onDirtyChange={onDirtyChange} onLiveAvailableChange={() => {}} onError={onError}
     />,
   ));
   return { ref, doc, container: container! };
@@ -328,5 +339,71 @@ describe('DocumentView find — stale match after an in-place edit (does not cra
     // `await` is the "does not throw" assertion -- a rejection here fails the
     // test with the underlying error.
     await act(async () => { ref.current!.findNext(); });
+  });
+});
+
+/**
+ * Regression: incremental typing must not anchor the current match on the
+ * caret it just moved. Every case in the describe.each block above types its
+ * whole query in ONE `input` event, so the suite structurally cannot see this
+ * -- it only shows up across separate keystrokes with the 120ms debounce
+ * settling between them, which is what `type()` below deliberately does.
+ */
+describe('DocumentView find — incremental search does not oscillate on its own reveal', () => {
+  it('keeps the current match stable across separate keystrokes instead of hunting forward and wrapping', async () => {
+    // Two matches straddling where a growing query's END keeps landing after
+    // each reveal -- "h" at 0, "h" (of the second "hello") at 13 -- is exactly
+    // what turned a LIVE cursor read into a moving target: after "h" matches
+    // and reveals to [0,1], a live read for "he" sees caret 1, which is past
+    // match 0 but still before match 1, so it jumps to match 1; the next
+    // keystroke's reveal then puts the caret past BOTH matches, wrapping back
+    // to match 0; and so on. A caret captured once, at the h->non-empty
+    // transition, stays 0 the whole time, so the first match should win at
+    // every step.
+    const TEXT = 'hello world, hello again';
+    const { ref, container: c } = await mount('/tmp/anchor.md', TEXT, 'code');
+    await act(async () => { ref.current!.openFind(); });
+    for (const partial of ['h', 'he', 'hel', 'hell', 'hello']) {
+      await type(c, partial);
+      expect(c.querySelector('.find-count')?.textContent).toBe('1/2');
+    }
+  });
+});
+
+/**
+ * Regression for design §7.3: a surface driver meeting a node it doesn't
+ * understand must degrade to "no matches" and surface through the banner,
+ * not throw unhandled out of the debounced recompute's `setTimeout` — which
+ * has no passive-effect boundary to land in and would leave find silently,
+ * permanently dead (5f's lesson about silent feature-disabling errors).
+ */
+describe('DocumentView find — a surface driver error degrades to no matches, not a crash', () => {
+  it('reports the error through onError and leaves the bar showing no results, not broken', async () => {
+    // `mockImplementationOnce` overrides exactly the NEXT call and then falls
+    // back to the factory's default (a passthrough to the real `codeSurface`,
+    // set up once at the top of this file) — no explicit restore needed, and
+    // every other test in this file keeps getting the real surface.
+    vi.mocked(codeSurface).mockImplementationOnce(() => ({
+      multiline: true,
+      getSegments: () => { throw new Error('unexpected node'); },
+      cursorPos: () => 0,
+      selectedText: () => '',
+      highlight: () => {},
+      reveal: () => {},
+    }));
+    const onError = vi.fn();
+    const { ref, container: c } = await mount('/tmp/find-error.md', 'hello world', 'code', undefined, onError);
+    // A bare `await` on openFind is itself part of the "does not throw"
+    // assertion — the debounced recompute runs on a real timer, outside any
+    // `act()` this call could propagate a rejection through, so an uncaught
+    // throw here would surface as an unhandled rejection failing the test.
+    await act(async () => { ref.current!.openFind(); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 200)); });
+    expect(onError).toHaveBeenCalled();
+    const message = onError.mock.calls[0]?.[0] as string;
+    expect(message).toContain("couldn't search");
+    // Degraded, not crashed: the bar is still there, showing no results.
+    expect(bar(c)).toBeTruthy();
+    expect(c.querySelector('.find-count')?.textContent).toBe('');
   });
 });

@@ -36,7 +36,6 @@ describe('compileQuery', () => {
 
   it('is case-insensitive by default and case-sensitive when asked', () => {
     expect(compileQuery(q({ text: 'a' }), false)).toMatchObject({ ok: true });
-    expect(source(q({ text: 'a' })).length).toBeGreaterThan(0);
     const insensitive = compileQuery(q({ text: 'a' }), false);
     const sensitive = compileQuery(q({ text: 'a', matchCase: true }), false);
     expect((insensitive as { re: RegExp }).re.flags).toContain('i');

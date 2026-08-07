@@ -1,5 +1,3 @@
-import type { EditorView as PMEditorView } from 'prosemirror-view';
-
 /** A contiguous run of flattened text and where it came from in the editor. */
 export interface OffsetRun {
   /** Offset of this run's first character within the segment's flat text. */
@@ -81,5 +79,3 @@ export function mapEnd(map: OffsetMap, offset: number): number | null {
   const start = mapStart(map, offset - 1);
   return start === null ? null : start + 1;
 }
-
-export type { PMEditorView };
