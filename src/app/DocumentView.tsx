@@ -232,12 +232,14 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     // object through, so this cannot re-trigger itself.
   }, [findOpen, surface, find.query, findEpoch]);
 
-  // Push highlights, and clear them when the bar closes.
   useEffect(() => {
     if (!surface) return;
-    if (!findOpen) { surface.highlight([], -1); return; }
+    // Clearing is guaranteed by `clear()` emptying `matches` in the same render
+    // that closes the bar -- no separate close branch is needed, and one would
+    // be unreachable. The user-visible guarantee is covered by the
+    // 'closes on Escape and clears its highlights' test.
     surface.highlight(find.matches, find.current);
-  }, [surface, findOpen, find.matches, find.current]);
+  }, [surface, find.matches, find.current]);
 
   // Reveal the current match — incremental search scrolls to it as the user types.
   useEffect(() => {
