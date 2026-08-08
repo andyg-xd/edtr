@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { EditorState, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { liveSchema } from '../views/liveSchema';
@@ -42,6 +42,21 @@ describe('pmSurface', () => {
     const v = mount('aaa');
     pmSurface(v).highlight([{ from: 1, to: 2 }, { from: 2, to: 3 }], 0);
     expect(highlightSpans(v).length).toBe(2);
+  });
+
+  it('renders highlights as <edtr-mark>, never as a bare <span>', () => {
+    // HTML Live renders the FILE's own CSS, by design. A bare <span> is
+    // therefore a selector collision waiting to happen: a real document styled
+    // `ul.notice li span{position:absolute;left:14px;top:11px}` (to place a `→`
+    // bullet) yanked the highlighted word clean out of the text flow and parked
+    // it on top of the arrow -- the word simply vanished from its sentence.
+    // Source order cannot fix that: `ul.notice li span` is (0,1,3) and beats
+    // `.edtr-find` (0,1,0) whatever the order. A custom element name the file
+    // cannot know about is what actually removes the collision.
+    const v = mount('aaa');
+    pmSurface(v).highlight([{ from: 1, to: 2 }], 0);
+    const el = v.dom.querySelector('.edtr-find')!;
+    expect(el.tagName.toLowerCase()).toBe('edtr-mark');
   });
 
   it('marks only the current match as current', () => {
@@ -102,6 +117,56 @@ describe('pmSurface', () => {
     pmSurface(v).reveal({ from: 7, to: 12 });
     expect(v.state.selection.from).toBe(7);
     expect(v.state.selection.to).toBe(12);
+  });
+
+  it('scrolls the match into view even while focus sits in the find field', () => {
+    // ProseMirror's own `tr.scrollIntoView()` starts from the DOM selection's
+    // focusNode and does NOTHING, silently, when that node is not inside the
+    // editor (prosemirror-view's `scrollToSelection`). Focus is in the find
+    // field for every keystroke and every Cmd-G, so that is ALWAYS the case
+    // here: the match was found and highlighted, and the viewport never moved.
+    // This surface therefore scrolls explicitly instead of asking ProseMirror.
+    //
+    // jsdom implements no scrolling whatsoever -- `scrollIntoView` is absent,
+    // not just inert -- which is exactly why the suite could not see the bug.
+    const v = mount('hello world');
+    const field = document.createElement('input');
+    document.body.appendChild(field);
+    field.focus(); // model the find field owning focus
+
+    const scrolled: Element[] = [];
+    const proto = Element.prototype as unknown as { scrollIntoView?: () => void };
+    const original = proto.scrollIntoView;
+    proto.scrollIntoView = function (this: Element) { scrolled.push(this); };
+    try {
+      pmSurface(v).reveal({ from: 7, to: 12 });
+    } finally {
+      if (original) proto.scrollIntoView = original;
+      else delete proto.scrollIntoView;
+      field.remove();
+    }
+
+    expect(scrolled.length).toBeGreaterThan(0);
+    // ...and it scrolled the element holding the match, not some outer box.
+    expect(v.dom.contains(scrolled[0])).toBe(true);
+    expect(scrolled[0].textContent).toContain('world');
+  });
+
+  it('does not try to scroll a match that outlived the document', () => {
+    // The bounds guard must come first: a dead position has no DOM node, so
+    // reaching for one would be the crash the guard exists to prevent.
+    const v = mount('short');
+    const proto = Element.prototype as unknown as { scrollIntoView?: () => void };
+    const original = proto.scrollIntoView;
+    const spy = vi.fn();
+    proto.scrollIntoView = spy;
+    try {
+      expect(() => pmSurface(v).reveal({ from: 100, to: 120 })).not.toThrow();
+    } finally {
+      if (original) proto.scrollIntoView = original;
+      else delete proto.scrollIntoView;
+    }
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('reports the cursor position and the selected text', () => {

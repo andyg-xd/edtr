@@ -38,6 +38,17 @@ export function findDecorationsPlugin(): Plugin<FindDecoState> {
             deco: DecorationSet.create(
               tr.doc,
               matches.map((m, i) => Decoration.inline(m.from, m.to, {
+                // `<edtr-mark>`, NOT the default `<span>`. HTML Live renders
+                // the file's own CSS by design, so a bare span is a selector
+                // collision waiting to happen: a real document styling
+                // `ul.notice li span{position:absolute;...}` to place a `→`
+                // bullet caught our highlight too and lifted the matched word
+                // out of its sentence onto the arrow. Source order is no
+                // defence — that selector simply outranks `.edtr-find` — but a
+                // custom element name the file cannot know about is. Decorations
+                // are view-only and never serialised, so this cannot reach the
+                // file (no-beautify, design §6).
+                nodeName: 'edtr-mark',
                 class: i === current ? 'edtr-find edtr-find-current' : 'edtr-find',
               })),
             ),
@@ -104,7 +115,28 @@ export function pmSurface(view: EditorView): FindSurface {
         tr.doc.resolve(match.from),
         tr.doc.resolve(match.to),
       );
-      view.dispatch(tr.setSelection(selection).scrollIntoView());
+      view.dispatch(tr.setSelection(selection));
+      // Scroll EXPLICITLY, rather than with the `tr.scrollIntoView()` that
+      // would be the obvious thing to chain on above. ProseMirror starts that
+      // scroll from the DOM selection's focusNode and, when that node is not
+      // inside the editor, does nothing at all -- silently (prosemirror-view's
+      // `scrollToSelection`). Focus belongs to the find field for every
+      // keystroke and every Cmd-G, so that branch is ALWAYS the one taken here:
+      // the match was found, counted and highlighted, and the viewport never
+      // moved. Code view is unaffected -- CodeMirror scrolls from a document
+      // position, not from the DOM selection -- so this is the one surface that
+      // has to do it itself.
+      //
+      // `side: 1` biases into the text, so this is the innermost inline box
+      // around the match (the highlight span, once one is rendered) rather than
+      // the enclosing block: the difference between landing on the word and
+      // landing on a paragraph that may be taller than the window.
+      const { node } = view.domAtPos(match.from, 1);
+      const el = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+      // Centred, to match what Code view already does for the same gesture.
+      // `scrollIntoView` is absent under jsdom and present in every real
+      // browser, which is why no test could see the bug this replaced.
+      el?.scrollIntoView?.({ block: 'center', inline: 'nearest' });
     },
   };
 }
