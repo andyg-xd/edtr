@@ -40,6 +40,19 @@ describe('FindBar', () => {
     expect(input(c).getAttribute('aria-label')).toBe('Find');
   });
 
+  it('turns off autocorrect, autocapitalisation and spellcheck on the field', async () => {
+    // A search term is not prose. macOS text substitution capitalises the first
+    // letter and "corrects" words the user typed deliberately, silently
+    // changing what is being searched for.
+    const c = await render(<FindBar {...props()} />);
+    expect(input(c).getAttribute('autocorrect')).toBe('off');
+    expect(input(c).getAttribute('autocapitalize')).toBe('off');
+    // The attribute, not the `spellcheck` IDL property: jsdom does not reflect
+    // that one, and the attribute is what the WebView actually reads.
+    expect(input(c).getAttribute('spellcheck')).toBe('false');
+    expect(input(c).getAttribute('autocomplete')).toBe('off');
+  });
+
   it('shows the count it is given', async () => {
     const c = await render(<FindBar {...props({ count: '3/7' })} />);
     expect(c.querySelector('.find-count')?.textContent).toBe('3/7');

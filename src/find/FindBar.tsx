@@ -63,6 +63,13 @@ export function FindBar({
         type="text"
         placeholder="Find"
         aria-label="Find"
+        // A search term is not prose. macOS text substitution capitalises the
+        // first letter and "corrects" words that were typed deliberately, which
+        // silently changes what is being searched for.
+        autoCorrect="off"
+        autoCapitalize="off"
+        autoComplete="off"
+        spellCheck={false}
         value={query.text}
         onChange={(e) => onQueryChange({ ...query, text: e.target.value })}
       />
