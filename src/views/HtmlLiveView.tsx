@@ -32,14 +32,33 @@ const TABLE_EDIT_AFFORDANCE_CSS =
 
 /**
  * Find highlighting for the shadow render. `findbar.css` cannot reach inside a
- * shadow root, so the same two rules are injected here — appended LAST, after
- * the file's own <style>, because a highlight the file's CSS can override is no
- * highlight at all. Custom properties inherit across the shadow boundary, so
+ * shadow root, so the same rules are injected here — appended LAST, after the
+ * file's own <style>. Custom properties inherit across the shadow boundary, so
  * these still resolve to Edtr's themed tokens.
+ *
+ * Appending last is NOT on its own enough, and it is worth being blunt about
+ * why, because this comment used to claim it was: source order only decides
+ * between rules of EQUAL specificity. A real file styled its `→` bullets with
+ * `ul.notice li span{position:absolute;left:14px;top:11px;font-weight:800}`,
+ * which at (0,1,3) beats `.edtr-find` (0,1,0) no matter what order they arrive
+ * in — so the highlighted word was absolutely positioned onto the arrow and
+ * disappeared from its own sentence.
+ *
+ * The real defence is the element name: the highlight is an `<edtr-mark>`, not
+ * a `<span>` (see pmSurface), so a file's element selectors cannot reach it.
+ * The `!important` resets below are the backstop for a file that reaches it
+ * anyway — `li *`, `[class] *` — and they cover exactly the properties that can
+ * destroy the text flow or the highlight's legibility, not everything. They are
+ * scoped to `edtr-mark`, so none of this can leak onto the file's own content.
  */
 const FIND_HIGHLIGHT_CSS =
-  '.edtr-find{background:var(--find-match-bg);border-radius:var(--radius-sm)}' +
-  '.edtr-find-current{background:var(--find-current-bg);color:var(--find-current-fg)}';
+  'edtr-mark.edtr-find{'
+    + 'display:inline!important;position:static!important;float:none!important;'
+    + 'inset:auto!important;margin:0!important;padding:0!important;'
+    + 'transform:none!important;font:inherit!important;color:inherit!important;'
+    + 'background:var(--find-match-bg);border-radius:var(--radius-sm)}'
+  + 'edtr-mark.edtr-find-current{'
+    + 'background:var(--find-current-bg);color:var(--find-current-fg)!important}';
 
 /**
  * Browser-default reset for the shadow render, injected FIRST (lowest priority)

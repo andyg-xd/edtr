@@ -143,6 +143,30 @@ describe('HtmlLiveView', () => {
     expect(styles[findIndex].textContent).toContain('var(--find-match-bg)');
     expect(styles[findIndex].textContent).not.toMatch(/#[0-9a-f]{3,8}|rgba?\(/i);
   });
+
+  it('neutralises file CSS that would drag the highlight out of the text flow', async () => {
+    // Injecting LAST is not enough, and the original comment here was wrong to
+    // imply it was: source order only decides between rules of EQUAL
+    // specificity. A real file carried
+    // `ul.notice li span{position:absolute;left:14px;top:11px;font-weight:800}`
+    // to place a `→` bullet; at (0,1,3) it beat `.edtr-find` (0,1,0) outright,
+    // absolutely positioned the highlighted word over the arrow and removed it
+    // from its sentence. The element name is the primary defence; these
+    // declarations are the backstop for a file that reaches our element anyway
+    // (`li *`, say). jsdom computes no cascade, let alone one across a shadow
+    // boundary, so this asserts the contract in the stylesheet text.
+    const res = toLiveHtml('<html><body><p>hi</p></body></html>');
+    if (!res.ok) throw new Error('expected ok');
+    const c = await render(<HtmlLiveView doc={res.doc} styleText="p { color: red }" />);
+    const shadow = (c.querySelector('.html-live-view') as HTMLElement).shadowRoot!;
+    const css = Array.from(shadow.querySelectorAll('style'))
+      .find((s) => s.hasAttribute('data-edtr-find'))?.textContent ?? '';
+    // Scoped to our element, so none of this can leak onto the file's content.
+    expect(css).toContain('edtr-mark');
+    for (const decl of ['position:static', 'float:none', 'display:inline', 'font:inherit']) {
+      expect(css).toContain(`${decl}!important`);
+    }
+  });
 });
 
 type MountedRoot = { container: HTMLDivElement; root: ReturnType<typeof createRoot> };

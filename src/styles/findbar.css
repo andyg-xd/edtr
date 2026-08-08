@@ -61,11 +61,12 @@
   color: var(--seg-active-fg);
 }
 
-/* Match highlighting, shared by both engines. CodeMirror decorations land in
-   the light DOM so these selectors reach them; HTML Live's ProseMirror runs in
-   a shadow root that this stylesheet cannot cross, so HtmlLiveView injects the
-   same two rules into its shadow (custom properties DO inherit across the
-   boundary, so the tokens still resolve there). */
+/* Match highlighting, shared by both engines. CodeMirror decorations and
+   Markdown Live's <edtr-mark> both land in the light DOM, where no foreign CSS
+   competes, so these plain class rules are all either needs. HTML Live's
+   ProseMirror runs in a shadow root this stylesheet cannot cross AND renders
+   the file's own CSS, so HtmlLiveView injects a hardened variant of its own —
+   see FIND_HIGHLIGHT_CSS there for why it needs more than this. */
 .cm-edtr-find,
 .edtr-find {
   background: var(--find-match-bg);
