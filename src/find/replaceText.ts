@@ -1,3 +1,7 @@
+import { compileQuery, type FindQuery } from './findQuery';
+import { execAll, MATCH_CAP } from './matchText';
+import { mapEnd, mapStart, type Segment } from './types';
+
 /**
  * Expand `$`-substitutions in a replacement template against one match.
  *
@@ -47,4 +51,49 @@ export function expandReplacement(m: RegExpExecArray, template: string): string 
     out += '$'; // not a substitution — a literal dollar sign
   }
   return out;
+}
+
+/** A concrete edit: replace `[from, to)` in editor positions with `text`. */
+export interface ReplaceEdit {
+  from: number;
+  to: number;
+  text: string;
+}
+
+/**
+ * Which occurrences change, and to what — decided once, for every surface.
+ *
+ * Walks the same segments and uses the same offset map as `matchSegments`, so
+ * replace can never disagree with the highlights the user is looking at.
+ *
+ * Edits come back ascending and non-overlapping, which is the precondition
+ * `spliceSource` validates and throws on (spec 6). Per-textblock segmentation
+ * (2026-08-07 addendum) is what guarantees an edit never spans a block
+ * boundary and the markup between blocks — a beautify-class write.
+ */
+export function computeReplacements(
+  segments: Segment[],
+  query: FindQuery,
+  template: string,
+  opts: { multiline: boolean; cap?: number },
+): ReplaceEdit[] {
+  const cap = opts.cap ?? MATCH_CAP;
+  const compiled = compileQuery(query, opts.multiline);
+  if (!compiled.ok) return [];
+
+  const edits: ReplaceEdit[] = [];
+  for (const segment of segments) {
+    for (const m of execAll(segment.text, compiled.re, cap - edits.length)) {
+      const from = mapStart(segment.map, m.index);
+      const to = mapEnd(segment.map, m.index + m[0].length);
+      // An unmappable offset means the segment and its map disagree. Skip it
+      // rather than guess a position and rewrite the wrong text.
+      if (from === null || to === null) continue;
+      // Literal when the regex toggle is off, so `$` is just a dollar sign.
+      const text = query.regex ? expandReplacement(m, template) : template;
+      edits.push({ from, to, text });
+      if (edits.length >= cap) return edits;
+    }
+  }
+  return edits;
 }
