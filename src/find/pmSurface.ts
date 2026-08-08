@@ -1,7 +1,7 @@
 import { Mark, type Node as PMNode } from 'prosemirror-model';
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state';
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
-import { flattenBlocks } from './flattenBlocks';
+import { flattenBlocks, SKIP_ATOMS } from './flattenBlocks';
 import type { FindMatch, FindSurface } from './types';
 
 interface FindDecoState {
@@ -66,22 +66,56 @@ export function findDecorationsPlugin(): Plugin<FindDecoState> {
   });
 }
 
+/** What one walk of `[from, to)` reports back to both `applyEdits` and `inspectEdits`. */
+interface RangeInspection {
+  /**
+   * Marks of the node that contains the character AT `from` — not
+   * `doc.resolve(from).marks()`. `ResolvedPos.marks()` filters OUT a
+   * non-inclusive mark (`link` is `inclusive: false` in both schemas)
+   * whenever the resolved position's `textOffset` is 0, which is exactly
+   * what happens when a match starts on the LAST character of a marked run:
+   * resolving just past that character reads as "before the next run", not
+   * "inside this one", so the very mark the match starts on disappears.
+   * `nodeAt` has no such filter — it just returns whichever node's range
+   * contains the position — so it is both what a replacement should inherit
+   * (D2) and the correct baseline `crossedFormatting` compares against.
+   */
+  startMarks: readonly Mark[];
+  /** Whether `[from, to)` contains more than one set of marks (D2's notice). */
+  crossedFormatting: boolean;
+  /**
+   * How many `SKIP_ATOMS` nodes (an image, a verbatim region) sit inside
+   * `[from, to)` — invisible in the flattened text a match was found in, so
+   * removing one must be disclosed (D6, spec §K5) rather than assumed benign.
+   */
+  atomCount: number;
+}
+
 /**
- * Whether `[from, to)` contains more than one set of marks.
+ * The one walk `applyEdits` and `inspectEdits` both need over `[from, to)`.
  *
- * This is what decides D2's notice. It compares each text node's marks against
- * the marks at the match start rather than counting nodes, because a range can
- * be split across several text nodes that all carry identical marks (a
- * re-parse, an image between two runs) and that is not a formatting boundary.
+ * Written once rather than as three separate `nodesBetween` calls (one for
+ * formatting, one for the atom count in `applyEdits`, one again in
+ * `inspectEdits`) so the two questions can never quietly diverge — e.g. one
+ * traversal learning to skip `hardBreak` and the other forgetting to.
+ *
+ * Compares each text node's raw marks against `startMarks` rather than
+ * counting distinct mark sets, because a range can be split across several
+ * text nodes that all carry identical marks (a re-parse, an image between two
+ * runs) and that is not a formatting boundary.
  */
-function spansFormattingBoundary(doc: PMNode, from: number, to: number): boolean {
-  const startMarks = doc.resolve(from + 1 <= to ? from + 1 : from).marks();
-  let crossed = false;
+function inspectRange(doc: PMNode, from: number, to: number): RangeInspection {
+  const startMarks = doc.nodeAt(from)?.marks ?? Mark.none;
+  let crossedFormatting = false;
+  let atomCount = 0;
   doc.nodesBetween(from, to, (node) => {
-    if (!node.isText || crossed) return;
-    if (!Mark.sameSet(node.marks, startMarks)) crossed = true;
+    if (node.isText) {
+      if (!crossedFormatting && !Mark.sameSet(node.marks, startMarks)) crossedFormatting = true;
+      return;
+    }
+    if (SKIP_ATOMS.has(node.type.name)) atomCount += 1;
   });
-  return crossed;
+  return { startMarks, crossedFormatting, atomCount };
 }
 
 /**
@@ -159,24 +193,50 @@ export function pmSurface(view: EditorView): FindSurface {
     },
     editable: () => view.editable,
     applyEdits(edits) {
-      if (edits.length === 0) return { crossedFormatting: false };
+      if (edits.length === 0) return { crossedFormatting: false, removedAtoms: 0 };
       const { tr } = view.state;
       let crossed = false;
+      let removedAtoms = 0;
       // Apply DESCENDING so each edit's positions are still valid when it runs
       // — an earlier replacement of a different length would otherwise shift
       // every position after it.
       for (let i = edits.length - 1; i >= 0; i--) {
         const e = edits[i];
+        // A stale edit can point past the document `computeReplacements` saw
+        // — same defense-in-depth posture as `reveal` above, and for the same
+        // reason: an out-of-range `replaceWith`/`delete` throws, and that
+        // throw would come out of whatever handler Task 5 wires the Replace
+        // button to.
         if (e.from < 0 || e.to > tr.doc.content.size) continue;
-        if (spansFormattingBoundary(tr.doc, e.from, e.to)) crossed = true;
-        // Marks from the START of the match (D2). Taken at from+1 because a
-        // position at a text node's boundary resolves to the marks before it.
-        const marks = tr.doc.resolve(Math.min(e.from + 1, e.to)).marks();
+        const { startMarks, crossedFormatting, atomCount } = inspectRange(tr.doc, e.from, e.to);
+        if (crossedFormatting) crossed = true;
+        removedAtoms += atomCount;
         if (e.text === '') tr.delete(e.from, e.to);
-        else tr.replaceWith(e.from, e.to, view.state.schema.text(e.text, marks));
+        // schema.text('') throws — replacing with nothing is legitimate (the
+        // user cleared the replace field), so it takes the delete path above
+        // instead. Otherwise, the inserted text carries `startMarks` (D2):
+        // marks from the START of the match, not wherever it ends.
+        else tr.replaceWith(e.from, e.to, view.state.schema.text(e.text, startMarks));
       }
+      // Every edit may have been skipped by the bounds guard above — nothing
+      // to dispatch, and an empty-steps transaction would still cost a no-op
+      // history entry and a redundant `dirtyTracking` look if it went through.
+      if (!tr.docChanged) return { crossedFormatting: false, removedAtoms: 0 };
       view.dispatch(tr);
-      return { crossedFormatting: crossed };
+      return { crossedFormatting: crossed, removedAtoms };
+    },
+    inspectEdits(edits) {
+      // Read-only: walks `view.state.doc` directly rather than building a
+      // `tr`, and never dispatches. Unlike `applyEdits`, order doesn't matter
+      // here — nothing mutates between edits, so every edit's positions stay
+      // valid against the same unchanged document regardless of what order
+      // they're inspected in.
+      let atomSpans = 0;
+      for (const e of edits) {
+        if (e.from < 0 || e.to > view.state.doc.content.size) continue;
+        if (inspectRange(view.state.doc, e.from, e.to).atomCount > 0) atomSpans += 1;
+      }
+      return { atomSpans };
     },
   };
 }

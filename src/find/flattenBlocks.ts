@@ -8,8 +8,15 @@ import type { OffsetRun, Segment } from './types';
  * with no inner positions to decorate, so they can never match — Code view
  * stays the way to search them (design §5.3). As a side effect, 6c-i-b needs
  * no "refuse replace inside verbatim" rule: find can never target one.
+ *
+ * Exported for `pmSurface`'s replace path (D6, spec §K5): these are exactly
+ * the nodes a match can span WITHOUT the user seeing them in the matched
+ * text — `hardBreak` is also an atom in the HTML schema but contributes a
+ * visible `\n` below and is deliberately not in this set. An edit that spans
+ * one of these removes something invisible to the text the user searched, so
+ * it must be counted and disclosed rather than silently taken.
  */
-const SKIP_ATOMS = new Set(['image', 'verbatim', 'inlineVerbatim']);
+export const SKIP_ATOMS = new Set(['image', 'verbatim', 'inlineVerbatim']);
 
 /**
  * One segment per VISIBLE BLOCK (`node.isTextblock` — paragraph, heading,

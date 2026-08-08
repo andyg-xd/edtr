@@ -391,7 +391,8 @@ describe('DocumentView find — a surface driver error degrades to no matches, n
       highlight: () => {},
       reveal: () => {},
       editable: () => true,
-      applyEdits: () => ({ crossedFormatting: false }),
+      applyEdits: () => ({ crossedFormatting: false, removedAtoms: 0 }),
+      inspectEdits: () => ({ atomSpans: 0 }),
     }));
     const onError = vi.fn();
     const { ref, container: c } = await mount('/tmp/find-error.md', 'hello world', 'code', undefined, onError);

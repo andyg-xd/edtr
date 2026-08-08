@@ -75,14 +75,25 @@ export function codeSurface(view: EditorView): FindSurface {
     },
     editable: () => view.state.facet(EditorView.editable),
     applyEdits(edits) {
-      if (edits.length === 0) return { crossedFormatting: false };
+      // Filter against the current document length for the same reason
+      // `reveal` above does: a stale edit computed against an older document
+      // can arrive here pointing past the end of the current one, and
+      // `ChangeSet.of` throws a `RangeError` on an out-of-range change —
+      // which would come out of whatever handler Task 5 wires the Replace
+      // button to, rather than out of a passive effect, but the crash is the
+      // same shape and just as worth not having.
+      const valid = edits.filter((e) => e.from >= 0 && e.to <= view.state.doc.length);
+      if (valid.length === 0) return { crossedFormatting: false, removedAtoms: 0 };
       // CodeMirror maps a changeset's positions itself, so ascending edits are
       // applied correctly in one transaction and one undo step.
       view.dispatch({
-        changes: edits.map((e) => ({ from: e.from, to: e.to, insert: e.text })),
+        changes: valid.map((e) => ({ from: e.from, to: e.to, insert: e.text })),
       });
-      // Code view's source is plain text: there is no formatting to cross.
-      return { crossedFormatting: false };
+      // Code view's source is plain text: there is no formatting to cross,
+      // and no atom concept for an edit to silently remove.
+      return { crossedFormatting: false, removedAtoms: 0 };
     },
+    // Plain text has no atom concept either — always zero, unconditionally.
+    inspectEdits: () => ({ atomSpans: 0 }),
   };
 }

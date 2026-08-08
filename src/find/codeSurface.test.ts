@@ -124,11 +124,33 @@ describe('codeSurface', () => {
       { from: 8, to: 11, text: 'dog' },
     ]);
     expect(v.state.doc.toString()).toBe('dog and dog');
-    // Code view's source is plain text — there is no formatting to cross.
+    // Code view's source is plain text — there is no formatting to cross,
+    // and no atom concept for an edit to silently remove (D6, spec §K5).
     expect(result.crossedFormatting).toBe(false);
+    expect(result.removedAtoms).toBe(0);
   });
 
   it('reports itself editable', () => {
     expect(codeSurface(mount('x')).editable()).toBe(true);
+  });
+
+  it('reports zero atom spans — plain text has no atom concept', () => {
+    // `inspectEdits` exists so Task 5 can disclose atom removal BEFORE the
+    // user commits (D6). Code view has nothing to disclose: its source is
+    // raw text, so nothing is ever invisible in a match the way an image or
+    // a verbatim region is in Live view.
+    expect(codeSurface(mount('cat')).inspectEdits([{ from: 0, to: 3, text: 'dog' }])).toEqual({ atomSpans: 0 });
+  });
+
+  it('ignores an edit that outlived the document instead of throwing', () => {
+    // Same posture as reveal's test above: `computeReplacements` can compute
+    // edits against a document that has since changed underneath it (a
+    // debounced recompute, or a Live<->Code toggle to a shorter projection),
+    // and CodeMirror's `ChangeSet.of` throws a RangeError on an out-of-range
+    // change — which would come out of whatever handler Task 5 wires the
+    // Replace button to. A stale edit must be dropped, silently, not thrown.
+    const v = mount('short');
+    expect(() => codeSurface(v).applyEdits([{ from: 100, to: 120, text: 'x' }])).not.toThrow();
+    expect(v.state.doc.toString()).toBe('short');
   });
 });

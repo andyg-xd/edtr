@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import type { Node as PMNode } from 'prosemirror-model';
 import { EditorState, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { liveSchema } from '../views/liveSchema';
@@ -19,6 +20,23 @@ function mount(text: string, extra: unknown[] = []): EditorView {
   const doc = s.node('doc', null, [
     s.node('paragraph', { blockId: 'b0' }, [s.text(text)]),
   ]);
+  view = new EditorView(host, {
+    state: EditorState.create({
+      doc,
+      plugins: [findDecorationsPlugin(), ...(extra as never[])],
+    }),
+  });
+  return view;
+}
+
+/**
+ * Like `mount`, but the caller supplies the whole doc rather than a flat
+ * string — for fixtures `mount`'s one-paragraph-of-plain-text shape can't
+ * express (a mark on part of a run, an atom mid-block, ...).
+ */
+function mountDoc(doc: PMNode, extra: unknown[] = []): EditorView {
+  const host = document.createElement('div');
+  document.body.appendChild(host);
   view = new EditorView(host, {
     state: EditorState.create({
       doc,
@@ -191,12 +209,7 @@ describe('pmSurface', () => {
         s.text('ca'), s.node('image', { src: 'x.png' }), s.text('t'),
       ]),
     ]);
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    view = new EditorView(host, {
-      state: EditorState.create({ doc, plugins: [findDecorationsPlugin()] }),
-    });
-    const surface = pmSurface(view);
+    const surface = pmSurface(mountDoc(doc));
     const run = matchSegments(surface.getSegments(), { ...emptyQuery, text: 'cat' }, { multiline: false });
     // The image contributes no text but DOES occupy a position, so the match's
     // end is past where plain string arithmetic would put it. That offset is
@@ -237,9 +250,7 @@ describe('pmSurface', () => {
         s.text('a '), s.text('cat', [s.marks.strong.create()]),
       ]),
     ]);
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    view = new EditorView(host, { state: EditorState.create({ doc, plugins: [findDecorationsPlugin()] }) });
+    const view = mountDoc(doc);
     // "cat" occupies positions 3..6 and is entirely bold.
     const result = pmSurface(view).applyEdits([{ from: 3, to: 6, text: 'dog' }]);
     expect(view.state.doc.textBetween(0, view.state.doc.content.size)).toBe('a dog');
@@ -256,11 +267,85 @@ describe('pmSurface', () => {
         s.text('a '), s.text('cat', [s.marks.strong.create()]),
       ]),
     ]);
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    view = new EditorView(host, { state: EditorState.create({ doc, plugins: [findDecorationsPlugin()] }) });
+    const view = mountDoc(doc);
     const result = pmSurface(view).applyEdits([{ from: 1, to: 6, text: 'dog' }]);
     expect(result.crossedFormatting).toBe(true);
+  });
+
+  it('keeps a non-inclusive mark (link) when the match starts on the LAST character of its run', () => {
+    // `link` is `inclusive: false` (liveSchema.ts) -- `ResolvedPos.marks()`
+    // drops a non-inclusive mark whenever the resolved position's
+    // `textOffset` is 0, which is exactly what happens when a match starts
+    // on the LAST character of the marked run: resolving position 4 (just
+    // past 'c') reads as "before ' rest'", even though position 3 -- the
+    // character the match actually starts on -- IS linked. Marks must come
+    // from the node containing that character (`nodeAt`), not from resolving
+    // just past it.
+    const doc = s.node('doc', null, [
+      s.node('paragraph', { blockId: 'b0' }, [
+        s.text('abc', [s.marks.link.create({ href: 'x' })]), s.text(' rest'),
+      ]),
+    ]);
+    const view = mountDoc(doc);
+    // "c" is the link run's last character, at position 3..4.
+    pmSurface(view).applyEdits([{ from: 3, to: 4, text: 'x' }]);
+    expect(view.state.doc.textBetween(0, view.state.doc.content.size)).toBe('abx rest');
+    expect(view.state.doc.nodeAt(3)?.marks.some((mk) => mk.type.name === 'link')).toBe(true);
+  });
+
+  it('does not report a false crossing for a range wholly inside one non-inclusive run', () => {
+    // Same fixture and edit as above: the range [3,4) never leaves the
+    // linked run, so this must NOT raise D2's notice. The bug this guards
+    // against compared the (wrongly filtered) marks at a RESOLVED position
+    // against the (correct, unfiltered) marks on the run's own text node --
+    // two different mark sets describing the exact same single run.
+    const doc = s.node('doc', null, [
+      s.node('paragraph', { blockId: 'b0' }, [
+        s.text('abc', [s.marks.link.create({ href: 'x' })]), s.text(' rest'),
+      ]),
+    ]);
+    const view = mountDoc(doc);
+    const result = pmSurface(view).applyEdits([{ from: 3, to: 4, text: 'x' }]);
+    expect(result.crossedFormatting).toBe(false);
+  });
+
+  it('removes an atom the match spanned and reports it, rather than refusing the edit (D6)', () => {
+    // "ca" + image + "t" flattens to "cat" (flattenBlocks skips the image's
+    // text but not its position, per the earlier "maps and reveals" test) --
+    // so a match on "cat" spans the image without the image ever appearing
+    // in the matched text. D6 (spec §K5): the replace still goes through,
+    // but the caller must be told what vanished.
+    const doc = s.node('doc', null, [
+      s.node('paragraph', { blockId: 'b0' }, [
+        s.text('ca'), s.node('image', { src: 'x.png' }), s.text('t'),
+      ]),
+    ]);
+    const view = mountDoc(doc);
+    const result = pmSurface(view).applyEdits([{ from: 1, to: 5, text: 'dog' }]);
+    expect(view.state.doc.textBetween(0, view.state.doc.content.size)).toBe('dog');
+    expect(result.removedAtoms).toBe(1);
+  });
+
+  it('inspectEdits reports the same atom span WITHOUT touching the document', () => {
+    // Task 5 needs this figure BEFORE the user commits to Replace All, so it
+    // must be answerable with no mutation at all.
+    const doc = s.node('doc', null, [
+      s.node('paragraph', { blockId: 'b0' }, [
+        s.text('ca'), s.node('image', { src: 'x.png' }), s.text('t'),
+      ]),
+    ]);
+    const view = mountDoc(doc);
+    const before = view.state.doc;
+    const result = pmSurface(view).inspectEdits([{ from: 1, to: 5, text: 'dog' }]);
+    expect(result.atomSpans).toBe(1);
+    expect(view.state.doc.eq(before)).toBe(true);
+  });
+
+  it('reports zero atoms for an edit that spans none', () => {
+    const v = mount('cat');
+    const surface = pmSurface(v);
+    expect(surface.inspectEdits([{ from: 1, to: 4, text: 'dog' }]).atomSpans).toBe(0);
+    expect(surface.applyEdits([{ from: 1, to: 4, text: 'dog' }]).removedAtoms).toBe(0);
   });
 
   it('applies several edits as one step, without invalidating later positions', () => {
@@ -279,5 +364,33 @@ describe('pmSurface', () => {
 
   it('reports editability from the view', () => {
     expect(pmSurface(mount('x')).editable()).toBe(true);
+  });
+
+  it('ignores an edit that outlived the document instead of throwing', () => {
+    // Same posture as reveal's test above: a stale edit computed against a
+    // document that has since changed must be dropped, not thrown -- an
+    // out-of-range `replaceWith`/`delete` throws a RangeError, and that
+    // would come out of whatever handler Task 5 wires the Replace button to.
+    const v = mount('short');
+    const before = v.state.doc;
+    expect(() => pmSurface(v).applyEdits([{ from: 100, to: 120, text: 'x' }])).not.toThrow();
+    expect(v.state.doc.eq(before)).toBe(true);
+  });
+
+  it('dispatches nothing when every edit is out of bounds', () => {
+    // The bounds guard above can filter every edit down to zero -- verifying
+    // the resulting document is unchanged does not tell apart "dispatched an
+    // empty-steps transaction" from "never dispatched at all", so this checks
+    // the dispatch itself rather than just its (absent) effect.
+    const v = mount('short');
+    let dispatched = false;
+    v.setProps({
+      dispatchTransaction(tr) {
+        dispatched = true;
+        v!.updateState(v!.state.apply(tr));
+      },
+    });
+    pmSurface(v).applyEdits([{ from: 100, to: 120, text: 'x' }]);
+    expect(dispatched).toBe(false);
   });
 });
