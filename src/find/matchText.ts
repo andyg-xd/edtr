@@ -15,6 +15,37 @@ export interface MatchRun {
 }
 
 /**
+ * Every non-overlapping match of `re` in `text`, in order, up to `budget`.
+ *
+ * Shared by matching and replacing so "what counts as a match" has exactly one
+ * definition — the same reason one matcher serves all three surfaces (§5.1).
+ *
+ * Zero-length matches are DROPPED and stepped over: `a*` or `^` matches empty
+ * at every position, `exec` never advances, and the loop would hang. An empty
+ * highlight is nothing a user could see or navigate to, and an empty
+ * replacement target is nothing they could mean.
+ */
+export function* execAll(
+  text: string,
+  re: RegExp,
+  budget = Infinity,
+): Generator<RegExpExecArray> {
+  const rx = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+  rx.lastIndex = 0;
+  let count = 0;
+  let m: RegExpExecArray | null;
+  while ((m = rx.exec(text)) !== null) {
+    if (m[0].length === 0) {
+      rx.lastIndex += 1;
+      if (rx.lastIndex > text.length) break;
+      continue;
+    }
+    yield m;
+    if (++count >= budget) break;
+  }
+}
+
+/**
  * Every non-overlapping match of `re` in `text`, in order, up to `budget`
  * matches.
  *
@@ -29,18 +60,9 @@ export interface MatchRun {
  * (tests, mostly) that want every match regardless of how many there are.
  */
 export function matchText(text: string, re: RegExp, budget = Infinity): TextMatch[] {
-  const rx = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
   const out: TextMatch[] = [];
-  rx.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = rx.exec(text)) !== null) {
-    if (m[0].length === 0) {
-      rx.lastIndex += 1;
-      if (rx.lastIndex > text.length) break;
-      continue;
-    }
+  for (const m of execAll(text, re, budget)) {
     out.push({ start: m.index, end: m.index + m[0].length });
-    if (out.length >= budget) break;
   }
   return out;
 }
