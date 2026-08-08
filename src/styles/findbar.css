@@ -3,7 +3,7 @@
    `flex: none` against the views' `flex: 1` is what produces the shift. */
 .find-bar {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-5);
   border-bottom: 1px solid var(--border);
@@ -78,3 +78,12 @@
   background: var(--find-current-bg);
   color: var(--find-current-fg);
 }
+
+.find-row { display: flex; align-items: center; gap: var(--space-3); }
+.find-replace-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.find-replace-input { flex: 1; min-width: 0; }

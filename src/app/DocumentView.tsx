@@ -373,6 +373,12 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
       onNext={goNext}
       onPrev={goPrev}
       onClose={closeFind}
+      showReplace={false}
+      replaceText=""
+      canReplace={true}
+      onReplaceTextChange={() => {}}
+      onReplace={() => {}}
+      onReplaceAll={() => {}}
     />
   ) : null;
 

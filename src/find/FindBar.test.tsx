@@ -25,6 +25,12 @@ function props(over: Partial<Parameters<typeof FindBar>[0]> = {}) {
     onNext: vi.fn(),
     onPrev: vi.fn(),
     onClose: vi.fn(),
+    showReplace: false,
+    replaceText: '',
+    canReplace: true,
+    onReplaceTextChange: vi.fn(),
+    onReplace: vi.fn(),
+    onReplaceAll: vi.fn(),
     ...over,
   };
 }
@@ -159,5 +165,48 @@ describe('FindBar', () => {
     for (const b of c.querySelectorAll('button')) {
       expect(b.className, b.outerHTML).not.toBe('');
     }
+  });
+
+  it('hides the replace row unless asked for it', async () => {
+    const c = await render(<FindBar {...props()} />);
+    expect(c.querySelector('.find-replace-row')).toBeNull();
+  });
+
+  it('shows the replace row with a plain-language placeholder', async () => {
+    const c = await render(<FindBar {...props({ showReplace: true })} />);
+    const field = c.querySelector<HTMLInputElement>('.find-replace-input')!;
+    expect(field.placeholder).toBe('Replace with');
+    expect(field.getAttribute('autocorrect')).toBe('off');
+    expect(field.getAttribute('spellcheck')).toBe('false');
+  });
+
+  it('disables replace when the surface cannot be written to', async () => {
+    // Find works in a read-only preview; replace must not.
+    const c = await render(<FindBar {...props({ showReplace: true, canReplace: false })} />);
+    expect(c.querySelector<HTMLInputElement>('.find-replace-input')!.disabled).toBe(true);
+    expect(c.querySelector<HTMLButtonElement>('.find-replace')!.disabled).toBe(true);
+    expect(c.querySelector<HTMLButtonElement>('.find-replace-all')!.disabled).toBe(true);
+  });
+
+  it('calls onReplace and onReplaceAll from the buttons', async () => {
+    const onReplace = vi.fn();
+    const onReplaceAll = vi.fn();
+    const c = await render(<FindBar {...props({ showReplace: true, onReplace, onReplaceAll })} />);
+    await act(async () => c.querySelector<HTMLButtonElement>('.find-replace')!.click());
+    await act(async () => c.querySelector<HTMLButtonElement>('.find-replace-all')!.click());
+    expect(onReplace).toHaveBeenCalledTimes(1);
+    expect(onReplaceAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('replaces on Enter in the replace field, and does not step matches', async () => {
+    const onReplace = vi.fn();
+    const onNext = vi.fn();
+    const c = await render(<FindBar {...props({ showReplace: true, onReplace, onNext })} />);
+    const field = c.querySelector<HTMLInputElement>('.find-replace-input')!;
+    await act(async () => {
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    expect(onReplace).toHaveBeenCalledTimes(1);
+    expect(onNext).not.toHaveBeenCalled();
   });
 });
