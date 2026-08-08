@@ -168,8 +168,12 @@ describe('FindBar', () => {
   });
 
   it('hides the replace row unless asked for it', async () => {
-    const c = await render(<FindBar {...props()} />);
-    expect(c.querySelector('.find-replace-row')).toBeNull();
+    // Verify the prop actually drives the markup, not just the default state.
+    const withoutReplace = await render(<FindBar {...props({ showReplace: false })} />);
+    expect(withoutReplace.querySelector('.find-replace-row')).toBeNull();
+
+    const withReplace = await render(<FindBar {...props({ showReplace: true })} />);
+    expect(withReplace.querySelector('.find-replace-row')).not.toBeNull();
   });
 
   it('shows the replace row with a plain-language placeholder', async () => {
