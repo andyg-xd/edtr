@@ -18,9 +18,13 @@ describe('expandReplacement', () => {
   });
 
   it('substitutes a two-digit group before falling back to one digit', () => {
-    const m = exec('(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)', 'abcdefghijk');
-    expect(expandReplacement(m, '$11')).toBe('k');
-    expect(expandReplacement(m, '$1' + '1')).toBe('k'); // same string — documents the ambiguity
+    // With 11 groups, $11 is group 11 (two-digit form).
+    const m11 = exec('(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)', 'abcdefghijk');
+    expect(expandReplacement(m11, '$11')).toBe('k');
+
+    // With only 1 group, $11 is group 1 followed by literal '1' (one-digit fallback).
+    const m1 = exec('(a)', 'a');
+    expect(expandReplacement(m1, '$11')).toBe('a1');
   });
 
   it('leaves a group reference with no such group as literal text', () => {

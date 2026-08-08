@@ -46,18 +46,8 @@ export function* execAll(
 }
 
 /**
- * Every non-overlapping match of `re` in `text`, in order, up to `budget`
- * matches.
- *
- * Zero-length matches are DROPPED and stepped over. A pattern like `a*` or `^`
- * matches empty at every position: without the guard `exec` never advances and
- * the loop hangs, and an empty highlight is nothing a user could see or
- * navigate to anyway.
- *
- * `budget` bounds the WORK, not just the result: the loop stops calling
- * `exec` the moment it is reached, rather than running to completion and
- * having the caller discard the excess. Defaults to unbounded for callers
- * (tests, mostly) that want every match regardless of how many there are.
+ * Convenience wrapper around `execAll` that collects matches into an array.
+ * See `execAll` for the semantics (budget, zero-length handling, etc.).
  */
 export function matchText(text: string, re: RegExp, budget = Infinity): TextMatch[] {
   const out: TextMatch[] = [];
