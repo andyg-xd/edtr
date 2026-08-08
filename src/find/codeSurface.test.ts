@@ -116,4 +116,19 @@ describe('codeSurface', () => {
     v.state.field(findHighlightField).between(0, v.state.doc.length, (from, to) => { found = { from, to }; });
     expect(found).toEqual({ from: 6, to: 9 });
   });
+
+  it('applies edits to the source and reports no formatting crossing', () => {
+    const v = mount('cat and cat');
+    const result = codeSurface(v).applyEdits([
+      { from: 0, to: 3, text: 'dog' },
+      { from: 8, to: 11, text: 'dog' },
+    ]);
+    expect(v.state.doc.toString()).toBe('dog and dog');
+    // Code view's source is plain text — there is no formatting to cross.
+    expect(result.crossedFormatting).toBe(false);
+  });
+
+  it('reports itself editable', () => {
+    expect(codeSurface(mount('x')).editable()).toBe(true);
+  });
 });

@@ -73,5 +73,16 @@ export function codeSurface(view: EditorView): FindSurface {
         effects: EditorView.scrollIntoView(match.from, { y: 'center' }),
       });
     },
+    editable: () => view.state.facet(EditorView.editable),
+    applyEdits(edits) {
+      if (edits.length === 0) return { crossedFormatting: false };
+      // CodeMirror maps a changeset's positions itself, so ascending edits are
+      // applied correctly in one transaction and one undo step.
+      view.dispatch({
+        changes: edits.map((e) => ({ from: e.from, to: e.to, insert: e.text })),
+      });
+      // Code view's source is plain text: there is no formatting to cross.
+      return { crossedFormatting: false };
+    },
   };
 }

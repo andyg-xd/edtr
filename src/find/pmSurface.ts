@@ -1,3 +1,4 @@
+import { Mark, type Node as PMNode } from 'prosemirror-model';
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state';
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 import { flattenBlocks } from './flattenBlocks';
@@ -63,6 +64,24 @@ export function findDecorationsPlugin(): Plugin<FindDecoState> {
       decorations: (state) => findKey.getState(state)?.deco ?? DecorationSet.empty,
     },
   });
+}
+
+/**
+ * Whether `[from, to)` contains more than one set of marks.
+ *
+ * This is what decides D2's notice. It compares each text node's marks against
+ * the marks at the match start rather than counting nodes, because a range can
+ * be split across several text nodes that all carry identical marks (a
+ * re-parse, an image between two runs) and that is not a formatting boundary.
+ */
+function spansFormattingBoundary(doc: PMNode, from: number, to: number): boolean {
+  const startMarks = doc.resolve(from + 1 <= to ? from + 1 : from).marks();
+  let crossed = false;
+  doc.nodesBetween(from, to, (node) => {
+    if (!node.isText || crossed) return;
+    if (!Mark.sameSet(node.marks, startMarks)) crossed = true;
+  });
+  return crossed;
 }
 
 /**
@@ -137,6 +156,27 @@ export function pmSurface(view: EditorView): FindSurface {
       // `scrollIntoView` is absent under jsdom and present in every real
       // browser, which is why no test could see the bug this replaced.
       el?.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+    },
+    editable: () => view.editable,
+    applyEdits(edits) {
+      if (edits.length === 0) return { crossedFormatting: false };
+      const { tr } = view.state;
+      let crossed = false;
+      // Apply DESCENDING so each edit's positions are still valid when it runs
+      // — an earlier replacement of a different length would otherwise shift
+      // every position after it.
+      for (let i = edits.length - 1; i >= 0; i--) {
+        const e = edits[i];
+        if (e.from < 0 || e.to > tr.doc.content.size) continue;
+        if (spansFormattingBoundary(tr.doc, e.from, e.to)) crossed = true;
+        // Marks from the START of the match (D2). Taken at from+1 because a
+        // position at a text node's boundary resolves to the marks before it.
+        const marks = tr.doc.resolve(Math.min(e.from + 1, e.to)).marks();
+        if (e.text === '') tr.delete(e.from, e.to);
+        else tr.replaceWith(e.from, e.to, view.state.schema.text(e.text, marks));
+      }
+      view.dispatch(tr);
+      return { crossedFormatting: crossed };
     },
   };
 }

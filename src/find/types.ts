@@ -1,3 +1,5 @@
+import type { ReplaceEdit } from './replaceText';
+
 /** A contiguous run of flattened text and where it came from in the editor. */
 export interface OffsetRun {
   /** Offset of this run's first character within the segment's flat text. */
@@ -33,8 +35,6 @@ export interface FindMatch {
 /**
  * What find needs from an editor. Two thin adapters implement it — one per
  * engine — so the core never knows which editor it is searching.
- *
- * `replace` is deliberately absent: 6c-i-a cannot modify a document at all.
  */
 export interface FindSurface {
   /**
@@ -51,6 +51,21 @@ export interface FindSurface {
   selectedText(): string;
   highlight(matches: FindMatch[], current: number): void;
   reveal(match: FindMatch): void;
+  /**
+   * Whether this surface may be written to. Find works in a read-only HTML
+   * preview; replace must not (addendum, read-only gating).
+   */
+  editable(): boolean;
+  /**
+   * Apply edits as ONE undo-able step. Edits must be ascending and
+   * non-overlapping — `computeReplacements` guarantees both.
+   *
+   * Returns whether any edit spanned more than one formatting run, which is
+   * what raises D2's heads-up notice. Reported by the surface because only the
+   * surface knows what formatting means: Code view always returns false, since
+   * its source is plain text with no formatting concept.
+   */
+  applyEdits(edits: ReplaceEdit[]): { crossedFormatting: boolean };
 }
 
 /** Positions equal offsets — the Code-view case, where the segment IS the source. */

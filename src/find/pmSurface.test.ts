@@ -230,4 +230,54 @@ describe('pmSurface', () => {
     expect(v.state.selection.from).toBe(beforeSelection); // moved nothing
     expect(v.state.doc.eq(before)).toBe(true);
   });
+
+  it('applies edits and keeps the marks from the match start', () => {
+    const doc = s.node('doc', null, [
+      s.node('paragraph', { blockId: 'b0' }, [
+        s.text('a '), s.text('cat', [s.marks.strong.create()]),
+      ]),
+    ]);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    view = new EditorView(host, { state: EditorState.create({ doc, plugins: [findDecorationsPlugin()] }) });
+    // "cat" occupies positions 3..6 and is entirely bold.
+    const result = pmSurface(view).applyEdits([{ from: 3, to: 6, text: 'dog' }]);
+    expect(view.state.doc.textBetween(0, view.state.doc.content.size)).toBe('a dog');
+    const $at = view.state.doc.resolve(4);
+    expect($at.marks().some((mk) => mk.type.name === 'strong')).toBe(true);
+    expect(result.crossedFormatting).toBe(false);
+  });
+
+  it('reports a replacement that crossed a formatting boundary', () => {
+    // "a cat" runs plain -> bold, so replacing across it takes the formatting
+    // from the START of the match and the user must be told (D2).
+    const doc = s.node('doc', null, [
+      s.node('paragraph', { blockId: 'b0' }, [
+        s.text('a '), s.text('cat', [s.marks.strong.create()]),
+      ]),
+    ]);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    view = new EditorView(host, { state: EditorState.create({ doc, plugins: [findDecorationsPlugin()] }) });
+    const result = pmSurface(view).applyEdits([{ from: 1, to: 6, text: 'dog' }]);
+    expect(result.crossedFormatting).toBe(true);
+  });
+
+  it('applies several edits as one step, without invalidating later positions', () => {
+    const v = mount('cat and cat');
+    // Positions are ascending; applying front-to-back would shift the second.
+    pmSurface(v).applyEdits([{ from: 1, to: 4, text: 'x' }, { from: 9, to: 12, text: 'y' }]);
+    expect(v.state.doc.textBetween(0, v.state.doc.content.size)).toBe('x and y');
+  });
+
+  it('deletes rather than inserting an empty text node', () => {
+    // schema.text('') throws; replacing with nothing is a legitimate action.
+    const v = mount('cat');
+    expect(() => pmSurface(v).applyEdits([{ from: 1, to: 4, text: '' }])).not.toThrow();
+    expect(v.state.doc.textBetween(0, v.state.doc.content.size)).toBe('');
+  });
+
+  it('reports editability from the view', () => {
+    expect(pmSurface(mount('x')).editable()).toBe(true);
+  });
 });
