@@ -1,10 +1,19 @@
 import type { OpenPayload } from '../files/openPayload';
 
+/**
+ * Every native-menu command, and the ONLY list of them. `MenuBridge`
+ * subscribes from this array and `MenuCommand` is derived from it, so a
+ * command can never exist in the type but be missing a listener — which is
+ * exactly how ⌥⌘F shipped firing an event nobody heard.
+ */
+export const MENU_COMMANDS = [
+  'open', 'open-folder', 'save', 'save-as', 'close',
+  'quit-poll', 'quit-abort',
+  'find', 'find-next', 'find-prev', 'replace',
+] as const;
+
 /** The native-menu commands the Rust side emits as `menu://<command>` events. */
-export type MenuCommand =
-  | 'open' | 'open-folder' | 'save' | 'save-as' | 'close'
-  | 'quit-poll' | 'quit-abort'
-  | 'find' | 'find-next' | 'find-prev' | 'replace';
+export type MenuCommand = typeof MENU_COMMANDS[number];
 
 /** App-level handlers the menu (and window close button) drive. */
 export interface MenuHandlers {

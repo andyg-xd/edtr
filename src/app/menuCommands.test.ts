@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { dispatchMenuCommand, type MenuCommand, type MenuHandlers } from './menuCommands';
+import { MENU_COMMANDS, dispatchMenuCommand, type MenuCommand, type MenuHandlers } from './menuCommands';
 
 function tracked(): MenuHandlers & { calls: string[] } {
   const calls: string[] = [];
@@ -68,5 +68,13 @@ describe('dispatchMenuCommand', () => {
     const handlers = makeHandlers();
     dispatchMenuCommand('replace', handlers);
     expect(handlers.onReplace).toHaveBeenCalledTimes(1);
+  });
+
+  it('MENU_COMMANDS contains every command that dispatchMenuCommand handles', () => {
+    const all = [
+      'open', 'open-folder', 'save', 'save-as', 'close', 'quit-poll', 'quit-abort',
+      'find', 'find-next', 'find-prev', 'replace',
+    ] as const satisfies readonly MenuCommand[];
+    expect(MENU_COMMANDS as readonly string[]).toEqual(all);
   });
 });

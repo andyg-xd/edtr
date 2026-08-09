@@ -97,9 +97,9 @@ pub fn menu_event_name(id: &str) -> Option<&'static str> {
 /// process. ⌘Q in particular is a special Apple event Tauri does not otherwise
 /// deliver to window/exit events, so owning the menu item is the only robust
 /// interception (see the design spec). The Edit submenu keeps the PREDEFINED
-/// editing items (copy/paste/cut/undo/redo/select-all) and adds three custom
-/// Find items that need `on_menu_event` delivery, for the same reason: macOS
-/// offers a key equivalent to the menu before the webview, so ⌘F must be owned
+/// editing items (copy/paste/cut/undo/redo/select-all) and adds our custom Find
+/// and Replace items that need `on_menu_event` delivery, for the same reason:
+/// macOS offers a key equivalent to the menu before the webview, so ⌘F must be owned
 /// by a native menu item rather than a webview keymap binding.
 pub fn build_menu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry]) -> tauri::Result<Menu<R>> {
     let quit = MenuItem::with_id(app, "quit", "Quit Edtr", true, Some("Cmd+Q"))?;

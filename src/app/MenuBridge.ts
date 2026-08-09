@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { dispatchMenuCommand, type MenuCommand, type MenuHandlers } from './menuCommands';
+import { MENU_COMMANDS, dispatchMenuCommand, type MenuHandlers } from './menuCommands';
 import { markFrontendReady } from '../files/fileController';
 import type { OpenPayload } from '../files/openPayload';
 
@@ -19,14 +19,10 @@ export function useMenuAndCloseGuard(handlers: MenuHandlers): void {
 
   // Native-menu events → handlers.
   useEffect(() => {
-    const commands: MenuCommand[] = [
-      'open', 'open-folder', 'save', 'save-as', 'close', 'quit-poll', 'quit-abort',
-      'find', 'find-next', 'find-prev',
-    ];
     const unlisteners: Array<() => void> = [];
     let disposed = false;
     const win = getCurrentWebviewWindow();
-    for (const cmd of commands) {
+    for (const cmd of MENU_COMMANDS) {
       win.listen(`menu://${cmd}`, () => dispatchMenuCommand(cmd, ref.current))
         .then((un) => { if (disposed) un(); else unlisteners.push(un); })
         .catch(() => {});
