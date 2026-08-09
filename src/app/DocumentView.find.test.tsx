@@ -484,6 +484,19 @@ describe('DocumentView replace', () => {
     expect(doc.session.text).toBe('dog dog dog');
   });
 
+  it('does NOT confirm at exactly the threshold', async () => {
+    // The boundary is `> THRESHOLD`, not `>=`. Exactly-at-the-threshold is the
+    // classic off-by-one site, and the other tests only cover 2, 3 and N+1.
+    const source = 'cat '.repeat(REPLACE_ALL_CONFIRM_THRESHOLD).trim();
+    const { ref, doc, container: c } = await mount('/tmp/r.md', source, 'code');
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplaceAll(c);
+    expect(guard(c)).toBeNull();
+    expect(doc.session.text).toBe('dog '.repeat(REPLACE_ALL_CONFIRM_THRESHOLD).trim());
+  });
+
   it('confirms above the threshold, and cancelling changes absolutely nothing', async () => {
     const source = 'cat '.repeat(REPLACE_ALL_CONFIRM_THRESHOLD + 1).trim();
     const onInfo = vi.fn();
@@ -549,5 +562,108 @@ describe('DocumentView replace', () => {
     await act(async () => { ref.current!.openFind(); });
     await act(async () => { ref.current!.openReplace(); });
     expect(replaceField(c).value).toBe('dog');
+  });
+});
+
+describe('DocumentView replace — disclosure (D2 + D6)', () => {
+  /** The real code surface, but reporting an outcome we choose. Code view has
+   *  neither formatting nor atoms in reality, so a stub is the only way to
+   *  exercise the disclosure wiring from this layer — and the wiring is what
+   *  is under test, not the surface's own counting (pmSurface.test.ts owns
+   *  that). Applies nothing: the notice, not the bytes, is the subject. */
+  function stubOutcome(outcome: { crossedFormatting: boolean; removedAtoms: number }) {
+    const real = vi.mocked(codeSurface).getMockImplementation()!;
+    vi.mocked(codeSurface).mockImplementation((view) => ({
+      ...real(view),
+      editable: () => true,
+      applyEdits: () => outcome,
+      inspectEdits: () => ({ atomSpans: outcome.removedAtoms }),
+    }));
+  }
+  afterEach(() => { vi.mocked(codeSurface).mockReset(); });
+
+  it('discloses a formatting crossing once per action, not per occurrence', async () => {
+    stubOutcome({ crossedFormatting: true, removedAtoms: 0 });
+    const onInfo = vi.fn();
+    const { ref, container: c } = await mount('/tmp/r.md', 'cat cat cat', 'code', () => {}, () => {}, onInfo);
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplaceAll(c);
+    // THREE occurrences crossed; ONE notice.
+    expect(onInfo).toHaveBeenCalledTimes(1);
+    expect(onInfo.mock.calls[0][0]).toContain('Replaced across formatting.');
+  });
+
+  it('discloses removed pictures alongside the count, in ONE message', async () => {
+    // The defect this pins: onInfo drives a single-slot banner, so a count
+    // reported as a SECOND call silently overwrote D6's disclosure and the
+    // user saw only "Replaced N matches." The disclosure must survive.
+    stubOutcome({ crossedFormatting: false, removedAtoms: 2 });
+    const onInfo = vi.fn();
+    const { ref, container: c } = await mount('/tmp/r.md', 'cat cat', 'code', () => {}, () => {}, onInfo);
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplaceAll(c);
+    expect(onInfo).toHaveBeenCalledTimes(1);
+    const msg = onInfo.mock.calls[0][0] as string;
+    expect(msg).toContain('Replaced 2 matches.');
+    expect(msg).toContain('2 pictures or embedded items');
+    expect(msg).toContain('picture files are still saved next to your document');
+  });
+
+  it('discloses a single removed picture after a single Replace, with no count', async () => {
+    stubOutcome({ crossedFormatting: false, removedAtoms: 1 });
+    const onInfo = vi.fn();
+    const { ref, container: c } = await mount('/tmp/r.md', 'cat cat', 'code', () => {}, () => {}, onInfo);
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplace(c);
+    expect(onInfo).toHaveBeenCalledTimes(1);
+    const msg = onInfo.mock.calls[0][0] as string;
+    expect(msg).toContain('Replaced across a picture or embedded item.');
+    // A single Replace is one match by definition — a count would be noise.
+    expect(msg).not.toContain('matches.');
+  });
+
+  it('says nothing when there is nothing to disclose', async () => {
+    stubOutcome({ crossedFormatting: false, removedAtoms: 0 });
+    const onInfo = vi.fn();
+    const { ref, container: c } = await mount('/tmp/r.md', 'cat cat', 'code', () => {}, () => {}, onInfo);
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplace(c);
+    expect(onInfo).not.toHaveBeenCalled();
+  });
+});
+
+describe('DocumentView replace — stale-match guard', () => {
+  it('ignores a second Replace fired inside the debounce window', async () => {
+    // Enter in the replace field fires onReplace, and macOS key repeat is
+    // faster than FIND_DEBOUNCE_MS. Without the freshness gate, the second
+    // press replays the PRE-EDIT match position against the already-edited
+    // document -- and when the replacement re-matches, that rewrites the
+    // occurrence just replaced ('cat!! cat') instead of doing nothing.
+    //
+    // Deliberately NO debounce wait between the presses: every other test here
+    // sleeps 200ms, which is exactly why this window was never exercised.
+    const { ref, doc, container: c } = await mount('/tmp/r.md', 'cat cat', 'code');
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'cat!');
+    const btn = c.querySelector('.find-replace') as HTMLButtonElement;
+    // Two SEPARATE act() flushes, not two clicks inside one. Key repeat
+    // delivers discrete events that each let React commit, so the second press
+    // sees the epoch the first one bumped -- batching both into a single
+    // commit would model an input the OS never produces, and the guard (which
+    // reads render-scoped state) could not see it in that shape either.
+    await act(async () => { btn.click(); });
+    await act(async () => { btn.click(); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 200)); });
+    // Exactly one replacement landed; the stale second press did nothing.
+    expect(doc.session.text).toBe('cat! cat');
   });
 });

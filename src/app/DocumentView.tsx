@@ -387,31 +387,63 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   // The one place that applies edits, raises the crossing/atom notices and
   // recomputes -- Replace and Replace All both go through this, so they
   // cannot drift into disclosing different things for the same kind of edit.
+  // Applies edits and RETURNS what happened; it deliberately raises no notice
+  // itself. `onInfo` drives a single-slot banner (EditorWindow holds one
+  // `infoNotice` string), so two calls in one action means the first is
+  // overwritten and never seen -- which is how D6's "must be disclosed" turned
+  // into disclosing nothing at all when a count report followed it. Every
+  // caller composes ONE message instead, via `disclose` below.
   const runEdits = useCallback((edits: ReplaceEdit[]) => {
     const s = surfaceRef.current;
-    if (!s || !s.editable() || edits.length === 0) return;
-    const { crossedFormatting, removedAtoms } = s.applyEdits(edits);
-    if (crossedFormatting) {
-      // Once per action, never per occurrence -- `applyEdits` already
-      // reduces every crossed edit in the batch to one boolean.
-      onInfo('Replaced across formatting. The replacement takes the formatting from the start of the match.');
+    if (!s || !s.editable() || edits.length === 0) return null;
+    const outcome = s.applyEdits(edits);
+    // The document changed, so matches must re-scan. This is the SAME path a
+    // typed edit takes; replace does not get its own.
+    bumpFindEpoch();
+    return outcome;
+  }, []);
+
+  /**
+   * Turn one action's outcome into one banner line.
+   *
+   * The clauses are the spec's approved strings verbatim, concatenated: D2's
+   * crossing notice and D6's atom disclosure both have to survive alongside
+   * D5's count, and a single slot means a single message. Once per action,
+   * never per occurrence -- `applyEdits` already reduces a whole batch to one
+   * boolean and one total.
+   */
+  const disclose = useCallback((
+    outcome: { crossedFormatting: boolean; removedAtoms: number } | null,
+    lead?: string,
+  ) => {
+    if (!outcome) return; // nothing was applied -- claim nothing
+    const parts: string[] = [];
+    if (lead) parts.push(lead);
+    if (outcome.crossedFormatting) {
+      parts.push('Replaced across formatting. The replacement takes the formatting from the start of the match.');
     }
     // D6: an atom is invisible in the flattened text, so removing one is
     // something the user could not have knowingly consented to. Disclosure is
     // the whole mitigation -- say what went, and that the file itself survives.
-    if (removedAtoms === 1) {
-      onInfo('Replaced across a picture or embedded item. It was removed from the text, but picture files are still saved next to your document.');
-    } else if (removedAtoms > 1) {
-      onInfo(`Replaced across ${removedAtoms} pictures or embedded items. They were removed from the text, but picture files are still saved next to your document.`);
+    if (outcome.removedAtoms === 1) {
+      parts.push('Replaced across a picture or embedded item. It was removed from the text, but picture files are still saved next to your document.');
+    } else if (outcome.removedAtoms > 1) {
+      parts.push(`Replaced across ${outcome.removedAtoms} pictures or embedded items. They were removed from the text, but picture files are still saved next to your document.`);
     }
-    // The document changed, so matches must re-scan. This is the SAME path a
-    // typed edit takes; replace does not get its own.
-    bumpFindEpoch();
+    if (parts.length > 0) onInfo(parts.join(' '));
   }, [onInfo]);
 
   const onReplace = useCallback(() => {
     const s = surfaceRef.current;
     if (!s || !s.editable()) return;
+    // The SAME freshness gate the highlight and reveal effects use. Without
+    // it this is the one consumer of `find.matches` that reads them stale:
+    // Enter in the replace field fires onReplace, and macOS key repeat is
+    // faster than FIND_DEBOUNCE_MS, so a held Enter would replay the
+    // pre-edit match position -- silently no-op'ing at best, and at worst
+    // rewriting the occurrence it just replaced when the replacement itself
+    // re-matches. A stale replace must do nothing, not something wrong.
+    if (!findFresh) return;
     const match = currentMatch(find);
     if (!match) return;
     // Computed for the WHOLE document (Replace All needs the same call), then
@@ -427,18 +459,20 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     // next recompute's setResult() looks for the first match at or after this
     // position, so the just-inserted text is behind the anchor, not ahead of it.
     findAnchorRef.current = edit.from + edit.text.length;
-    runEdits([edit]);
-  }, [find, replaceText, runEdits]);
+    // No count lead: a single Replace is one match by definition, and saying
+    // so would be noise. Only the crossing/atom disclosures apply here.
+    disclose(runEdits([edit]));
+  }, [find, findFresh, replaceText, runEdits, disclose]);
 
   // Both Replace All paths -- straight through, and via the confirmation --
   // apply and then report the count. D5 says it reports "either way", so the
   // report lives here rather than only after the dialog: a below-threshold
   // batch is still a bulk action, and the count is how the user knows the
-  // scope of what just happened without counting highlights.
+  // scope of what just happened without counting highlights. The count is the
+  // LEAD of one message, not a second one, so it cannot bury a disclosure.
   const runReplaceAll = useCallback((edits: ReplaceEdit[]) => {
-    runEdits(edits);
-    onInfo(`Replaced ${edits.length} ${edits.length === 1 ? 'match' : 'matches'}.`);
-  }, [runEdits, onInfo]);
+    disclose(runEdits(edits), `Replaced ${edits.length} ${edits.length === 1 ? 'match' : 'matches'}.`);
+  }, [runEdits, disclose]);
 
   const onReplaceAll = useCallback(() => {
     const s = surfaceRef.current;
