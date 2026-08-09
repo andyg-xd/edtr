@@ -5,13 +5,15 @@
 // the bytes the user actually changed. Everything else Edtr does is
 // convenience; this file is the guarantee.
 //
-// Both helpers mirror the REAL production path bit-for-bit:
+// Both helpers mirror the REAL production path:
 //   1. `toLive`/`toLiveHtml` build the Live doc from source (DocumentView's
 //      `live`/`liveHtml` memos).
-//   2. A real `EditorView` is mounted with the SAME plugin set `LiveView` /
-//      `HtmlLiveView` install (`blockIdentityPlugin` + `dirtyTrackingPlugin`
-//      + `findDecorationsPlugin`) — dirty tracking has to be live for
-//      `writeBack` to know what changed.
+//   2. A real `EditorView` is mounted with the plugins write-back fidelity
+//      actually depends on — `blockIdentityPlugin` + `dirtyTrackingPlugin`
+//      + `findDecorationsPlugin` — the same ones `LiveView`/`HtmlLiveView`
+//      install, though not the full list: `history()` and the input keymaps
+//      are also mounted there and are irrelevant to write-back, so they're
+//      omitted here.
 //   3. `computeReplacements` + `pmSurface(view).applyEdits(...)` is the exact
 //      pipeline `DocumentView.onReplace`/`onReplaceAll` call.
 //   4. `writeBack`/`htmlWriteBack` is called with the SAME arguments
@@ -32,6 +34,15 @@ import { pmSurface, findDecorationsPlugin } from './pmSurface';
 import { computeReplacements } from './replaceText';
 import { emptyQuery } from './findQuery';
 
+/** What one replace-through-Live-view run produced, and how it got there. */
+interface ReplaceResult {
+  output: string;
+  /** The dirty set `writeBack`/`htmlWriteBack` actually saw. Exposed so a
+   *  no-op test can assert IT WAS ZERO (never reached the serializer) rather
+   *  than that being an accident nobody checked. */
+  dirty: Set<string>;
+}
+
 const MD_FIXTURE = [
   '# Title',
   '',
@@ -41,19 +52,18 @@ const MD_FIXTURE = [
   '- two with cat',
   '',
   '```',
-  'code with cat stays untouched in live view',
+  'code with cat is editable in live view too',
   '```',
   '',
 ].join('\n');
 
 /**
- * Mounts the Markdown Live doc in a real `EditorView` (same plugin list
- * `LiveView` installs: block identity + dirty tracking + find decorations),
- * runs a replace through the exact pipeline `DocumentView.onReplace` /
- * `onReplaceAll` use, then flushes through the exact call
- * `DocumentView.flushToSource` makes to `writeBack`.
+ * Mounts the Markdown Live doc in a real `EditorView`, runs a replace through
+ * the exact pipeline `DocumentView.onReplace`/`onReplaceAll` use, then
+ * flushes through the exact call `DocumentView.flushToSource` makes to
+ * `writeBack`.
  */
-function replaceThroughLiveView(source: string, query: string, replacement: string): string {
+function replaceThroughLiveView(source: string, query: string, replacement: string): ReplaceResult {
   const result = toLive(source, null);
   if (!result.ok) throw new Error('fixture degraded — cannot exercise Live view');
   const baselineDoc = result.doc;
@@ -76,7 +86,8 @@ function replaceThroughLiveView(source: string, query: string, replacement: stri
     );
     surface.applyEdits(edits);
     const dirty = getDirtyBlockIds(view.state);
-    return writeBack(view.state.doc, source, dirty, detectFlavor(source, 'markdown'), baselineDoc);
+    const output = writeBack(view.state.doc, source, dirty, detectFlavor(source, 'markdown'), baselineDoc);
+    return { output, dirty };
   } finally {
     view.destroy();
     host.remove();
@@ -85,28 +96,60 @@ function replaceThroughLiveView(source: string, query: string, replacement: stri
 
 describe('replace is surgical (Markdown)', () => {
   it('changes ONLY the replaced bytes', () => {
-    const after = replaceThroughLiveView(MD_FIXTURE, 'cat', 'dog');
+    const { output } = replaceThroughLiveView(MD_FIXTURE, 'cat', 'dog');
     // Byte-for-byte: every untouched line, the blank lines between blocks, and
     // the trailing newline must survive identically.
-    expect(after).toBe(MD_FIXTURE.split('cat').join('dog'));
+    expect(output).toBe(MD_FIXTURE.split('cat').join('dog'));
   });
 
   it('replacing text with itself leaves the file byte-identical', () => {
-    // The strongest no-op statement available: a replace that changes nothing
-    // must not reflow, re-indent or re-wrap anything on its way through.
-    expect(replaceThroughLiveView(MD_FIXTURE, 'cat', 'cat')).toBe(MD_FIXTURE);
+    const { output, dirty } = replaceThroughLiveView(MD_FIXTURE, 'cat', 'cat');
+    expect(output).toBe(MD_FIXTURE);
+    // Pin the MECHANISM, since this test does not exercise the serializer at
+    // all: `dirtyTrackingPlugin` is differs-from-baseline, not ever-touched
+    // (dirtyTracking.test.ts's "un-marks a block when it is edited back to
+    // its baseline content"), so a same-text replace produces an EMPTY dirty
+    // set — `reconcile` byte-slices every block from the baseline and
+    // `serializeBlock` never runs. That is still worth asserting (an
+    // over-eager dirty tracker that marked a no-op edit dirty would be a
+    // real regression), but it is not, on its own, a no-beautify proof — see
+    // the round-trip test below for the one that actually forces the
+    // serializer to run.
+    expect(dirty.size).toBe(0);
   });
 
   it('preserves the trailing newline', () => {
-    expect(replaceThroughLiveView(MD_FIXTURE, 'cat', 'dog').endsWith('\n')).toBe(true);
+    // Strictly implied by "changes ONLY the replaced bytes" above: if that
+    // full-string equality holds, its trailing newline necessarily matches
+    // too. Kept as documentation of intent, not as an independent proof.
+    const { output } = replaceThroughLiveView(MD_FIXTURE, 'cat', 'dog');
+    expect(output.endsWith('\n')).toBe(true);
+  });
+
+  it('a two-pass round trip (cat→dog→cat) reproduces the original byte-for-byte', () => {
+    // The no-op test above never reaches the serializer. This is the proof
+    // that actually does: both passes have a genuinely non-empty dirty set,
+    // so `serializeBlock` runs for real, twice, on different text — and the
+    // bytes still have to land exactly back on the original. THIS is "must
+    // not reflow, re-indent or re-wrap anything on its way through."
+    const first = replaceThroughLiveView(MD_FIXTURE, 'cat', 'dog');
+    expect(first.dirty.size).toBeGreaterThan(0);
+    const second = replaceThroughLiveView(first.output, 'dog', 'cat');
+    expect(second.dirty.size).toBeGreaterThan(0);
+    expect(second.output).toBe(MD_FIXTURE);
   });
 });
 
-// Attributes (class, id, data-*), a <head><style> block, and a <script> block
-// — all three must survive byte-identical, since none of them is reachable
-// through Live view's editable text at all (head content sits outside the
-// document tree entirely; <script> has no BLOCK_TAGS mapping and degrades to
-// a read-only verbatim atom — see flattenBlocks' SKIP_ATOMS).
+// Attributes (class, id, data-*), a <head><style> block, and a <script> block.
+// All three survive byte-identical BY CONSTRUCTION, not by any serializer
+// decision: <head>/<style>/doctype sit outside the body's document tree
+// entirely (the reconciler's literal `prefix`), and <script> has no
+// BLOCK_TAGS mapping so it degrades to a top-level read-only `verbatim` atom
+// that `flattenBlocks`' SKIP_ATOMS excludes from ever producing a segment —
+// Replace cannot reach it, so it is never in the dirty set, so `reconcile`
+// byte-slices it from the baseline. That is a WEAKER guarantee than the
+// edited paragraphs below (which really do go through the serializer) — see
+// the round-trip test for the one that exercises those.
 const HTML_FIXTURE =
   '<!doctype html>\n'
   + '<html lang="en">\n'
@@ -126,7 +169,7 @@ const HTML_FIXTURE =
   + '</html>\n';
 
 /** Same shape as `replaceThroughLiveView`, for the HTML Live pipeline. */
-function replaceThroughLiveViewHtml(source: string, query: string, replacement: string): string {
+function replaceThroughLiveViewHtml(source: string, query: string, replacement: string): ReplaceResult {
   const result = toLiveHtml(source, null);
   if (!result.ok) throw new Error('fixture degraded — cannot exercise Live view');
   const baselineDoc = result.doc;
@@ -149,7 +192,8 @@ function replaceThroughLiveViewHtml(source: string, query: string, replacement: 
     );
     surface.applyEdits(edits);
     const dirty = getDirtyBlockIds(view.state);
-    return htmlWriteBack(view.state.doc, source, dirty, baselineDoc);
+    const output = htmlWriteBack(view.state.doc, source, dirty, baselineDoc);
+    return { output, dirty };
   } finally {
     view.destroy();
     host.remove();
@@ -179,15 +223,34 @@ const HTML_FIXTURE_CAT_TO_DOG =
 
 describe('replace is surgical (HTML)', () => {
   it('changes ONLY the replaced bytes — <head>, <style>, <script>, doctype and attributes untouched', () => {
-    const after = replaceThroughLiveViewHtml(HTML_FIXTURE, 'cat', 'dog');
-    expect(after).toBe(HTML_FIXTURE_CAT_TO_DOG);
+    const { output } = replaceThroughLiveViewHtml(HTML_FIXTURE, 'cat', 'dog');
+    expect(output).toBe(HTML_FIXTURE_CAT_TO_DOG);
   });
 
   it('replacing text with itself leaves the file byte-identical', () => {
-    expect(replaceThroughLiveViewHtml(HTML_FIXTURE, 'cat', 'cat')).toBe(HTML_FIXTURE);
+    const { output, dirty } = replaceThroughLiveViewHtml(HTML_FIXTURE, 'cat', 'cat');
+    expect(output).toBe(HTML_FIXTURE);
+    // Same mechanism-pin as the Markdown case above — this never reaches
+    // `serializeHtmlBlock`; the round-trip test below is what does.
+    expect(dirty.size).toBe(0);
   });
 
   it('preserves the trailing newline', () => {
-    expect(replaceThroughLiveViewHtml(HTML_FIXTURE, 'cat', 'dog').endsWith('\n')).toBe(true);
+    // Strictly implied by the full-equality assertion above; see the
+    // Markdown case's comment.
+    const { output } = replaceThroughLiveViewHtml(HTML_FIXTURE, 'cat', 'dog');
+    expect(output.endsWith('\n')).toBe(true);
+  });
+
+  it('a two-pass round trip (cat→dog→cat) reproduces the original byte-for-byte', () => {
+    // Forces `serializeHtmlBlock` to run for real on both editable <p>
+    // blocks, twice, on different text — and the bytes still have to land
+    // exactly back on the original, including the class/data attributes and
+    // the <strong> run inside the first paragraph.
+    const first = replaceThroughLiveViewHtml(HTML_FIXTURE, 'cat', 'dog');
+    expect(first.dirty.size).toBeGreaterThan(0);
+    const second = replaceThroughLiveViewHtml(first.output, 'dog', 'cat');
+    expect(second.dirty.size).toBeGreaterThan(0);
+    expect(second.output).toBe(HTML_FIXTURE);
   });
 });
