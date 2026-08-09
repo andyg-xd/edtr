@@ -26,7 +26,7 @@ import { StatusBar } from './StatusBar';
 import { FindBar } from '../find/FindBar';
 import { codeSurface } from '../find/codeSurface';
 import { pmSurface } from '../find/pmSurface';
-import { matchSegments } from '../find/matchText';
+import { matchSegments, MATCH_CAP } from '../find/matchText';
 import { computeReplacements, type ReplaceEdit } from '../find/replaceText';
 import type { FindQuery } from '../find/findQuery';
 import {
@@ -140,7 +140,26 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   // count) is exactly what must happen -- recomputing against a document that
   // could theoretically have changed while the dialog was up would make the
   // disclosure a guess instead of a fact.
-  const [pendingReplaceAll, setPendingReplaceAll] = useState<ReplaceEdit[] | null>(null);
+  //
+  // Stamped with the SURFACE and EPOCH the edits were computed against
+  // (Finding 1 of the final review), not just the bare array: the modal
+  // backdrop has no focus trap and no `inert`, neither editor sets
+  // `tabIndex={-1}`, and the native Edit menu's Find/Replace stay live, so a
+  // user really can Tab into the editor -- or reach it via the menu -- and
+  // edit the document (or toggle Code<->Live) while this dialog is up. Every
+  // mutation path already bumps `findEpoch` (`handleChange`, `handleLiveEdit`),
+  // so surface identity + epoch together are a sufficient version signal:
+  // `confirmReplaceAll` refuses to apply a set stamped against a document
+  // version that no longer exists, rather than silently rewriting whatever
+  // text now happens to sit at those stale positions.
+  const [pendingReplaceAll, setPendingReplaceAll] = useState<{
+    edits: ReplaceEdit[];
+    surface: FindSurface;
+    epoch: number;
+    /** Whether this batch was truncated at the cap (Finding 4) — carried
+     *  through so the eventual disclosure can say so truthfully. */
+    capped: boolean;
+  } | null>(null);
   // Bumped ONLY by a real document change (see the two call sites). Highlighting
   // and revealing must never bump it: both dispatch transactions, so a recompute
   // triggered by them would re-highlight and loop forever.
@@ -413,7 +432,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
    * boolean and one total.
    */
   const disclose = useCallback((
-    outcome: { crossedFormatting: boolean; removedAtoms: number } | null,
+    outcome: { crossedFormatting: boolean; removedImages: number; removedEmbedded: number } | null,
     lead?: string,
   ) => {
     if (!outcome) return; // nothing was applied -- claim nothing
@@ -424,11 +443,34 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     }
     // D6: an atom is invisible in the flattened text, so removing one is
     // something the user could not have knowingly consented to. Disclosure is
-    // the whole mitigation -- say what went, and that the file itself survives.
-    if (outcome.removedAtoms === 1) {
-      parts.push('Replaced across a picture or embedded item. It was removed from the text, but picture files are still saved next to your document.');
-    } else if (outcome.removedAtoms > 1) {
-      parts.push(`Replaced across ${outcome.removedAtoms} pictures or embedded items. They were removed from the text, but picture files are still saved next to your document.`);
+    // the whole mitigation -- say what went, and ONLY claim survival for the
+    // kind that actually survives.
+    //
+    // Finding 2 of the final review: the old single "picture or embedded
+    // item... picture files are still saved" wording was applied to BOTH
+    // kinds alike, which is true of an image (its file lives in the assets
+    // folder untouched) but false of the other SKIP_ATOMS kind -- a
+    // verbatim/inlineVerbatim node is raw HTML Edtr could not parse (an
+    // <abbr>, an inline <svg>, a <script>-shaped block, ...), and removing it
+    // from the document removes it, full stop; nothing is saved anywhere.
+    // `removedImages`/`removedEmbedded` are counted separately by the surface
+    // (see pmSurface.ts's `inspectRange`) specifically so this message never
+    // has to guess or over-claim again.
+    const { removedImages: pics, removedEmbedded: embedded } = outcome;
+    if (pics > 0 && embedded === 0) {
+      parts.push(pics === 1
+        ? 'Replaced across a picture. It was removed from the text, but the picture file is still saved next to your document.'
+        : `Replaced across ${pics} pictures. They were removed from the text, but the picture files are still saved next to your document.`);
+    } else if (embedded > 0 && pics === 0) {
+      parts.push(embedded === 1
+        ? 'Replaced across some embedded content. It was removed from the file, and it has not been saved anywhere.'
+        : `Replaced across ${embedded} pieces of embedded content. They were removed from the file, and none of it has been saved anywhere.`);
+    } else if (pics > 0 && embedded > 0) {
+      const pic = pics === 1 ? 'a picture' : `${pics} pictures`;
+      const picVerb = pics === 1 ? 'is' : 'are';
+      const picNoun = pics === 1 ? 'picture' : 'pictures';
+      const rest = embedded === 1 ? 'some embedded content' : `${embedded} pieces of embedded content`;
+      parts.push(`Replaced across ${pic} and ${rest}. The ${picNoun} ${picVerb} still saved next to your document, but the embedded content was removed from the file and not saved anywhere.`);
     }
     if (parts.length > 0) onInfo(parts.join(' '));
   }, [onInfo]);
@@ -470,31 +512,64 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   // batch is still a bulk action, and the count is how the user knows the
   // scope of what just happened without counting highlights. The count is the
   // LEAD of one message, not a second one, so it cannot bury a disclosure.
-  const runReplaceAll = useCallback((edits: ReplaceEdit[]) => {
-    disclose(runEdits(edits), `Replaced ${edits.length} ${edits.length === 1 ? 'match' : 'matches'}.`);
+  //
+  // `capped` (Finding 4 of the final review): a batch truncated at the cap is
+  // NOT the whole job, and reporting its count the same way as a complete run
+  // reads as if it were -- the find bar already signals a capped scan with a
+  // "+" in its count, and Replace All needs the equivalent.
+  const runReplaceAll = useCallback((edits: ReplaceEdit[], capped: boolean) => {
+    const lead = capped
+      ? `Replaced the first ${edits.length} matches. There may be more. Run Replace all again to catch the rest.`
+      : `Replaced ${edits.length} ${edits.length === 1 ? 'match' : 'matches'}.`;
+    disclose(runEdits(edits), lead);
   }, [runEdits, disclose]);
 
   const onReplaceAll = useCallback(() => {
     const s = surfaceRef.current;
     if (!s || !s.editable()) return;
-    const edits = computeReplacements(s.getSegments(), find.query, replaceText, { multiline: s.multiline });
+    // Ask for ONE MORE than the cap allows (Finding 4). `computeReplacements`
+    // truncates silently AT whatever cap it is given either way, so a plain
+    // call can never tell "there were exactly MATCH_CAP matches" apart from
+    // "there were 10x that many and the rest got silently dropped" -- the
+    // overflow only becomes visible by requesting room for one extra and
+    // checking whether it showed up.
+    const probe = computeReplacements(
+      s.getSegments(), find.query, replaceText, { multiline: s.multiline, cap: MATCH_CAP + 1 },
+    );
+    const capped = probe.length > MATCH_CAP;
+    const edits = capped ? probe.slice(0, MATCH_CAP) : probe;
     if (edits.length === 0) return;
     if (edits.length > REPLACE_ALL_CONFIRM_THRESHOLD) {
       // D5: large enough to be hard to walk back -- ask first, rather than
       // run and hope. Nothing is applied until the user says yes, in
-      // confirmReplaceAll below.
-      setPendingReplaceAll(edits);
+      // confirmReplaceAll below. Stamped with the surface + epoch this batch
+      // was computed against (Finding 1) so a stale confirmation can be
+      // refused rather than applied against whatever the document has become.
+      setPendingReplaceAll({ edits, surface: s, epoch: findEpoch, capped });
       return;
     }
-    runReplaceAll(edits);
-  }, [find, replaceText, runReplaceAll]);
+    runReplaceAll(edits, capped);
+  }, [find, replaceText, runReplaceAll, findEpoch]);
 
   const confirmReplaceAll = useCallback(() => {
     const pending = pendingReplaceAll;
     setPendingReplaceAll(null);
     if (!pending) return;
-    runReplaceAll(pending);
-  }, [pendingReplaceAll, runReplaceAll]);
+    // Finding 1 of the final review: the frozen edits are positions in ONE
+    // specific document version of ONE specific surface. The modal has no
+    // focus trap, so the user can Tab into the editor (or reach it via the
+    // native Edit menu, which stays live) and mutate the document -- or
+    // toggle Code<->Live -- while this dialog is open. Applying the frozen
+    // set against a document that has since moved would rewrite whatever
+    // text now happens to sit at those stale positions, silently, while the
+    // banner still claims the original count. Refuse the whole batch on
+    // either mismatch rather than partially applying it.
+    if (pending.surface !== surfaceRef.current || pending.epoch !== findEpoch) {
+      onInfo('The document changed before you confirmed, so nothing was replaced. Run Replace all again.');
+      return;
+    }
+    runReplaceAll(pending.edits, pending.capped);
+  }, [pendingReplaceAll, runReplaceAll, findEpoch, onInfo]);
 
   // Cancelling must change absolutely nothing: no edits, no notice, no find-
   // state change. Clearing the pending set is the entire effect.
@@ -537,8 +612,8 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   // torn down mid-dialog) must not call `inspectEdits` on nothing.
   const replaceGuard = pendingReplaceAll && surface ? (
     <ReplaceAllGuard
-      count={pendingReplaceAll.length}
-      atomSpans={surface.inspectEdits(pendingReplaceAll).atomSpans}
+      count={pendingReplaceAll.edits.length}
+      atomSpans={surface.inspectEdits(pendingReplaceAll.edits).atomSpans}
       onConfirm={confirmReplaceAll}
       onCancel={cancelReplaceAll}
     />

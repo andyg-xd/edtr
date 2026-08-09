@@ -83,7 +83,7 @@ export function codeSurface(view: EditorView): FindSurface {
       // button to, rather than out of a passive effect, but the crash is the
       // same shape and just as worth not having.
       const valid = edits.filter((e) => e.from >= 0 && e.to <= view.state.doc.length);
-      if (valid.length === 0) return { crossedFormatting: false, removedAtoms: 0 };
+      if (valid.length === 0) return { crossedFormatting: false, removedImages: 0, removedEmbedded: 0 };
       // CodeMirror maps a changeset's positions itself, so ascending edits are
       // applied correctly in one transaction and one undo step.
       view.dispatch({
@@ -91,7 +91,7 @@ export function codeSurface(view: EditorView): FindSurface {
       });
       // Code view's source is plain text: there is no formatting to cross,
       // and no atom concept for an edit to silently remove.
-      return { crossedFormatting: false, removedAtoms: 0 };
+      return { crossedFormatting: false, removedImages: 0, removedEmbedded: 0 };
     },
     // Plain text has no atom concept either — always zero, unconditionally.
     inspectEdits: () => ({ atomSpans: 0 }),

@@ -27,6 +27,30 @@ vi.mock('../find/codeSurface', async (importOriginal) => {
   return { ...actual, codeSurface: vi.fn(actual.codeSurface) };
 });
 
+// `MATCH_CAP` as a mutable, hoisted binding — the "capped Replace All" test
+// (Finding 4 of the final review) injects a SMALL cap through it, so a
+// five-line fixture can prove the overflow message instead of needing 5001
+// real matches to reach the production constant. `vi.hoisted` (not a bare
+// module-level `let`) is required: `vi.mock` factories run before the rest
+// of the file's top-level code, so anything they close over must be created
+// through this API or the reference would be undefined at mock-time. Every
+// test but that one leaves `matchCap.current` at the real value, which the
+// factory below self-corrects to on first load (rather than hardcoding 5000
+// here, which would silently drift out of sync if matchText.ts's own
+// constant ever changed). `replaceText.ts`'s `computeReplacements` and
+// `DocumentView.tsx`'s own `onReplaceAll` both import `MATCH_CAP` from this
+// same resolved module, so both see the injected value; `matchSegments`'s
+// (find-count) use of `MATCH_CAP` is a reference INTERNAL to the real,
+// un-mocked module returned by `importOriginal`, so it is unaffected — this
+// mock cannot change how many matches the find bar itself reports.
+const matchCap = vi.hoisted(() => ({ real: 5000, current: 5000 }));
+vi.mock('../find/matchText', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../find/matchText')>();
+  matchCap.real = actual.MATCH_CAP;
+  matchCap.current = matchCap.real;
+  return { ...actual, get MATCH_CAP() { return matchCap.current; } };
+});
+
 // jsdom implements Element.getClientRects but not Range.getClientRects (real
 // browsers have both). CodeMirror's periodic text-measurement pass calls the
 // Range version and, with a doc mounted for the debounce/settle waits below,
@@ -392,7 +416,7 @@ describe('DocumentView find — a surface driver error degrades to no matches, n
       highlight: () => {},
       reveal: () => {},
       editable: () => true,
-      applyEdits: () => ({ crossedFormatting: false, removedAtoms: 0 }),
+      applyEdits: () => ({ crossedFormatting: false, removedImages: 0, removedEmbedded: 0 }),
       inspectEdits: () => ({ atomSpans: 0 }),
     }));
     const onError = vi.fn();
@@ -571,19 +595,19 @@ describe('DocumentView replace — disclosure (D2 + D6)', () => {
    *  exercise the disclosure wiring from this layer — and the wiring is what
    *  is under test, not the surface's own counting (pmSurface.test.ts owns
    *  that). Applies nothing: the notice, not the bytes, is the subject. */
-  function stubOutcome(outcome: { crossedFormatting: boolean; removedAtoms: number }) {
+  function stubOutcome(outcome: { crossedFormatting: boolean; removedImages: number; removedEmbedded: number }) {
     const real = vi.mocked(codeSurface).getMockImplementation()!;
     vi.mocked(codeSurface).mockImplementation((view) => ({
       ...real(view),
       editable: () => true,
       applyEdits: () => outcome,
-      inspectEdits: () => ({ atomSpans: outcome.removedAtoms }),
+      inspectEdits: () => ({ atomSpans: outcome.removedImages + outcome.removedEmbedded }),
     }));
   }
   afterEach(() => { vi.mocked(codeSurface).mockReset(); });
 
   it('discloses a formatting crossing once per action, not per occurrence', async () => {
-    stubOutcome({ crossedFormatting: true, removedAtoms: 0 });
+    stubOutcome({ crossedFormatting: true, removedImages: 0, removedEmbedded: 0 });
     const onInfo = vi.fn();
     const { ref, container: c } = await mount('/tmp/r.md', 'cat cat cat', 'code', () => {}, () => {}, onInfo);
     await act(async () => { ref.current!.openReplace(); });
@@ -599,7 +623,7 @@ describe('DocumentView replace — disclosure (D2 + D6)', () => {
     // The defect this pins: onInfo drives a single-slot banner, so a count
     // reported as a SECOND call silently overwrote D6's disclosure and the
     // user saw only "Replaced N matches." The disclosure must survive.
-    stubOutcome({ crossedFormatting: false, removedAtoms: 2 });
+    stubOutcome({ crossedFormatting: false, removedImages: 2, removedEmbedded: 0 });
     const onInfo = vi.fn();
     const { ref, container: c } = await mount('/tmp/r.md', 'cat cat', 'code', () => {}, () => {}, onInfo);
     await act(async () => { ref.current!.openReplace(); });
@@ -609,12 +633,12 @@ describe('DocumentView replace — disclosure (D2 + D6)', () => {
     expect(onInfo).toHaveBeenCalledTimes(1);
     const msg = onInfo.mock.calls[0][0] as string;
     expect(msg).toContain('Replaced 2 matches.');
-    expect(msg).toContain('2 pictures or embedded items');
+    expect(msg).toContain('2 pictures');
     expect(msg).toContain('picture files are still saved next to your document');
   });
 
   it('discloses a single removed picture after a single Replace, with no count', async () => {
-    stubOutcome({ crossedFormatting: false, removedAtoms: 1 });
+    stubOutcome({ crossedFormatting: false, removedImages: 1, removedEmbedded: 0 });
     const onInfo = vi.fn();
     const { ref, container: c } = await mount('/tmp/r.md', 'cat cat', 'code', () => {}, () => {}, onInfo);
     await act(async () => { ref.current!.openReplace(); });
@@ -623,13 +647,75 @@ describe('DocumentView replace — disclosure (D2 + D6)', () => {
     await clickReplace(c);
     expect(onInfo).toHaveBeenCalledTimes(1);
     const msg = onInfo.mock.calls[0][0] as string;
-    expect(msg).toContain('Replaced across a picture or embedded item.');
+    expect(msg).toContain('Replaced across a picture.');
+    expect(msg).toContain('the picture file is still saved next to your document');
     // A single Replace is one match by definition — a count would be noise.
     expect(msg).not.toContain('matches.');
   });
 
+  /**
+   * Finding 2 of the final review: the old wording claimed survival for
+   * BOTH SKIP_ATOMS kinds alike ("picture or embedded item ... picture files
+   * are still saved"), which is false for anything that isn't an image — an
+   * <abbr>, an inline <svg>, a <script>-shaped block, etc. all flatten to the
+   * SAME "embedded item" wording the old code used, and none of them have a
+   * file anywhere once the edit lands. These three cases pin that the
+   * message never makes that claim for embedded content, alone or alongside
+   * a real picture.
+   */
+  it('discloses removed embedded content truthfully — no survival claim', async () => {
+    stubOutcome({ crossedFormatting: false, removedImages: 0, removedEmbedded: 1 });
+    const onInfo = vi.fn();
+    const { ref, container: c } = await mount('/tmp/r.md', 'cat cat', 'code', () => {}, () => {}, onInfo);
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplace(c);
+    expect(onInfo).toHaveBeenCalledTimes(1);
+    const msg = onInfo.mock.calls[0][0] as string;
+    expect(msg).toContain('Replaced across some embedded content.');
+    expect(msg).toContain('removed from the file');
+    // The whole point: unlike a picture, nothing here is claimed to survive.
+    expect(msg).not.toContain('saved next to your document');
+    expect(msg).not.toContain('matches.');
+  });
+
+  it('discloses several removed pieces of embedded content, pluralised, still with no survival claim', async () => {
+    stubOutcome({ crossedFormatting: false, removedImages: 0, removedEmbedded: 3 });
+    const onInfo = vi.fn();
+    const { ref, container: c } = await mount('/tmp/r.md', 'cat cat cat', 'code', () => {}, () => {}, onInfo);
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplaceAll(c);
+    const msg = onInfo.mock.calls[0][0] as string;
+    expect(msg).toContain('Replaced 3 matches.');
+    expect(msg).toContain('3 pieces of embedded content');
+    expect(msg).toContain('removed from the file');
+    expect(msg).not.toContain('saved next to your document');
+  });
+
+  it('discloses BOTH a removed picture and removed embedded content in one message, each with the right claim', async () => {
+    stubOutcome({ crossedFormatting: false, removedImages: 1, removedEmbedded: 1 });
+    const onInfo = vi.fn();
+    const { ref, container: c } = await mount('/tmp/r.md', 'cat cat', 'code', () => {}, () => {}, onInfo);
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplaceAll(c);
+    expect(onInfo).toHaveBeenCalledTimes(1); // still ONE message
+    const msg = onInfo.mock.calls[0][0] as string;
+    expect(msg).toContain('Replaced 2 matches.');
+    // The picture: survives.
+    expect(msg).toContain('a picture');
+    expect(msg).toContain('still saved next to your document');
+    // The embedded content: does not.
+    expect(msg).toContain('embedded content');
+    expect(msg).toContain('removed from the file');
+  });
+
   it('says nothing when there is nothing to disclose', async () => {
-    stubOutcome({ crossedFormatting: false, removedAtoms: 0 });
+    stubOutcome({ crossedFormatting: false, removedImages: 0, removedEmbedded: 0 });
     const onInfo = vi.fn();
     const { ref, container: c } = await mount('/tmp/r.md', 'cat cat', 'code', () => {}, () => {}, onInfo);
     await act(async () => { ref.current!.openReplace(); });
@@ -665,5 +751,122 @@ describe('DocumentView replace — stale-match guard', () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 200)); });
     // Exactly one replacement landed; the stale second press did nothing.
     expect(doc.session.text).toBe('cat! cat');
+  });
+});
+
+/**
+ * Finding 1 of the final review: the modal backdrop (`.modal-backdrop` in
+ * banners.css) is a plain `position: fixed` div with no `inert` and no focus
+ * trap, `ReplaceAllGuard` sets no initial focus, neither editor sets
+ * `tabIndex={-1}`, and the native Edit menu's Find/Replace stay live. So the
+ * user really can reach the editor (Tab, or the menu) and edit the document
+ * WHILE the "Replace all N matches?" dialog is still up, then confirm — and
+ * the frozen edit set's positions describe a document version that no
+ * longer exists. Applying it anyway would silently rewrite whatever text
+ * now happens to sit at those stale positions while the banner still claims
+ * the original count.
+ */
+describe('DocumentView replace — a stale pending Replace All is discarded, not applied (Finding 1)', () => {
+  it('drops the frozen batch and changes nothing when the document was edited while the dialog was open', async () => {
+    const source = 'cat '.repeat(REPLACE_ALL_CONFIRM_THRESHOLD + 1).trim();
+    const onInfo = vi.fn();
+    const { ref, doc, container: c } = await mount('/tmp/r.md', source, 'code', () => {}, () => {}, onInfo);
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplaceAll(c);
+    expect(guard(c)).not.toBeNull(); // above the threshold -- nothing applied yet
+
+    // Model the missing focus trap with a REAL edit through the mounted
+    // CodeMirror view, same technique as the "stale match after an in-place
+    // edit" regression test above -- this is what a user Tabbing into the
+    // editor (or reaching it via the still-live Edit menu) while the dialog
+    // is open would actually produce. Replace the WHOLE document, so every
+    // one of the frozen edits' positions is now either meaningless or points
+    // at completely different text.
+    const cmView = CMEditorView.findFromDOM(c.querySelector('.cm-editor')!)!;
+    await act(async () => {
+      cmView.dispatch({ changes: { from: 0, to: source.length, insert: 'something else entirely' } });
+    });
+
+    // Confirm. If the stale set were applied, it would rewrite whatever text
+    // now sits at the frozen positions (silently corrupting the just-typed
+    // replacement) or throw trying to. Neither may happen.
+    await click(guard(c)!.querySelector('.btn--primary'));
+    expect(doc.session.text).toBe('something else entirely'); // untouched by the stale batch
+    expect(guard(c)).toBeNull(); // the dialog still closes
+    // Told, not left to wonder why nothing happened -- and NOT the ordinary
+    // "Replaced N matches." success message, which would be a lie here.
+    expect(onInfo).toHaveBeenCalledTimes(1);
+    const msg = onInfo.mock.calls[0][0] as string;
+    expect(msg).not.toContain('Replaced');
+    expect(msg.toLowerCase()).toContain('nothing was replaced');
+  });
+
+  it('still applies normally when the document was NOT touched while the dialog was open', async () => {
+    // The counterpart proof: the freshness check must not become a second
+    // reason Replace All silently does nothing on the ordinary, untouched
+    // path — REPLACE_ALL_CONFIRM_THRESHOLD's own "applies the confirmed
+    // batch and reports the count" test already covers this, but repeating
+    // it here documents that Finding 1's guard is what makes it still true.
+    const source = 'cat '.repeat(REPLACE_ALL_CONFIRM_THRESHOLD + 1).trim();
+    const onInfo = vi.fn();
+    const { ref, doc, container: c } = await mount('/tmp/r.md', source, 'code', () => {}, () => {}, onInfo);
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplaceAll(c);
+    await click(guard(c)!.querySelector('.btn--primary'));
+    expect(doc.session.text).toBe('dog '.repeat(REPLACE_ALL_CONFIRM_THRESHOLD + 1).trim());
+    expect(onInfo).toHaveBeenCalledWith(`Replaced ${REPLACE_ALL_CONFIRM_THRESHOLD + 1} matches.`);
+  });
+});
+
+/**
+ * Finding 4 of the final review: `computeReplacements` truncates silently AT
+ * whatever cap it is given, so a plain call can never tell "there were
+ * exactly the cap's worth of matches" apart from "there were far more and
+ * the rest got silently dropped" — the old code reported both the same way,
+ * "Replaced N matches.", which reads as the whole job being done.
+ *
+ * `matchCap.current` (set up top-of-file via `vi.mock('../find/matchText')`)
+ * injects a SMALL cap so this is provable with a five-line fixture instead
+ * of needing 5001 real matches to reach the production MATCH_CAP.
+ */
+describe('DocumentView replace — a capped Replace All is disclosed truthfully, not as complete (Finding 4)', () => {
+  afterEach(() => { matchCap.current = matchCap.real; }); // never leak the injected cap into later tests
+
+  it('reports only the replaced count and says more remain, when the true match count exceeds the cap', async () => {
+    matchCap.current = 3;
+    const source = 'cat '.repeat(5).trim(); // 5 real matches > the injected cap of 3
+    const onInfo = vi.fn();
+    const { ref, doc, container: c } = await mount('/tmp/r.md', source, 'code', () => {}, () => {}, onInfo);
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplaceAll(c);
+    // 3 edits is BELOW REPLACE_ALL_CONFIRM_THRESHOLD (10) — this run goes
+    // straight through with no guard dialog. The cap and the confirmation
+    // threshold are independent knobs; this test isolates the cap alone.
+    expect(guard(c)).toBeNull();
+    // Only the first 3 of the 5 real matches were touched.
+    expect(doc.session.text).toBe('dog dog dog cat cat');
+    expect(onInfo).toHaveBeenCalledTimes(1);
+    const msg = onInfo.mock.calls[0][0] as string;
+    expect(msg).toContain('Replaced the first 3 matches.');
+    expect(msg).not.toContain('Replaced 3 matches.'); // must not read as complete
+    expect(msg.toLowerCase()).toContain('run replace all again');
+  });
+
+  it('reports a normal, uncapped count when the true match count is at or under the cap', async () => {
+    matchCap.current = 3;
+    const onInfo = vi.fn();
+    const { ref, doc, container: c } = await mount('/tmp/r.md', 'cat cat cat', 'code', () => {}, () => {}, onInfo);
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplaceAll(c);
+    expect(doc.session.text).toBe('dog dog dog');
+    expect(onInfo).toHaveBeenCalledWith('Replaced 3 matches.'); // exactly at the cap, NOT reported as capped
   });
 });

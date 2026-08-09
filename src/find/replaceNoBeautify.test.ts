@@ -43,6 +43,16 @@ interface ReplaceResult {
   dirty: Set<string>;
 }
 
+// The table's column widths are hand-aligned (Name padded to 5, Age's
+// delimiter is 4 dashes) rather than markdownSerializer's own canonical
+// single-space/three-dash shape (see tableWriteBack.test.ts's "an UNTOUCHED
+// hand-padded table round-trips byte-for-byte", which this reuses verbatim).
+// No cell contains "cat", so a cat->dog replace elsewhere in the document
+// never dirties this block. Finding 5 of the final review: Replace All is
+// the first feature that can mark a block dirty far from where the user's
+// cursor is, so this is the first test able to catch a "replace elsewhere
+// re-pads a table it never touched" regression -- see the dedicated
+// assertion below.
 const MD_FIXTURE = [
   '# Title',
   '',
@@ -54,6 +64,10 @@ const MD_FIXTURE = [
   '```',
   'code with cat is editable in live view too',
   '```',
+  '',
+  '| Name  | Age |',
+  '| :---- | --: |',
+  '| Bob   | 30  |',
   '',
 ].join('\n');
 
@@ -124,6 +138,25 @@ describe('replace is surgical (Markdown)', () => {
     // too. Kept as documentation of intent, not as an independent proof.
     const { output } = replaceThroughLiveView(MD_FIXTURE, 'cat', 'dog');
     expect(output.endsWith('\n')).toBe(true);
+  });
+
+  it('does not re-pad the untouched hand-padded table elsewhere in the document (Finding 5)', () => {
+    // Self-documenting on top of "changes ONLY the replaced bytes" above
+    // (that whole-string equality already implies this, since the table's
+    // hand-alignment would fail it too): markdownSerializer emits tables
+    // CANONICALLY -- single-space padding, three-character delimiters --
+    // regardless of the source, so a hand-aligned table survives only as
+    // long as nothing inside it is ever marked dirty. If this ever fails,
+    // it means a replace elsewhere in the document reached into a table it
+    // never touched and re-padded it -- a genuine no-beautify defect, not a
+    // test to "fix" by loosening the assertion.
+    const { output, dirty } = replaceThroughLiveView(MD_FIXTURE, 'cat', 'dog');
+    expect(output).toContain('| Name  | Age |\n| :---- | --: |\n| Bob   | 30  |');
+    // Not vacuous: other blocks (the paragraph, the list item, the code
+    // block) DID change and DID enter the dirty set — the table's survival
+    // above is a real "left alone", not "nothing in this document ever gets
+    // marked dirty".
+    expect(dirty.size).toBeGreaterThan(0);
   });
 
   it('a two-pass round trip (cat→dog→cat) reproduces the original byte-for-byte', () => {

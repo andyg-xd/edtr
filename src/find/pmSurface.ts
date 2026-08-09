@@ -84,11 +84,21 @@ interface RangeInspection {
   /** Whether `[from, to)` contains more than one set of marks (D2's notice). */
   crossedFormatting: boolean;
   /**
-   * How many `SKIP_ATOMS` nodes (an image, a verbatim region) sit inside
-   * `[from, to)` — invisible in the flattened text a match was found in, so
-   * removing one must be disclosed (D6, spec §K5) rather than assumed benign.
+   * How many `image` nodes sit inside `[from, to)` — invisible in the
+   * flattened text a match was found in, so removing one must be disclosed
+   * (D6, spec §K5) rather than assumed benign. Counted separately from
+   * `removedEmbedded` below because ONLY an image's file survives the edit
+   * (it lives in the assets folder, untouched); the disclosure the caller
+   * builds from these two counts must not say that about the other kind.
    */
-  atomCount: number;
+  removedImages: number;
+  /**
+   * How many `verbatim`/`inlineVerbatim` nodes (raw HTML Edtr cannot parse —
+   * an `<abbr>`, an inline `<svg>`, a `<script>`-shaped block, ...) sit
+   * inside `[from, to)`. Unlike an image, this content has no file of its
+   * own anywhere: removing it from the document removes it, full stop.
+   */
+  removedEmbedded: number;
 }
 
 /**
@@ -107,15 +117,19 @@ interface RangeInspection {
 function inspectRange(doc: PMNode, from: number, to: number): RangeInspection {
   const startMarks = doc.nodeAt(from)?.marks ?? Mark.none;
   let crossedFormatting = false;
-  let atomCount = 0;
+  let removedImages = 0;
+  let removedEmbedded = 0;
   doc.nodesBetween(from, to, (node) => {
     if (node.isText) {
       if (!crossedFormatting && !Mark.sameSet(node.marks, startMarks)) crossedFormatting = true;
       return;
     }
-    if (SKIP_ATOMS.has(node.type.name)) atomCount += 1;
+    // `image` gets its own bucket — see `RangeInspection`'s doc comment for
+    // why the survival claim can only be made for that one kind.
+    if (node.type.name === 'image') removedImages += 1;
+    else if (SKIP_ATOMS.has(node.type.name)) removedEmbedded += 1;
   });
-  return { startMarks, crossedFormatting, atomCount };
+  return { startMarks, crossedFormatting, removedImages, removedEmbedded };
 }
 
 /**
@@ -193,10 +207,11 @@ export function pmSurface(view: EditorView): FindSurface {
     },
     editable: () => view.editable,
     applyEdits(edits) {
-      if (edits.length === 0) return { crossedFormatting: false, removedAtoms: 0 };
+      if (edits.length === 0) return { crossedFormatting: false, removedImages: 0, removedEmbedded: 0 };
       const { tr } = view.state;
       let crossed = false;
-      let removedAtoms = 0;
+      let removedImages = 0;
+      let removedEmbedded = 0;
       // Apply DESCENDING so each edit's positions are still valid when it runs
       // — an earlier replacement of a different length would otherwise shift
       // every position after it.
@@ -208,22 +223,23 @@ export function pmSurface(view: EditorView): FindSurface {
         // throw would come out of whatever handler Task 5 wires the Replace
         // button to.
         if (e.from < 0 || e.to > tr.doc.content.size) continue;
-        const { startMarks, crossedFormatting, atomCount } = inspectRange(tr.doc, e.from, e.to);
-        if (crossedFormatting) crossed = true;
-        removedAtoms += atomCount;
+        const inspection = inspectRange(tr.doc, e.from, e.to);
+        if (inspection.crossedFormatting) crossed = true;
+        removedImages += inspection.removedImages;
+        removedEmbedded += inspection.removedEmbedded;
         if (e.text === '') tr.delete(e.from, e.to);
         // schema.text('') throws — replacing with nothing is legitimate (the
         // user cleared the replace field), so it takes the delete path above
         // instead. Otherwise, the inserted text carries `startMarks` (D2):
         // marks from the START of the match, not wherever it ends.
-        else tr.replaceWith(e.from, e.to, view.state.schema.text(e.text, startMarks));
+        else tr.replaceWith(e.from, e.to, view.state.schema.text(e.text, inspection.startMarks));
       }
       // Every edit may have been skipped by the bounds guard above — nothing
       // to dispatch, and an empty-steps transaction would still cost a no-op
       // history entry and a redundant `dirtyTracking` look if it went through.
-      if (!tr.docChanged) return { crossedFormatting: false, removedAtoms: 0 };
+      if (!tr.docChanged) return { crossedFormatting: false, removedImages: 0, removedEmbedded: 0 };
       view.dispatch(tr);
-      return { crossedFormatting: crossed, removedAtoms };
+      return { crossedFormatting: crossed, removedImages, removedEmbedded };
     },
     inspectEdits(edits) {
       // Read-only: walks `view.state.doc` directly rather than building a
@@ -234,7 +250,11 @@ export function pmSurface(view: EditorView): FindSurface {
       let atomSpans = 0;
       for (const e of edits) {
         if (e.from < 0 || e.to > view.state.doc.content.size) continue;
-        if (inspectRange(view.state.doc, e.from, e.to).atomCount > 0) atomSpans += 1;
+        const inspection = inspectRange(view.state.doc, e.from, e.to);
+        // Not split by kind here — the pre-commit guard this feeds makes no
+        // survival claim either way (see `ReplaceAllGuard`), so one total is
+        // enough. `applyEdits` above is what needs the breakdown.
+        if (inspection.removedImages + inspection.removedEmbedded > 0) atomSpans += 1;
       }
       return { atomSpans };
     },

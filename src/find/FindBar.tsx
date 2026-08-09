@@ -38,7 +38,9 @@ interface FindBarProps {
  * what lets one bar serve all three surfaces.
  *
  * Enter / Shift-Enter move between matches and Escape closes, handled on the
- * CONTAINER so they work from any control in the bar and not just the field.
+ * CONTAINER so they work from any control in the bar and not just the field —
+ * except a focused BUTTON, which keeps its own native Enter activation (see
+ * `onKeyDown` below).
  */
 export function FindBar({
   query, count, focusToken, onQueryChange, onNext, onPrev, onClose,
@@ -53,6 +55,17 @@ export function FindBar({
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter') {
+      // A focused BUTTON already has its own Enter behaviour — the browser
+      // activates it (a native click) the moment this handler returns
+      // without cancelling the event. Tab to "Replace all" and press Enter
+      // must run Replace all, not "step to the next match": the old code
+      // called preventDefault() and fell through to onNext()/onPrev() for
+      // ANY target that wasn't the replace text field, which silently
+      // swallowed the click every button in the bar (Prev/Next/the three
+      // toggles/Close/Replace/Replace all) would otherwise have received.
+      // Backing off entirely for a button target — no preventDefault, no
+      // step call — is what lets that native activation through.
+      if ((e.target as HTMLElement)?.tagName === 'BUTTON') return;
       e.preventDefault();
       // Enter means "replace" in the replace field and "next match" everywhere
       // else — the convention every editor with a replace row uses.

@@ -62,23 +62,33 @@ export interface FindSurface {
    *
    * Returns whether any edit spanned more than one formatting run, which is
    * what raises D2's heads-up notice, and how many invisible inline atoms
-   * (an image, a verbatim region — see `flattenBlocks`' `SKIP_ATOMS`) the
-   * edits actually removed. D6 (spec §K5): a match's flattened text never
-   * shows those atoms, so the user can consent to replacing text that
-   * happens to CONTAIN one, but cannot know it was there without being told
-   * afterward — the replace still goes through, removal is disclosed rather
-   * than refused. Both figures are reported by the surface because only the
-   * surface knows what formatting and atoms mean: Code view always returns
-   * `{ crossedFormatting: false, removedAtoms: 0 }`, since its source is
-   * plain text with neither concept.
+   * (see `flattenBlocks`' `SKIP_ATOMS`) the edits actually removed — split by
+   * kind, not totalled. That split matters because the two kinds make
+   * DIFFERENT survival claims true: an image's file genuinely still lives
+   * next to the document afterward, but a verbatim/inlineVerbatim atom (an
+   * `<abbr>`, an inline `<svg>`, a `<script>`-shaped block, ...) is raw HTML
+   * that is simply gone the moment the edit lands — nothing is saved
+   * anywhere. A single combined count cannot tell the caller which claim is
+   * true, which is exactly how the final review's Finding 2 ("picture files
+   * are still saved" said of content that was not a picture) happened. D6
+   * (spec §K5): a match's flattened text never shows either kind, so the
+   * user can consent to replacing text that happens to CONTAIN one, but
+   * cannot know it was there without being told afterward — the replace
+   * still goes through, removal is disclosed rather than refused. All three
+   * figures are reported by the surface because only the surface knows what
+   * formatting and atoms mean: Code view always returns
+   * `{ crossedFormatting: false, removedImages: 0, removedEmbedded: 0 }`,
+   * since its source is plain text with none of these concepts.
    */
-  applyEdits(edits: ReplaceEdit[]): { crossedFormatting: boolean; removedAtoms: number };
+  applyEdits(edits: ReplaceEdit[]): { crossedFormatting: boolean; removedImages: number; removedEmbedded: number };
   /**
    * Pre-flight, read-only count of how many of `edits` would span an
-   * invisible atom if applied — same atom definition as `applyEdits`'
-   * `removedAtoms`, just counted per-edit instead of totalled, and computed
-   * WITHOUT touching the document. Task 5 needs this to disclose the number
-   * in Replace All's confirmation before the user commits to anything.
+   * invisible atom of EITHER kind if applied — same atom definition as
+   * `applyEdits`', just counted per-edit instead of totalled (and not split
+   * by kind: the pre-commit guard this feeds makes no survival claim, so one
+   * number is enough there — see `ReplaceAllGuard`), and computed WITHOUT
+   * touching the document. Task 5 needs this to disclose the number in
+   * Replace All's confirmation before the user commits to anything.
    */
   inspectEdits(edits: ReplaceEdit[]): { atomSpans: number };
 }

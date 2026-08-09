@@ -213,4 +213,57 @@ describe('FindBar', () => {
     expect(onReplace).toHaveBeenCalledTimes(1);
     expect(onNext).not.toHaveBeenCalled();
   });
+
+  /**
+   * Regression: Tab to "Replace all", press Enter -- the container's own
+   * Enter handling used to call preventDefault() and, since the target
+   * wasn't the replace text field, treat it as "step to the next match".
+   * The button's own click never ran, so the visible effect was "nothing was
+   * replaced, and the match cursor silently moved on".
+   *
+   * jsdom has no native "Enter activates a focused button" behaviour to
+   * assert directly here (verified by probe: a bare dispatched keydown never
+   * produces a click even with zero handlers in the way -- that default
+   * action is real-browser UA behaviour, not something a script-dispatched
+   * event triggers under jsdom). So the assertion is on the mechanism the fix
+   * actually changes, which IS observable: the container handler must back
+   * off entirely for a button target, calling neither its own step function
+   * NOR preventDefault -- leaving a real browser's own activation free to run
+   * (which is exactly what a production WKWebView does; this is standard,
+   * well-established browser behaviour, just one jsdom doesn't implement).
+   */
+  it('backs off entirely for Enter on the Replace button, instead of stepping to the next match', async () => {
+    const onNext = vi.fn();
+    const onReplace = vi.fn();
+    const c = await render(<FindBar {...props({ showReplace: true, onNext, onReplace })} />);
+    const btn = c.querySelector<HTMLButtonElement>('.find-replace')!;
+    const evt = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    await act(async () => { btn.dispatchEvent(evt); });
+    expect(onNext).not.toHaveBeenCalled();
+    expect(evt.defaultPrevented).toBe(false);
+  });
+
+  it('backs off entirely for Enter on the Replace all button, instead of stepping to the next match', async () => {
+    const onNext = vi.fn();
+    const onReplaceAll = vi.fn();
+    const c = await render(<FindBar {...props({ showReplace: true, onNext, onReplaceAll })} />);
+    const btn = c.querySelector<HTMLButtonElement>('.find-replace-all')!;
+    const evt = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    await act(async () => { btn.dispatchEvent(evt); });
+    expect(onNext).not.toHaveBeenCalled();
+    expect(evt.defaultPrevented).toBe(false);
+  });
+
+  it('backs off for Enter on ANY button in the bar, not just Replace/Replace all', async () => {
+    // The fix is a tag-name check (BUTTON), not a hardcoded list of the two
+    // replace buttons -- the toggles, Prev/Next and Close are buttons too,
+    // and every one of them already has its own Enter-activates-button
+    // behaviour to preserve. The regex toggle stands in for all of them.
+    const onNext = vi.fn();
+    const c = await render(<FindBar {...props({ onNext })} />);
+    const evt = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    await act(async () => { toggle(c, 'regex').dispatchEvent(evt); });
+    expect(onNext).not.toHaveBeenCalled();
+    expect(evt.defaultPrevented).toBe(false);
+  });
 });

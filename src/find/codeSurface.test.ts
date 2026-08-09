@@ -127,7 +127,8 @@ describe('codeSurface', () => {
     // Code view's source is plain text — there is no formatting to cross,
     // and no atom concept for an edit to silently remove (D6, spec §K5).
     expect(result.crossedFormatting).toBe(false);
-    expect(result.removedAtoms).toBe(0);
+    expect(result.removedImages).toBe(0);
+    expect(result.removedEmbedded).toBe(0);
   });
 
   it('reports itself editable', () => {

@@ -4,6 +4,7 @@ import type { Node as PMNode } from 'prosemirror-model';
 import { EditorState, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { liveSchema } from '../views/liveSchema';
+import { htmlSchema } from '../views/htmlSchema';
 import { dirtyTrackingPlugin, getDirtyBlockIds } from '../views/dirtyTracking';
 import { blockIdentityPlugin } from '../views/blockIdentity';
 import { findDecorationsPlugin, pmSurface } from './pmSurface';
@@ -323,7 +324,28 @@ describe('pmSurface', () => {
     const view = mountDoc(doc);
     const result = pmSurface(view).applyEdits([{ from: 1, to: 5, text: 'dog' }]);
     expect(view.state.doc.textBetween(0, view.state.doc.content.size)).toBe('dog');
-    expect(result.removedAtoms).toBe(1);
+    // An image, specifically — the split matters (Finding 2 of the final
+    // review): only this bucket carries a survival claim the caller can make.
+    expect(result.removedImages).toBe(1);
+    expect(result.removedEmbedded).toBe(0);
+  });
+
+  it('removes embedded content (inlineVerbatim) the match spanned and reports it separately from images (D6)', () => {
+    // inlineVerbatim is HTML Live only -- liveSchema has no such node; it is
+    // what an <abbr>, an inline <svg>, and every other tag htmlModel.ts has no
+    // mark for all flatten to. Finding 2 of the final review: this bucket
+    // must NOT be counted alongside an image's `removedImages`, because only
+    // an image's file survives the edit -- this raw HTML is simply gone.
+    const doc = htmlSchema.node('doc', null, [
+      htmlSchema.node('paragraph', { blockId: 'b0' }, [
+        htmlSchema.text('ca'), htmlSchema.node('inlineVerbatim', { raw: '<abbr>x</abbr>' }), htmlSchema.text('t'),
+      ]),
+    ]);
+    const view = mountDoc(doc);
+    const result = pmSurface(view).applyEdits([{ from: 1, to: 5, text: 'dog' }]);
+    expect(view.state.doc.textBetween(0, view.state.doc.content.size)).toBe('dog');
+    expect(result.removedEmbedded).toBe(1);
+    expect(result.removedImages).toBe(0);
   });
 
   it('inspectEdits reports the same atom span WITHOUT touching the document', () => {
@@ -345,7 +367,9 @@ describe('pmSurface', () => {
     const v = mount('cat');
     const surface = pmSurface(v);
     expect(surface.inspectEdits([{ from: 1, to: 4, text: 'dog' }]).atomSpans).toBe(0);
-    expect(surface.applyEdits([{ from: 1, to: 4, text: 'dog' }]).removedAtoms).toBe(0);
+    const result = surface.applyEdits([{ from: 1, to: 4, text: 'dog' }]);
+    expect(result.removedImages).toBe(0);
+    expect(result.removedEmbedded).toBe(0);
   });
 
   it('applies several edits as one step, without invalidating later positions', () => {
