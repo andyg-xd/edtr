@@ -27,12 +27,14 @@ import { FindBar } from '../find/FindBar';
 import { codeSurface } from '../find/codeSurface';
 import { pmSurface } from '../find/pmSurface';
 import { matchSegments } from '../find/matchText';
+import { computeReplacements, type ReplaceEdit } from '../find/replaceText';
 import type { FindQuery } from '../find/findQuery';
 import {
   clear as clearFind, countLabel, currentMatch, emptyFindState,
   next as nextMatch, prev as prevMatch, setResult, type FindState,
 } from '../find/findState';
 import type { FindSurface } from '../find/types';
+import { ReplaceAllGuard } from './ReplaceAllGuard';
 
 /**
  * Matching is debounced so a fast typist doesn't re-scan the document on every
@@ -41,11 +43,22 @@ import type { FindSurface } from '../find/types';
  */
 const FIND_DEBOUNCE_MS = 120;
 
+/**
+ * Above this many matches, Replace All asks first (D5). A threshold rather than
+ * always-confirming: a dialog on every two-match edit trains the user to
+ * dismiss it unread, which is how a confirmation stops working. Exported so
+ * the test that exercises the boundary and this file can never disagree on
+ * where it is.
+ */
+export const REPLACE_ALL_CONFIRM_THRESHOLD = 10;
+
 export interface DocumentViewHandle {
   /** Flush live edits into doc.session.currentText. Returns false if a serializer throw aborted it. */
   flushToSource: () => boolean;
   /** ⌘F — open the find bar, seeding it from the selection, or refocus it if already open. */
   openFind: () => void;
+  /** Open the find bar with its replace row showing — same seeding as openFind. */
+  openReplace: () => void;
   findNext: () => void;
   findPrev: () => void;
 }
@@ -71,10 +84,12 @@ interface DocumentViewProps {
   onDirtyChange: (dirty: boolean) => void;
   onLiveAvailableChange: (available: boolean) => void;
   onError: (msg: string | null) => void;
+  /** A non-destructive, transient notice (e.g. D2's crossing-formatting heads-up, D6's atom disclosure). */
+  onInfo: (msg: string) => void;
 }
 
 export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(function DocumentView(
-  { doc, effectiveTheme, onDirtyChange, onLiveAvailableChange, onError }, ref,
+  { doc, effectiveTheme, onDirtyChange, onLiveAvailableChange, onError, onInfo }, ref,
 ) {
   const session = doc.session;
   const viewMode = doc.viewMode;
@@ -116,6 +131,16 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   // the just-edited document no longer has.
   const [findForEpoch, setFindForEpoch] = useState(-1);
   const [findFocusToken, bumpFindFocus] = useReducer((x: number) => x + 1, 0);
+  // Replace row state. Independent of `findOpen`/`find` -- closing/reopening
+  // find-only (⌘F) must not lose a term the user already typed into replace.
+  const [showReplace, setShowReplace] = useState(false);
+  const [replaceText, setReplaceText] = useState('');
+  // The frozen edit set a big Replace All is asking about. Frozen, not
+  // recomputed on confirm: what the guard disclosed (the count, the atom-span
+  // count) is exactly what must happen -- recomputing against a document that
+  // could theoretically have changed while the dialog was up would make the
+  // disclosure a guess instead of a fact.
+  const [pendingReplaceAll, setPendingReplaceAll] = useState<ReplaceEdit[] | null>(null);
   // Bumped ONLY by a real document change (see the two call sites). Highlighting
   // and revealing must never bump it: both dispatch transactions, so a recompute
   // triggered by them would re-highlight and loop forever.
@@ -315,7 +340,10 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     // re-run for an unrelated state change.
   }, [findOpen, surface, findFresh, find.current, find.matches]);
 
-  const openFind = useCallback(() => {
+  // Shared by openFind and openReplace -- the only difference between them is
+  // whether the replace row shows, and duplicating the seeding logic below
+  // between two callbacks is exactly how it would drift.
+  const openFindOrReplace = useCallback((replace: boolean) => {
     // Capture site 1/2 for findAnchorRef: the caret as it is the moment find
     // opens, before anything below can move it.
     findAnchorRef.current = surfaceRef.current?.cursorPos() ?? 0;
@@ -324,9 +352,14 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     if (selected !== '' && !selected.includes('\n')) {
       setFind((prev) => ({ ...prev, query: { ...prev.query, text: selected } }));
     }
+    setShowReplace(replace);
     setFindOpen(true);
     bumpFindFocus(); // ⌘F while already open refocuses and selects the field
   }, []);
+  // ⌘F must always land on find-only, even if replace was showing a moment
+  // ago -- there is no ⌘F-flavoured "close replace" gesture, so this is it.
+  const openFind = useCallback(() => openFindOrReplace(false), [openFindOrReplace]);
+  const openReplace = useCallback(() => openFindOrReplace(true), [openFindOrReplace]);
 
   const closeFind = useCallback(() => {
     setFindOpen(false);
@@ -351,9 +384,91 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   const goNext = useCallback(() => setFind((prev) => nextMatch(prev)), []);
   const goPrev = useCallback(() => setFind((prev) => prevMatch(prev)), []);
 
+  // The one place that applies edits, raises the crossing/atom notices and
+  // recomputes -- Replace and Replace All both go through this, so they
+  // cannot drift into disclosing different things for the same kind of edit.
+  const runEdits = useCallback((edits: ReplaceEdit[]) => {
+    const s = surfaceRef.current;
+    if (!s || !s.editable() || edits.length === 0) return;
+    const { crossedFormatting, removedAtoms } = s.applyEdits(edits);
+    if (crossedFormatting) {
+      // Once per action, never per occurrence -- `applyEdits` already
+      // reduces every crossed edit in the batch to one boolean.
+      onInfo('Replaced across formatting. The replacement takes the formatting from the start of the match.');
+    }
+    // D6: an atom is invisible in the flattened text, so removing one is
+    // something the user could not have knowingly consented to. Disclosure is
+    // the whole mitigation -- say what went, and that the file itself survives.
+    if (removedAtoms === 1) {
+      onInfo('Replaced across a picture or embedded item. It was removed from the text, but picture files are still saved next to your document.');
+    } else if (removedAtoms > 1) {
+      onInfo(`Replaced across ${removedAtoms} pictures or embedded items. They were removed from the text, but picture files are still saved next to your document.`);
+    }
+    // The document changed, so matches must re-scan. This is the SAME path a
+    // typed edit takes; replace does not get its own.
+    bumpFindEpoch();
+  }, [onInfo]);
+
+  const onReplace = useCallback(() => {
+    const s = surfaceRef.current;
+    if (!s || !s.editable()) return;
+    const match = currentMatch(find);
+    if (!match) return;
+    // Computed for the WHOLE document (Replace All needs the same call), then
+    // narrowed to the one edit under the current match by position --
+    // `computeReplacements` walks the same segments/offset map `matchSegments`
+    // used to produce `find.matches`, so the positions agree.
+    const edits = computeReplacements(s.getSegments(), find.query, replaceText, { multiline: s.multiline });
+    const edit = edits.find((e) => e.from === match.from);
+    if (!edit) return;
+    // Anchor PAST the replacement, not at its start. This single line both
+    // advances to the next match (the point of this button) and stops a
+    // replacement that CONTAINS the query from being re-found forever: the
+    // next recompute's setResult() looks for the first match at or after this
+    // position, so the just-inserted text is behind the anchor, not ahead of it.
+    findAnchorRef.current = edit.from + edit.text.length;
+    runEdits([edit]);
+  }, [find, replaceText, runEdits]);
+
+  // Both Replace All paths -- straight through, and via the confirmation --
+  // apply and then report the count. D5 says it reports "either way", so the
+  // report lives here rather than only after the dialog: a below-threshold
+  // batch is still a bulk action, and the count is how the user knows the
+  // scope of what just happened without counting highlights.
+  const runReplaceAll = useCallback((edits: ReplaceEdit[]) => {
+    runEdits(edits);
+    onInfo(`Replaced ${edits.length} ${edits.length === 1 ? 'match' : 'matches'}.`);
+  }, [runEdits, onInfo]);
+
+  const onReplaceAll = useCallback(() => {
+    const s = surfaceRef.current;
+    if (!s || !s.editable()) return;
+    const edits = computeReplacements(s.getSegments(), find.query, replaceText, { multiline: s.multiline });
+    if (edits.length === 0) return;
+    if (edits.length > REPLACE_ALL_CONFIRM_THRESHOLD) {
+      // D5: large enough to be hard to walk back -- ask first, rather than
+      // run and hope. Nothing is applied until the user says yes, in
+      // confirmReplaceAll below.
+      setPendingReplaceAll(edits);
+      return;
+    }
+    runReplaceAll(edits);
+  }, [find, replaceText, runReplaceAll]);
+
+  const confirmReplaceAll = useCallback(() => {
+    const pending = pendingReplaceAll;
+    setPendingReplaceAll(null);
+    if (!pending) return;
+    runReplaceAll(pending);
+  }, [pendingReplaceAll, runReplaceAll]);
+
+  // Cancelling must change absolutely nothing: no edits, no notice, no find-
+  // state change. Clearing the pending set is the entire effect.
+  const cancelReplaceAll = useCallback(() => setPendingReplaceAll(null), []);
+
   useImperativeHandle(ref, () => ({
-    flushToSource, openFind, findNext: goNext, findPrev: goPrev,
-  }), [flushToSource, openFind, goNext, goPrev]);
+    flushToSource, openFind, openReplace, findNext: goNext, findPrev: goPrev,
+  }), [flushToSource, openFind, openReplace, goNext, goPrev]);
 
   const findBar = findOpen && surface ? (
     <FindBar
@@ -373,12 +488,25 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
       onNext={goNext}
       onPrev={goPrev}
       onClose={closeFind}
-      showReplace={false}
-      replaceText=""
-      canReplace={true}
-      onReplaceTextChange={() => {}}
-      onReplace={() => {}}
-      onReplaceAll={() => {}}
+      showReplace={showReplace}
+      replaceText={replaceText}
+      canReplace={surface?.editable() ?? false}
+      onReplaceTextChange={setReplaceText}
+      onReplace={onReplace}
+      onReplaceAll={onReplaceAll}
+    />
+  ) : null;
+
+  // A Replace All above the threshold asks first (D5). `surface` (not
+  // `surfaceRef`) so this stays in sync with the render it belongs to; guarded
+  // separately from `pendingReplaceAll` alone because a null surface (surface
+  // torn down mid-dialog) must not call `inspectEdits` on nothing.
+  const replaceGuard = pendingReplaceAll && surface ? (
+    <ReplaceAllGuard
+      count={pendingReplaceAll.length}
+      atomSpans={surface.inspectEdits(pendingReplaceAll).atomSpans}
+      onConfirm={confirmReplaceAll}
+      onCancel={cancelReplaceAll}
     />
   ) : null;
 
@@ -395,6 +523,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
           </div>
         )}
         {findBar}
+        {replaceGuard}
         <HtmlLiveView
           key={`htmllive-${doc.id}`}
           doc={liveHtml.doc} styleText={liveHtml.styleText} bodyAttrs={liveHtml.bodyAttrs} rootAttrs={liveHtml.rootAttrs}
@@ -418,6 +547,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
           </div>
         )}
         {findBar}
+        {replaceGuard}
         <LiveView
           key={`live-${doc.id}`}
           doc={live.doc} editable
@@ -430,6 +560,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   return (
     <>
       {findBar}
+      {replaceGuard}
       <CodeView
         key={`code-${doc.id}`} initialText={session.text} format={session.format} effectiveTheme={effectiveTheme}
         onChange={handleChange} onViewReady={setCodeView}

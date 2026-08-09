@@ -569,6 +569,7 @@ export function EditorWindow() {
                 onDirtyChange={setActiveDirty}
                 onLiveAvailableChange={setActiveLiveAvailable}
                 onError={(m) => showError(m)}
+                onInfo={(m) => setInfoNotice(m)}
               />
             </>
           ) : folderView ? (

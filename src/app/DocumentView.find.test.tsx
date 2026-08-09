@@ -3,7 +3,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act, createRef, type RefObject } from 'react';
 import { EditorView as CMEditorView } from '@codemirror/view';
-import { DocumentView, type DocumentViewHandle } from './DocumentView';
+import { DocumentView, REPLACE_ALL_CONFIRM_THRESHOLD, type DocumentViewHandle } from './DocumentView';
 import { DocumentSession } from '../files/documentSession';
 import { formatForPath } from '../files/fileTypes';
 import type { OpenDoc, ViewMode } from '../files/openDocuments';
@@ -98,6 +98,7 @@ async function mount(
   path: string, text: string, viewMode: ViewMode,
   onDirtyChange: (dirty: boolean) => void = () => {},
   onError: (msg: string | null) => void = () => {},
+  onInfo: (msg: string) => void = () => {},
 ) {
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -108,7 +109,7 @@ async function mount(
   await act(async () => root.render(
     <DocumentView
       ref={ref} doc={doc} effectiveTheme="light"
-      onDirtyChange={onDirtyChange} onLiveAvailableChange={() => {}} onError={onError}
+      onDirtyChange={onDirtyChange} onLiveAvailableChange={() => {}} onError={onError} onInfo={onInfo}
     />,
   ));
   return { ref, doc, container: container! };
@@ -121,7 +122,7 @@ async function rerender(root: ReturnType<typeof createRoot>, ref: RefObject<Docu
   await act(async () => root.render(
     <DocumentView
       ref={ref} doc={doc} effectiveTheme="light"
-      onDirtyChange={() => {}} onLiveAvailableChange={() => {}} onError={() => {}}
+      onDirtyChange={() => {}} onLiveAvailableChange={() => {}} onError={() => {}} onInfo={() => {}}
     />,
   ));
 }
@@ -407,5 +408,146 @@ describe('DocumentView find — a surface driver error degrades to no matches, n
     expect(message).toContain("couldn't search");
     // Degraded, not crashed: the bar is still there, showing no results.
     expect(bar(c)).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Replace (6c-i-b). Code view is the surface under test for the behavioural
+// cases: it is the one whose result can be asserted directly against the
+// source string, so a wrong edit shows up as wrong BYTES rather than as a
+// ProseMirror shape that still has to be interpreted.
+// ---------------------------------------------------------------------------
+
+const replaceField = (c: HTMLElement) => c.querySelector<HTMLInputElement>('.find-replace-input')!;
+const guard = (c: HTMLElement) => c.querySelector('[aria-label="Replace all"]');
+
+/** Type into the REPLACE field. Same native-setter bypass as `type` above:
+ *  React's value tracker swallows a direct assignment. No debounce wait —
+ *  the replacement term feeds no matcher, so nothing is scheduled off it. */
+async function typeReplace(c: HTMLElement, text: string) {
+  const el = replaceField(c);
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+  await act(async () => {
+    setter.call(el, text);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+const click = async (el: Element | null) => {
+  await act(async () => (el as HTMLButtonElement).click());
+  // Replace bumps the find epoch, so let the debounced recompute settle.
+  await act(async () => { await new Promise((r) => setTimeout(r, 200)); });
+};
+
+const clickReplace = (c: HTMLElement) => click(c.querySelector('.find-replace'));
+const clickReplaceAll = (c: HTMLElement) => click(c.querySelector('.find-replace-all'));
+
+describe('DocumentView replace', () => {
+  it('replaces the current match and leaves the rest of the document alone', async () => {
+    const { ref, doc, container: c } = await mount('/tmp/r.md', 'cat and cat', 'code');
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplace(c);
+    expect(doc.session.text).toBe('dog and cat');
+  });
+
+  it('advances past a replacement that itself contains the query', async () => {
+    // The hazard: the replacement re-matches, so a Replace that re-anchored at
+    // the match START would find its own output and rewrite the same spot
+    // forever instead of moving on. Anchoring PAST the inserted text is what
+    // advances to the next real occurrence.
+    //
+    // Two matches are required to see it: with a single occurrence the correct
+    // anchor lands past the end, the search wraps to index 0, and a broken
+    // anchor lands there too — the bug hides behind the wrap. (Verified: an
+    // earlier single-occurrence version of this test passed with the anchor
+    // deliberately broken, which is why it looks like this.)
+    const { ref, doc, container: c } = await mount('/tmp/r.md', 'cat cat', 'code');
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'cat!');
+    await clickReplace(c);
+    await clickReplace(c);
+    // Both occurrences replaced once each. Re-anchoring at the match start
+    // would instead rewrite the first one twice: 'cat!! cat'.
+    expect(doc.session.text).toBe('cat! cat!');
+  });
+
+  it('replaces all with no confirmation at or below the threshold', async () => {
+    const { ref, doc, container: c } = await mount('/tmp/r.md', 'cat cat cat', 'code');
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplaceAll(c);
+    expect(guard(c)).toBeNull();
+    expect(doc.session.text).toBe('dog dog dog');
+  });
+
+  it('confirms above the threshold, and cancelling changes absolutely nothing', async () => {
+    const source = 'cat '.repeat(REPLACE_ALL_CONFIRM_THRESHOLD + 1).trim();
+    const onInfo = vi.fn();
+    const { ref, doc, container: c } = await mount('/tmp/r.md', source, 'code', () => {}, () => {}, onInfo);
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplaceAll(c);
+    // Nothing applied yet — the dialog is the gate, not a notification.
+    expect(guard(c)).not.toBeNull();
+    expect(guard(c)!.textContent).toContain(`Replace all ${REPLACE_ALL_CONFIRM_THRESHOLD + 1} matches?`);
+    expect(doc.session.text).toBe(source);
+    // Scope to the dialog: the find bar's own prev/next/toggle/close buttons
+    // are all `.btn--secondary` too, and they come first in the DOM.
+    await click(guard(c)!.querySelector('.btn--secondary'));
+    // Cancel: no edits, no notice, and the dialog is gone.
+    expect(doc.session.text).toBe(source);
+    expect(onInfo).not.toHaveBeenCalled();
+    expect(guard(c)).toBeNull();
+  });
+
+  it('applies the confirmed batch and reports the count', async () => {
+    const source = 'cat '.repeat(REPLACE_ALL_CONFIRM_THRESHOLD + 1).trim();
+    const onInfo = vi.fn();
+    const { ref, doc, container: c } = await mount('/tmp/r.md', source, 'code', () => {}, () => {}, onInfo);
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplaceAll(c);
+    await click(guard(c)!.querySelector('.btn--primary'));
+    expect(doc.session.text).toBe('dog '.repeat(REPLACE_ALL_CONFIRM_THRESHOLD + 1).trim());
+    // D5 reports the count "either way"; this is the confirmed path.
+    expect(onInfo).toHaveBeenCalledWith(`Replaced ${REPLACE_ALL_CONFIRM_THRESHOLD + 1} matches.`);
+  });
+
+  it('reports the count for a below-threshold replace all too', async () => {
+    // D5 says "either way". A small batch is still a bulk action, and the
+    // count is how the user learns the scope without counting highlights.
+    const onInfo = vi.fn();
+    const { ref, container: c } = await mount('/tmp/r.md', 'cat cat', 'code', () => {}, () => {}, onInfo);
+    await act(async () => { ref.current!.openReplace(); });
+    await type(c, 'cat');
+    await typeReplace(c, 'dog');
+    await clickReplaceAll(c);
+    expect(onInfo).toHaveBeenCalledWith('Replaced 2 matches.');
+  });
+
+  it('⌘F opens find-only; ⌥⌘F opens with the replace row', async () => {
+    const { ref, container: c } = await mount('/tmp/r.md', 'cat', 'code');
+    await act(async () => { ref.current!.openFind(); });
+    expect(c.querySelector('.find-replace-row')).toBeNull();
+    await act(async () => { ref.current!.openReplace(); });
+    expect(c.querySelector('.find-replace-row')).not.toBeNull();
+    // ...and back: ⌘F must always land on find-only, whatever was showing.
+    await act(async () => { ref.current!.openFind(); });
+    expect(c.querySelector('.find-replace-row')).toBeNull();
+  });
+
+  it('keeps the replacement term across a find-only reopen', async () => {
+    const { ref, container: c } = await mount('/tmp/r.md', 'cat', 'code');
+    await act(async () => { ref.current!.openReplace(); });
+    await typeReplace(c, 'dog');
+    await act(async () => { ref.current!.openFind(); });
+    await act(async () => { ref.current!.openReplace(); });
+    expect(replaceField(c).value).toBe('dog');
   });
 });
