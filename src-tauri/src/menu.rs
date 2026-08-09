@@ -84,6 +84,7 @@ pub fn menu_event_name(id: &str) -> Option<&'static str> {
         "find" => "menu://find",
         "find-next" => "menu://find-next",
         "find-prev" => "menu://find-prev",
+        "replace" => "menu://replace",
         _ => return None,
     })
 }
@@ -110,6 +111,7 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry]) -> ta
     let find = MenuItem::with_id(app, "find", "Find…", true, Some("Cmd+F"))?;
     let find_next = MenuItem::with_id(app, "find-next", "Find Next", true, Some("Cmd+G"))?;
     let find_prev = MenuItem::with_id(app, "find-prev", "Find Previous", true, Some("Cmd+Shift+G"))?;
+    let replace = MenuItem::with_id(app, "replace", "Replace…", true, Some("Alt+Cmd+F"))?;
     let recent_menu = build_recent_submenu(app, recents)?;
 
     let app_menu = SubmenuBuilder::new(app, "Edtr")
@@ -135,10 +137,10 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry]) -> ta
         .build()?;
 
     // The Edit submenu keeps the PREDEFINED items so the editors keep
-    // copy/paste/cut/undo/redo/select-all, then gains our three custom Find
-    // items. The native menu must own ⌘F: macOS offers a key equivalent to the
-    // menu before the webview, so a webview binding would never fire (the same
-    // reason ⌘Q needed a custom item in Phase 5).
+    // copy/paste/cut/undo/redo/select-all, then gains our custom Find and
+    // Replace items. The native menu must own ⌘F: macOS offers a key equivalent
+    // to the menu before the webview, so a webview binding would never fire
+    // (the same reason ⌘Q needed a custom item in Phase 5).
     let edit_menu = SubmenuBuilder::new(app, "Edit")
         .undo()
         .redo()
@@ -151,6 +153,7 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry]) -> ta
         .item(&find)
         .item(&find_next)
         .item(&find_prev)
+        .item(&replace)
         .build()?;
 
     let window_menu = SubmenuBuilder::new(app, "Window")
@@ -221,6 +224,7 @@ mod menu_event_name_tests {
             ("find", "menu://find"),
             ("find-next", "menu://find-next"),
             ("find-prev", "menu://find-prev"),
+            ("replace", "menu://replace"),
         ] {
             assert_eq!(menu_event_name(id), Some(event), "id {id}");
         }

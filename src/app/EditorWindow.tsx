@@ -437,6 +437,7 @@ export function EditorWindow() {
     onFind: () => viewRef.current?.openFind(),
     onFindNext: () => viewRef.current?.findNext(),
     onFindPrev: () => viewRef.current?.findPrev(),
+    onReplace: () => viewRef.current?.openReplace(),
   });
 
   const effectiveViewMode: ViewMode = active && active.viewMode === 'live' && activeLiveAvailable ? 'live' : 'code';

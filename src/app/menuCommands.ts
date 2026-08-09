@@ -4,7 +4,7 @@ import type { OpenPayload } from '../files/openPayload';
 export type MenuCommand =
   | 'open' | 'open-folder' | 'save' | 'save-as' | 'close'
   | 'quit-poll' | 'quit-abort'
-  | 'find' | 'find-next' | 'find-prev';
+  | 'find' | 'find-next' | 'find-prev' | 'replace';
 
 /** App-level handlers the menu (and window close button) drive. */
 export interface MenuHandlers {
@@ -25,6 +25,8 @@ export interface MenuHandlers {
   onFindNext: () => void;
   /** ⇧⌘G — go to the previous match. */
   onFindPrev: () => void;
+  /** ⌥⌘F — open the find bar with the replace row. */
+  onReplace: () => void;
 }
 
 /**
@@ -44,5 +46,6 @@ export function dispatchMenuCommand(command: MenuCommand, handlers: MenuHandlers
     case 'find': handlers.onFind(); break;
     case 'find-next': handlers.onFindNext(); break;
     case 'find-prev': handlers.onFindPrev(); break;
+    case 'replace': handlers.onReplace(); break;
   }
 }

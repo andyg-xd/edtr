@@ -16,6 +16,7 @@ function tracked(): MenuHandlers & { calls: string[] } {
     onFind: () => calls.push('find'),
     onFindNext: () => calls.push('find-next'),
     onFindPrev: () => calls.push('find-prev'),
+    onReplace: () => calls.push('replace'),
   };
 }
 
@@ -33,6 +34,7 @@ function makeHandlers(): MenuHandlers {
     onFind: vi.fn(),
     onFindNext: vi.fn(),
     onFindPrev: vi.fn(),
+    onReplace: vi.fn(),
   };
 }
 
@@ -40,7 +42,7 @@ describe('dispatchMenuCommand', () => {
   it('routes each command to exactly its own handler', () => {
     const all = [
       'open', 'open-folder', 'save', 'save-as', 'close', 'quit-poll', 'quit-abort',
-      'find', 'find-next', 'find-prev',
+      'find', 'find-next', 'find-prev', 'replace',
     ] as const satisfies readonly MenuCommand[];
     for (const cmd of all) {
       const h = tracked();
@@ -60,5 +62,11 @@ describe('dispatchMenuCommand', () => {
     for (const [name, fn] of Object.entries(handlers)) {
       if (name !== handler) expect(fn, name).not.toHaveBeenCalled();
     }
+  });
+
+  it('routes replace to its handler', () => {
+    const handlers = makeHandlers();
+    dispatchMenuCommand('replace', handlers);
+    expect(handlers.onReplace).toHaveBeenCalledTimes(1);
   });
 });
