@@ -19,12 +19,51 @@ function dimmedCount(view: EditorView): number {
   return view.dom.querySelectorAll('.edtr-dim').length;
 }
 
+/**
+ * blockquote(paragraph('aaa'), paragraph('bbbb')), then a top-level
+ * paragraph('ccc'). Every fixture above is FLAT — every top-level child of
+ * `doc` already IS a textblock, so "innermost textblock" and "top-level
+ * child" cannot be told apart by any of them: an implementation that dimmed
+ * top-level children wholesale, never recursing into a container, would
+ * pass all six of the tests above identically. This is the one fixture
+ * where the two rules diverge (fix round 1, finding 2).
+ */
+function mountNested(): EditorView {
+  const doc = liveSchema.node('doc', null, [
+    liveSchema.node('blockquote', { blockId: 'q' }, [
+      liveSchema.node('paragraph', { blockId: 'q-a' }, [liveSchema.text('aaa')]),
+      liveSchema.node('paragraph', { blockId: 'q-b' }, [liveSchema.text('bbbb')]),
+    ]),
+    liveSchema.node('paragraph', { blockId: 'c' }, [liveSchema.text('ccc')]),
+  ]);
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  return new EditorView(host, {
+    state: EditorState.create({ doc, plugins: [focusDimPlugin()] }),
+  });
+}
+
 describe('textblockRanges', () => {
   it('reports one range per textblock', () => {
     const view = mount(['aaa', 'bbbb']);
     expect(textblockRanges(view.state.doc)).toEqual([
       { from: 1, to: 4 },
       { from: 6, to: 10 },
+    ]);
+    view.destroy();
+  });
+
+  it('recurses into a container, reporting its inner textblocks rather than one range for the container itself', () => {
+    // blockquote nodeSize is 13 (paragraph 'aaa' = 5, paragraph 'bbbb' = 6,
+    // plus the blockquote's own open/close tokens) — the trailing top-level
+    // paragraph 'ccc' starts at 13, one past the blockquote entirely. If
+    // this reported one range for the blockquote as a whole, it would be
+    // { from: 1, to: 12 } and there would be only two entries, not three.
+    const view = mountNested();
+    expect(textblockRanges(view.state.doc)).toEqual([
+      { from: 2, to: 5 },
+      { from: 7, to: 11 },
+      { from: 14, to: 17 },
     ]);
     view.destroy();
   });
@@ -82,6 +121,26 @@ describe('focus mode over a Live view', () => {
     surface.setFocusEnabled(false);
     expect(stepCounts.every((n) => n === 0)).toBe(true);
     expect(view.state.doc.eq(before)).toBe(true);
+    view.destroy();
+  });
+
+  it('dims only the innermost textblocks, never a container, when blocks are nested inside another block (a blockquote)', () => {
+    // Acid test for "innermost textblock", per fix round 1 finding 2: every
+    // other fixture in this file is flat, where "innermost" and "top-level
+    // child" are indistinguishable. An HTML <section> holding paragraphs is
+    // the real-world shape this guards; a blockquote is the nesting
+    // container liveSchema actually offers.
+    const view = mountNested();
+    pmFocus(view).setFocusEnabled(true);
+    // Caret inside the SECOND paragraph inside the blockquote ('bbbb', range [7,11]).
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 8)));
+    const quote = view.dom.querySelector('blockquote')!;
+    expect(quote.classList.contains('edtr-dim')).toBe(false);
+    const innerParas = quote.querySelectorAll('p');
+    expect(innerParas.length).toBe(2);
+    expect(innerParas[0].classList.contains('edtr-dim')).toBe(true); // 'aaa' — dimmed
+    expect(innerParas[1].classList.contains('edtr-dim')).toBe(false); // 'bbbb' — lit, the caret's block
+    expect(dimmedCount(view)).toBe(2); // 'aaa' inside the quote, and the top-level 'ccc'
     view.destroy();
   });
 });

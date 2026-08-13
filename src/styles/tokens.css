@@ -151,7 +151,20 @@
 }
 
 /* Focus mode works by REDUCING contrast, which is the one thing this setting
-   asks us not to do — so the dim backs off to normal text (spec §5.2). */
+   asks us not to do — so the dim backs off to normal text (spec §5.2).
+
+   Custom properties cascade like any other property, and a media query adds
+   no specificity of its own. `--dim-fg` is defined on TWO selectors above —
+   bare `:root` (0,0,1) for light, and `:root[data-theme='dark']` (0,2,0) for
+   dark — so an override written as bare `:root` here is only (0,1,0) and
+   loses outright to the dark block's (0,2,0): the dim would silently fail to
+   back off in dark theme with Increase Contrast on, which is the theme this
+   project's owner actually runs. The selector list below must repeat EVERY
+   selector tokens.css uses to define `--dim-fg`, so this override can never
+   be out-specified by either theme block. If a light- or dark-specific
+   `--dim-fg` definition is ever added under `prefers-color-scheme` or an
+   explicit `:root[data-theme='light']`, add its selector here too — do not
+   "simplify" this back to bare `:root`. */
 @media (prefers-contrast: more) {
-  :root { --dim-fg: var(--fg); }
+  :root, :root[data-theme='dark'] { --dim-fg: var(--fg); }
 }
