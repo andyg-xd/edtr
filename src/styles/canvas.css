@@ -75,3 +75,18 @@
    position (D8). Scroll padding, never text — nothing reaches the file. The
    variable is set from the live scroller height by codeTypewriter. */
 .cm-edtr-typewriter .cm-content { padding-bottom: var(--edtr-end-pad, 0); }
+
+/* Focus mode (6c-ii). Two rules, and the second is not optional.
+
+   1. `color` is inherited only by descendants that do not set their own, so a
+      dimmed paragraph containing a link would keep the link bright. Hence `*`.
+   2. That immediately over-reaches into find's highlight, which spec §5.2
+      requires to stay legible through the dimming. This rule is more specific
+      AND important, so it wins the fight rule 1 would otherwise pick.
+
+   Hardening, not proof: a rendered file can still out-specify us with its own
+   `!important`, and no build fails when it does. Recorded as debt, and it is
+   why injecting our sheet last is NOT the defence — source order breaks ties
+   only at equal specificity. */
+.edtr-dim, .edtr-dim * { color: var(--dim-fg) !important; }
+.edtr-dim edtr-mark, .edtr-dim edtr-mark * { color: var(--fg) !important; }

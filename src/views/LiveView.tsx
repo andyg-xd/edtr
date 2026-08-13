@@ -14,6 +14,7 @@ import { goToNextCell, arrowVertical } from '../commands/markdownTableCommands';
 import { writeImageIntoAssets, resolveImageDisplaySrc } from '../files/imageAssets';
 import { insertImage, canInsertImage } from '../commands/markdownInlineCommands';
 import { findDecorationsPlugin } from '../find/pmSurface';
+import { focusDimPlugin } from '../writingmodes/pmFocus';
 
 interface LiveViewProps {
   doc: PMNode;
@@ -77,10 +78,13 @@ export function LiveView({
           dirtyTrackingPlugin(),
           // Find highlighting. Decoration only — it cannot change the document.
           findDecorationsPlugin(),
+          // Focus-mode dimming. Also decoration only (6c-ii).
+          focusDimPlugin(),
         ]
-      // Find must work in a read-only view too, so the plugin is present here
-      // as well: an empty list means no decorations at all.
-      : [findDecorationsPlugin()];
+      // Find and focus mode must work in a read-only view too, so both
+      // plugins are present here as well: an empty list means no decorations
+      // at all.
+      : [findDecorationsPlugin(), focusDimPlugin()];
     const view = new EditorView(host.current, {
       state: EditorState.create({ doc, schema: liveSchema, plugins }),
       editable: () => editable,

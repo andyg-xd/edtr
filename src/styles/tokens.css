@@ -56,6 +56,11 @@
   --find-current-bg: #a36415;
   --find-current-fg: #ffffff;
 
+  /* Focus mode's dimmed text (6c-ii, D6). A token rather than a literal so
+     colour stays in this file, and so the reduced-contrast override below has
+     exactly one place to act. */
+  --dim-fg: var(--fg-disabled);
+
   /* Spacing scale — replaces 12+ ad-hoc padding combinations. */
   --space-1: 2px;
   --space-2: 4px;
@@ -131,6 +136,8 @@
   --find-match-bg: rgba(228, 146, 46, 0.32);
   --find-current-bg: #e4922e;
   --find-current-fg: #1a1008;
+
+  --dim-fg: var(--fg-disabled);
 }
 
 /* Respect the OS "reduce motion" setting. Collapsing the duration tokens here
@@ -141,4 +148,10 @@
     --motion-fast: 0ms;
     --motion-panel: 0ms;
   }
+}
+
+/* Focus mode works by REDUCING contrast, which is the one thing this setting
+   asks us not to do — so the dim backs off to normal text (spec §5.2). */
+@media (prefers-contrast: more) {
+  :root { --dim-fg: var(--fg); }
 }

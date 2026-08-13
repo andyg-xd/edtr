@@ -37,8 +37,9 @@ import type { FindSurface } from '../find/types';
 import { ReplaceAllGuard } from './ReplaceAllGuard';
 import { codeTypewriter } from '../writingmodes/codeTypewriter';
 import { pmTypewriter } from '../writingmodes/pmTypewriter';
+import { pmFocus } from '../writingmodes/pmFocus';
 import { HOLD_RATIO } from '../writingmodes/constants';
-import type { TypewriterSurface, CountSurface } from '../writingmodes/types';
+import type { TypewriterSurface, CountSurface, FocusSurface } from '../writingmodes/types';
 import { codeCounts, pmCounts } from '../writingmodes/countSurfaces';
 import { useWordCount } from '../writingmodes/useWordCount';
 import type { WritingModes } from '../settings/writingModes';
@@ -314,6 +315,15 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     return codeView ? codeTypewriter(codeView) : null;
   }, [showLive, liveView, codeView]);
 
+  const focus = useMemo<FocusSurface | null>(() => {
+    // ONE driver for both Live views (Markdown and HTML), same construction as
+    // `typewriter`/`surface` above — no HTML-specific branch. Code view gets
+    // its own driver in Task 10; there is none here yet, so this is null
+    // outside Live.
+    if (showLive) return liveView ? pmFocus(liveView) : null;
+    return null;
+  }, [showLive, liveView]);
+
   const countSurface = useMemo<CountSurface | null>(() => {
     // Same construction as `surface` above, for the same reason: one driver
     // per projection, no HTML-specific branch.
@@ -375,6 +385,14 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     if (!typewriter || !modes.typewriter) return;
     typewriter.holdCaret(HOLD_RATIO);
   }, [typewriter, modes.typewriter, codeCursor]);
+
+  // Drive the enable/disable toggle only -- the decoration plugin derives
+  // WHICH block is dimmed straight from the editor's own selection state on
+  // every transaction, so a caret move needs no effect here at all. This is
+  // the only place focus mode needs to be told anything from React.
+  useEffect(() => {
+    focus?.setFocusEnabled(modes.focus);
+  }, [focus, modes.focus]);
 
   // Recompute matches — debounced, and safe to re-run.
   useEffect(() => {

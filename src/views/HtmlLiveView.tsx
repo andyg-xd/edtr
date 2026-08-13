@@ -17,6 +17,7 @@ import {
 } from '../commands/htmlInlineCommands';
 import { writeImageIntoAssets, resolveImageDisplaySrc } from '../files/imageAssets';
 import { findDecorationsPlugin } from '../find/pmSurface';
+import { focusDimPlugin } from '../writingmodes/pmFocus';
 
 /**
  * Edit-only fallback so an UNSTYLED table (e.g. one the user just inserted) is
@@ -59,6 +60,30 @@ const FIND_HIGHLIGHT_CSS =
     + 'background:var(--find-match-bg);border-radius:var(--radius-sm)}'
   + 'edtr-mark.edtr-find-current{'
     + 'background:var(--find-current-bg);color:var(--find-current-fg)!important}';
+
+/**
+ * Focus-mode dimming for the shadow render (6c-ii). `canvas.css` cannot reach
+ * inside a shadow root, so the same two rules live here too, beside the
+ * `edtr-mark` backstop above — they are the same defence against the same
+ * problem: a node decoration can add a class to the file's own `<p>`/`<h2>`/
+ * `<li>` but cannot change its tag, so a rendered file's own selectors can
+ * still out-specify a bare class.
+ *
+ * 1. `color` is inherited only by descendants that do not set their own, so a
+ *    dimmed paragraph containing a link would keep the link bright — hence
+ *    the `*`.
+ * 2. That immediately over-reaches into find's highlight, which must stay
+ *    legible through the dimming (spec §5.2). More specific AND important, so
+ *    it wins the fight rule 1 would otherwise pick.
+ *
+ * Hardening, not proof: a file rule with both higher specificity and
+ * `!important` still wins, and no build fails when it does. Appending this
+ * stylesheet last does not change that — source order only breaks ties at
+ * equal specificity.
+ */
+const FOCUS_DIM_CSS =
+  '.edtr-dim,.edtr-dim *{color:var(--dim-fg)!important}'
+  + '.edtr-dim edtr-mark,.edtr-dim edtr-mark *{color:var(--fg)!important}';
 
 /**
  * Browser-default reset for the shadow render, injected FIRST (lowest priority)
@@ -162,6 +187,14 @@ export function HtmlLiveView({
     findStyle.textContent = FIND_HIGHLIGHT_CSS;
     shadow.appendChild(findStyle);
 
+    // Focus-mode dimming. Same reasoning as findStyle above — appended after
+    // the file's own <style> is not the defence (see FOCUS_DIM_CSS), but it's
+    // harmless to keep the two hardened rulesets adjacent in source.
+    const focusStyle = document.createElement('style');
+    focusStyle.setAttribute('data-edtr-focus', '');
+    focusStyle.textContent = FOCUS_DIM_CSS;
+    shadow.appendChild(focusStyle);
+
     const applyAttrs = (el: Element, attrs: Record<string, string>) => {
       for (const [k, v] of Object.entries(safeAttrs(attrs))) {
         try { el.setAttribute(k, v); } catch { /* invalid attr name — skip */ }
@@ -198,10 +231,13 @@ export function HtmlLiveView({
           dirtyTrackingPlugin(),
           // Find highlighting. Decoration only — it cannot change the document.
           findDecorationsPlugin(),
+          // Focus-mode dimming. Also decoration only (6c-ii).
+          focusDimPlugin(),
         ]
-      // Find must work in a read-only view too, so the plugin is present here
-      // as well: an empty list means no decorations at all.
-      : [findDecorationsPlugin()];
+      // Find and focus mode must work in a read-only view too, so both
+      // plugins are present here as well: an empty list means no decorations
+      // at all.
+      : [findDecorationsPlugin(), focusDimPlugin()];
 
     const view = new EditorView(bodyEl, {
       state: EditorState.create({ doc, schema: htmlSchema, plugins }),
