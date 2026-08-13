@@ -98,6 +98,45 @@ pub fn get_settings(state: State<SettingsState>) -> Option<Settings> {
     state.0.lock().ok().and_then(|g| g.clone())
 }
 
+/// Runs `compute` against the currently stored settings (or the default, if
+/// none has ever been persisted) and — only when the result differs from
+/// what's stored — saves it to disk, updates the in-memory state, and
+/// broadcasts settings://changed to all windows.
+///
+/// A no-op (`compute` returns the same value that's already stored) neither
+/// saves nor emits, so a window adopting a cross-window change doesn't echo
+/// an endless feedback loop. `compute` runs under the same lock acquisition
+/// that compares and writes, so the whole read → compute → compare → write
+/// sequence is one atomic critical section: a concurrent command from another
+/// window can't interleave a stale read between "compute next from current"
+/// and "save next", which would otherwise silently drop the other window's
+/// change — exactly the drift this task exists to close for `Settings`.
+///
+/// Shared by every setter, so the guard-then-save-then-emit sequence is
+/// defined once instead of hand-synced per command.
+fn apply_if_changed<R: Runtime>(
+    app: &AppHandle<R>,
+    state: &State<SettingsState>,
+    compute: impl FnOnce(&Settings) -> Settings,
+) -> Result<(), String> {
+    let settings = {
+        let mut g = state.0.lock().map_err(|_| "settings lock poisoned")?;
+        let current = g.clone().unwrap_or_default();
+        let next = compute(&current);
+        if g.as_ref() == Some(&next) {
+            None
+        } else {
+            save(app, &next)?;
+            *g = Some(next.clone());
+            Some(next)
+        }
+    };
+    if let Some(next) = settings {
+        let _ = app.emit("settings://changed", next);
+    }
+    Ok(())
+}
+
 /// Persist the theme + broadcast settings://changed to all windows — but only
 /// when the value actually changed (a no-op write doesn't re-broadcast, so a
 /// window adopting a cross-window change doesn't echo an endless feedback loop).
@@ -110,22 +149,7 @@ pub fn set_theme<R: Runtime>(
     if !is_valid_theme(&mode) {
         return Err(format!("invalid theme: {mode}"));
     }
-    let settings = {
-        let mut g = state.0.lock().map_err(|_| "settings lock poisoned")?;
-        let current = g.clone().unwrap_or_default();
-        let next = with_theme(&current, mode);
-        if g.as_ref() == Some(&next) {
-            None
-        } else {
-            save(&app, &next)?;
-            *g = Some(next.clone());
-            Some(next)
-        }
-    };
-    if let Some(next) = settings {
-        let _ = app.emit("settings://changed", next);
-    }
-    Ok(())
+    apply_if_changed(&app, &state, |current| with_theme(current, mode))
 }
 
 /// Persist one writing mode + broadcast settings://changed to all windows,
@@ -136,6 +160,11 @@ pub fn set_theme<R: Runtime>(
 /// (spec §6.3): the View menu and the chrome toggle both land on this command,
 /// so the native checkmark cannot drift from the stored value, and a toggle
 /// works even when no window holds focus.
+///
+/// Validated up front, mirroring `set_theme`: `is_valid_writing_mode` (backed
+/// by `VALID_MODES`) is the one place that knows which mode names exist, so
+/// an unknown name is rejected before the lock is even touched, and the
+/// `with_mode` call below is guaranteed `Some`.
 #[tauri::command]
 pub fn set_writing_mode<R: Runtime>(
     app: AppHandle<R>,
@@ -143,22 +172,12 @@ pub fn set_writing_mode<R: Runtime>(
     mode: String,
     on: bool,
 ) -> Result<(), String> {
-    let settings = {
-        let mut g = state.0.lock().map_err(|_| "settings lock poisoned")?;
-        let current = g.clone().unwrap_or_default();
-        let next = with_mode(&current, &mode, on).ok_or(format!("invalid writing mode: {mode}"))?;
-        if g.as_ref() == Some(&next) {
-            None
-        } else {
-            save(&app, &next)?;
-            *g = Some(next.clone());
-            Some(next)
-        }
-    };
-    if let Some(next) = settings {
-        let _ = app.emit("settings://changed", next);
+    if !is_valid_writing_mode(&mode) {
+        return Err(format!("invalid writing mode: {mode}"));
     }
-    Ok(())
+    apply_if_changed(&app, &state, |current| {
+        with_mode(current, &mode, on).expect("mode validated by is_valid_writing_mode above")
+    })
 }
 
 #[cfg(test)]
