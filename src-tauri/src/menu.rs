@@ -262,8 +262,11 @@ mod view_menu_tests {
     #[test]
     fn leaves_every_other_menu_id_alone() {
         // These must keep flowing to the frontend as menu:// events. A greedy
-        // match here would silently break Find, Save and Quit.
-        for id in ["find", "find-next", "replace", "save", "save-as", "open", "quit-poll"] {
+        // match here would silently break Find, Save and Quit. "quit" is the
+        // real menu item id (intercepted by lib.rs before this mapping is
+        // reached today); "quit-poll" is the outgoing event name it triggers,
+        // kept alongside it since it costs nothing to also assert on.
+        for id in ["find", "find-next", "replace", "save", "save-as", "open", "quit", "quit-poll"] {
             assert_eq!(writing_mode_for_menu_id(id), None, "{id} must not be treated as a view mode");
         }
     }

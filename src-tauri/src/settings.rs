@@ -117,7 +117,11 @@ pub fn get_settings(state: State<SettingsState>) -> Option<Settings> {
 /// Runs `compute` against the currently stored settings (or the default, if
 /// none has ever been persisted) and — only when the result differs from
 /// what's stored — saves it to disk, updates the in-memory state, and
-/// broadcasts settings://changed to all windows.
+/// broadcasts settings://changed to all windows. Returns whether it actually
+/// wrote (`Ok(true)`) or `compute` produced no change (`Ok(false)`), so a
+/// caller that only needs a follow-up action on a real change — `set_writing_mode`'s
+/// menu rebuild, specifically — doesn't have to run that follow-up
+/// unconditionally on every no-op call.
 ///
 /// A no-op (`compute` returns the same value that's already stored) neither
 /// saves nor emits, so a window adopting a cross-window change doesn't echo
@@ -142,7 +146,7 @@ fn apply_if_changed<R: Runtime>(
     app: &AppHandle<R>,
     state: &State<SettingsState>,
     compute: impl FnOnce(&Settings) -> Result<Settings, String>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let settings = {
         let mut g = state.0.lock().map_err(|_| "settings lock poisoned")?;
         let current = g.clone().unwrap_or_default();
@@ -155,10 +159,11 @@ fn apply_if_changed<R: Runtime>(
             Some(next)
         }
     };
+    let changed = settings.is_some();
     if let Some(next) = settings {
         let _ = app.emit("settings://changed", next);
     }
-    Ok(())
+    Ok(changed)
 }
 
 /// Persist the theme + broadcast settings://changed to all windows — but only
@@ -173,7 +178,11 @@ pub fn set_theme<R: Runtime>(
     if !is_valid_theme(&mode) {
         return Err(format!("invalid theme: {mode}"));
     }
-    apply_if_changed(&app, &state, |current| Ok(with_theme(current, mode)))
+    // A theme change never needs a menu rebuild — there's no menu checkmark
+    // tied to it — so the "did it actually change" bool `apply_if_changed`
+    // now reports is simply discarded here; behaviour is otherwise identical.
+    apply_if_changed(&app, &state, |current| Ok(with_theme(current, mode)))?;
+    Ok(())
 }
 
 /// Persist one writing mode + broadcast settings://changed to all windows,
@@ -204,18 +213,23 @@ pub fn set_writing_mode<R: Runtime>(
     if !is_valid_writing_mode(&mode) {
         return Err(format!("invalid writing mode: {mode}"));
     }
-    apply_if_changed(&app, &state, |current| {
+    let changed = apply_if_changed(&app, &state, |current| {
         with_mode(current, &mode, on).ok_or_else(|| format!("invalid writing mode: {mode}"))
     })?;
     // Keep the View menu's checkmarks in step with whichever affordance
     // flipped the mode — the native menu item or the chrome toggle both land
     // on this command (spec §6.3), so this is the one place a rebuild needs
-    // to be triggered from. `apply_if_changed` has already returned by this
-    // point, which drops its settings-mutex guard before this line runs, so
-    // this call is never made from inside the locked section. `menu::rebuild`
+    // to be triggered from. Only rebuild when something actually changed —
+    // `rebuild` is idempotent so a rebuild on a no-op wouldn't be wrong, just
+    // a wasted main-thread hop and menu reconstruction on every redundant
+    // toggle call. `apply_if_changed` has already returned by this point,
+    // which drops its settings-mutex guard before this line runs, so this
+    // call is never made from inside the locked section. `menu::rebuild`
     // itself hops to the main thread (menu ops must run there), so calling it
     // from here — on whatever thread invoked this command — is safe.
-    crate::menu::rebuild(&app);
+    if changed {
+        crate::menu::rebuild(&app);
+    }
     Ok(())
 }
 
