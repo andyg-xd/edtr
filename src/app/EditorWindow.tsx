@@ -15,6 +15,7 @@ import { pickFiles, pickFolder, pickSavePath, openInNewWindow, takePendingOpen, 
 import { basename } from '../files/fileTypes';
 import { recordRecent } from '../files/recents';
 import { useTheme } from '../settings/useTheme';
+import { useWritingModeSettings } from '../settings/useWritingModeSettings';
 import { useOpenDocuments } from './useOpenDocuments';
 import { docIsDirty, windowIsDirty, type OpenDoc, type ViewMode } from '../files/openDocuments';
 import { isEmptyWindow, type OpenPayload } from '../files/openPayload';
@@ -51,6 +52,7 @@ export function EditorWindow() {
   const [watcherUnavailable, setWatcherUnavailable] = useState(false);
   const watcherAvailableRef = useRef(true);
   const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme();
+  const { modes: writingModes, setMode: setWritingMode } = useWritingModeSettings();
   const viewRef = useRef<DocumentViewHandle>(null);
 
   // Per-doc reload-banner state + a per-doc remount nonce. The nonce forces the
@@ -509,6 +511,8 @@ export function EditorWindow() {
         }}
         themeMode={themeMode}
         onSetThemeMode={setThemeMode}
+        writingModes={writingModes}
+        onSetWritingMode={setWritingMode}
       />
       {degraded && (
         <div className="notice notice-info" role="status">

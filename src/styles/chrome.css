@@ -36,5 +36,13 @@
 .theme-control button.active { background: var(--seg-active-bg); color: var(--seg-active-fg); }
 .view-toggle button:disabled,
 .theme-control button:disabled { color: var(--fg-disabled); cursor: default; }
+
+.mode-controls { display: inline-flex; gap: var(--space-2); }
+.mode-control.is-on {
+  background: var(--seg-active-bg);
+  border-color: var(--accent-border);
+  color: var(--seg-active-fg);
+}
+
 .editor-body { display: flex; flex: 1; min-height: 0; }
 .doc-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; }
