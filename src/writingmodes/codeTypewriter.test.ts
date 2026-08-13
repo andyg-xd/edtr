@@ -61,4 +61,33 @@ describe('codeTypewriter', () => {
     expect(view.state.doc.toString()).toBe(before);
     view.destroy();
   });
+
+  it('recomputes end padding on every held caret, so a window resize self-corrects at the next keystroke', () => {
+    const view = mount('one');
+    Object.defineProperty(view.scrollDOM, 'clientHeight', { value: 500, configurable: true });
+    vi.spyOn(view, 'coordsAtPos').mockReturnValue({ top: 0, bottom: 10, left: 0, right: 0 });
+    const surface = codeTypewriter(view, () => {});
+    surface.setEndPadding(HOLD_RATIO);
+    expect(view.scrollDOM.style.getPropertyValue('--edtr-end-pad'))
+      .toBe(`${Math.round(500 * END_PAD_RATIO)}px`);
+
+    // Simulate the window growing without any toggle of the mode.
+    Object.defineProperty(view.scrollDOM, 'clientHeight', { value: 800, configurable: true });
+    surface.holdCaret(HOLD_RATIO);
+    expect(view.scrollDOM.style.getPropertyValue('--edtr-end-pad'))
+      .toBe(`${Math.round(800 * END_PAD_RATIO)}px`);
+    view.destroy();
+  });
+
+  it('leaves end padding untouched from holdCaret when the mode is off', () => {
+    const view = mount('one');
+    Object.defineProperty(view.scrollDOM, 'clientHeight', { value: 500, configurable: true });
+    vi.spyOn(view, 'coordsAtPos').mockReturnValue({ top: 0, bottom: 10, left: 0, right: 0 });
+    const surface = codeTypewriter(view, () => {});
+    // setEndPadding was never called — the mode is off.
+    surface.holdCaret(HOLD_RATIO);
+    expect(view.scrollDOM.style.getPropertyValue('--edtr-end-pad')).toBe('');
+    expect(view.scrollDOM.classList.contains('cm-edtr-typewriter')).toBe(false);
+    view.destroy();
+  });
 });

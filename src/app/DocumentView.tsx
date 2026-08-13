@@ -305,6 +305,16 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     [showLive, codeView],
   );
 
+  // Declared BEFORE the hold-caret effect below: on the same commit that
+  // switches the mode on, effects run in declaration order, so the padding
+  // must land first. Reversed, the first hold runs against the pre-padding
+  // scroll height, and on a short document near its end the browser clamps
+  // the scroll short of the hold ratio with nothing left to re-trigger it.
+  useEffect(() => {
+    if (!typewriter) return;
+    typewriter.setEndPadding(modes.typewriter ? HOLD_RATIO : null);
+  }, [typewriter, modes.typewriter]);
+
   // Hold the caret on every cursor move while the mode is on. `codeCursor` is
   // already updated by CodeView's onCursorChange, so this rides an existing
   // signal rather than adding a second one.
@@ -312,11 +322,6 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     if (!typewriter || !modes.typewriter) return;
     typewriter.holdCaret(HOLD_RATIO);
   }, [typewriter, modes.typewriter, codeCursor]);
-
-  useEffect(() => {
-    if (!typewriter) return;
-    typewriter.setEndPadding(modes.typewriter ? HOLD_RATIO : null);
-  }, [typewriter, modes.typewriter]);
 
   // Recompute matches — debounced, and safe to re-run.
   useEffect(() => {
