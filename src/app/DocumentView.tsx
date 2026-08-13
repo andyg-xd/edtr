@@ -38,6 +38,7 @@ import { ReplaceAllGuard } from './ReplaceAllGuard';
 import { codeTypewriter } from '../writingmodes/codeTypewriter';
 import { pmTypewriter } from '../writingmodes/pmTypewriter';
 import { pmFocus } from '../writingmodes/pmFocus';
+import { codeFocus } from '../writingmodes/codeFocus';
 import { HOLD_RATIO } from '../writingmodes/constants';
 import type { TypewriterSurface, CountSurface, FocusSurface } from '../writingmodes/types';
 import { codeCounts, pmCounts } from '../writingmodes/countSurfaces';
@@ -318,11 +319,12 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   const focus = useMemo<FocusSurface | null>(() => {
     // ONE driver for both Live views (Markdown and HTML), same construction as
     // `typewriter`/`surface` above — no HTML-specific branch. Code view gets
-    // its own driver in Task 10; there is none here yet, so this is null
-    // outside Live.
+    // its own driver (Task 10): a CodeMirror ViewPlugin over visibleRanges,
+    // genuinely different from the ProseMirror plugin the Live views share,
+    // so it is not forced through the same function.
     if (showLive) return liveView ? pmFocus(liveView) : null;
-    return null;
-  }, [showLive, liveView]);
+    return codeView ? codeFocus(codeView) : null;
+  }, [showLive, liveView, codeView]);
 
   const countSurface = useMemo<CountSurface | null>(() => {
     // Same construction as `surface` above, for the same reason: one driver

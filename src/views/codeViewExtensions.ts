@@ -15,6 +15,7 @@ import type { EditorFormat } from '../files/fileTypes';
 import { darkEditorTheme, darkHighlightStyle } from './codeTheme';
 import type { EffectiveTheme } from '../settings/theme';
 import { findHighlightField } from '../find/codeSurface';
+import { focusDimExtension } from '../writingmodes/codeFocus';
 
 function languageExtension(format: EditorFormat): Extension {
   // Disable the language packs' own format-on-type: markdown's addKeymap
@@ -75,6 +76,9 @@ export function buildCodeViewExtensions(
     // running editor without appendConfig, and configuring an editor at runtime
     // is the kind of thing that works until it doesn't.
     findHighlightField,
+    // Focus mode (6c-ii, Task 10): a ViewPlugin over view.visibleRanges, so
+    // only the viewport gets decorated regardless of document length.
+    focusDimExtension,
     // CodeMirror's searchKeymap is REPLACED by an explicit selection, not
     // dropped wholesale, so nothing disappears by accident (design §5.6).
     // Dropped: Mod-f (the native Edit menu owns it), Mod-g / Shift-Mod-g / F3

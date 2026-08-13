@@ -90,3 +90,15 @@
    only at equal specificity. */
 .edtr-dim, .edtr-dim * { color: var(--dim-fg) !important; }
 .edtr-dim edtr-mark, .edtr-dim edtr-mark * { color: var(--fg) !important; }
+
+/* Focus mode in Code view (6c-ii, Task 10). Same two-rule shape as the
+   Live-view pair above, and for the same reasons: `*` because syntax
+   highlighting colours each token individually and a rule on the line alone
+   would lose that fight, and a second more-specific rule because that `*`
+   immediately over-reaches into find's highlight, which must stay legible
+   through the dim. Code view's highlight is CodeMirror decoration classes
+   (`cm-edtr-find`/`cm-edtr-find-current`, see find/codeSurface.ts), not the
+   `edtr-mark` custom element the Live views use — so the restore selector
+   differs, but the shape does not. */
+.cm-edtr-dim, .cm-edtr-dim * { color: var(--dim-fg) !important; }
+.cm-edtr-dim .cm-edtr-find, .cm-edtr-dim .cm-edtr-find-current { color: var(--fg) !important; }
