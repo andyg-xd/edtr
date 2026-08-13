@@ -20,7 +20,7 @@ pub fn run() {
         .manage(window::LaunchOpen::default())
         .manage(recents::RecentsState::default())
         .manage(settings::SettingsState::default())
-        .menu(|handle| menu::build_menu(handle, &[]))
+        .menu(|handle| menu::build_menu(handle, &[], &settings::Settings::default()))
         .setup(|app| {
             let handle = app.handle();
             let loaded = recents::load(handle);
@@ -95,6 +95,22 @@ pub fn run() {
                         app_timer.exit(0);
                     }
                 });
+                return;
+            }
+            if let Some(mode) = menu::writing_mode_for_menu_id(id.as_str()) {
+                // App-wide state (spec §6.3): handled entirely here, with no
+                // hop through a focused window's frontend. `set_writing_mode`
+                // owns persist + broadcast + the checkmark rebuild, so this
+                // is the one write path for both the menu and the chrome
+                // toggle — there is no `menu://` event for these two ids, and
+                // no frontend listener to add or to forget.
+                let state = app.state::<settings::SettingsState>();
+                let current = settings::get_settings(state.clone()).unwrap_or_default();
+                let on = match mode {
+                    "typewriter" => !current.typewriter,
+                    _ => !current.focus,
+                };
+                let _ = settings::set_writing_mode(app.clone(), state, mode.to_string(), on);
                 return;
             }
             let Some(event_name) = menu::menu_event_name(id.as_str()) else { return };

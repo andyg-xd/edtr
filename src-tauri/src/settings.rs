@@ -206,7 +206,17 @@ pub fn set_writing_mode<R: Runtime>(
     }
     apply_if_changed(&app, &state, |current| {
         with_mode(current, &mode, on).ok_or_else(|| format!("invalid writing mode: {mode}"))
-    })
+    })?;
+    // Keep the View menu's checkmarks in step with whichever affordance
+    // flipped the mode — the native menu item or the chrome toggle both land
+    // on this command (spec §6.3), so this is the one place a rebuild needs
+    // to be triggered from. `apply_if_changed` has already returned by this
+    // point, which drops its settings-mutex guard before this line runs, so
+    // this call is never made from inside the locked section. `menu::rebuild`
+    // itself hops to the main thread (menu ops must run there), so calling it
+    // from here — on whatever thread invoked this command — is safe.
+    crate::menu::rebuild(&app);
+    Ok(())
 }
 
 #[cfg(test)]

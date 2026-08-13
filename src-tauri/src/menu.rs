@@ -1,8 +1,9 @@
 use tauri::{
-    menu::{Menu, MenuBuilder, MenuItem, Submenu, SubmenuBuilder},
+    menu::{CheckMenuItem, Menu, MenuBuilder, MenuItem, Submenu, SubmenuBuilder},
     AppHandle, Manager, Runtime,
 };
 use crate::recents::{RecentEntry, RecentKind, RecentsState};
+use crate::settings::Settings;
 
 #[derive(Debug)]
 pub enum RecentClick {
@@ -69,6 +70,20 @@ fn build_recent_submenu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry])
     builder.separator().item(&clear).build()
 }
 
+/// The two View-menu ids, mapped to the mode names `settings::with_mode`
+/// accepts. Returns None for every other id so the existing `menu://` path is
+/// untouched — a greedy match here would break Find and Save. These two ids
+/// never reach `menu_event_name`/the frontend: `lib.rs`'s handler intercepts
+/// them first and Rust handles flip + persist + broadcast + checkmark end to
+/// end (spec §6.3 — app-wide state, not a per-document action).
+pub fn writing_mode_for_menu_id(id: &str) -> Option<&'static str> {
+    match id {
+        "toggle-typewriter" => Some("typewriter"),
+        "toggle-focus" => Some("focus"),
+        _ => None,
+    }
+}
+
 /// Map a custom menu item's id to the `menu://` event the frontend listens for.
 ///
 /// Extracted from `lib.rs`'s `on_menu_event` closure so the mapping is unit
@@ -101,7 +116,11 @@ pub fn menu_event_name(id: &str) -> Option<&'static str> {
 /// and Replace items that need `on_menu_event` delivery, for the same reason:
 /// macOS offers a key equivalent to the menu before the webview, so ⌘F must be owned
 /// by a native menu item rather than a webview keymap binding.
-pub fn build_menu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry]) -> tauri::Result<Menu<R>> {
+pub fn build_menu<R: Runtime>(
+    app: &AppHandle<R>,
+    recents: &[RecentEntry],
+    modes: &Settings,
+) -> tauri::Result<Menu<R>> {
     let quit = MenuItem::with_id(app, "quit", "Quit Edtr", true, Some("Cmd+Q"))?;
     let open = MenuItem::with_id(app, "open", "Open…", true, Some("Cmd+O"))?;
     let open_folder = MenuItem::with_id(app, "open-folder", "Open Folder…", true, Some("Cmd+Shift+O"))?;
@@ -156,23 +175,44 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry]) -> ta
         .item(&replace)
         .build()?;
 
+    // Checkmarked, app-wide writing modes (spec §6.3). No accelerators — an
+    // earlier phase verified every real shortcut against the app; these two
+    // don't have one. Handled entirely in Rust (see `writing_mode_for_menu_id`
+    // and `lib.rs`'s menu-event handler) — never routed through `menu://`.
+    let typewriter = CheckMenuItem::with_id(
+        app, "toggle-typewriter", "Typewriter Mode", true, modes.typewriter, None::<&str>,
+    )?;
+    let focus = CheckMenuItem::with_id(
+        app, "toggle-focus", "Focus Mode", true, modes.focus, None::<&str>,
+    )?;
+    let view_menu = SubmenuBuilder::new(app, "View").item(&typewriter).item(&focus).build()?;
+
     let window_menu = SubmenuBuilder::new(app, "Window")
         .minimize()
         .maximize()
         .build()?;
 
     MenuBuilder::new(app)
-        .items(&[&app_menu, &file_menu, &edit_menu, &window_menu])
+        .items(&[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu])
         .build()
 }
 
-/// Rebuild the whole menu bar from the current recents and swap it in, on the
-/// macOS main thread (menu ops must not run off-main-thread). Best-effort.
+/// Rebuild the whole menu bar from the current recents and settings and swap
+/// it in, on the macOS main thread (menu ops must not run off-main-thread).
+/// Best-effort.
+///
+/// Reading settings here (rather than threading them in from the caller) is
+/// what lets a toggle from *either* affordance — the View menu or the chrome
+/// button — reach the checkmark: `settings::set_writing_mode` calls this
+/// after its own write lands, and this always re-reads whatever is currently
+/// stored, so the checkmark can never show a stale value.
 pub fn rebuild<R: Runtime>(app: &AppHandle<R>) {
     let app2 = app.clone();
     let _ = app.run_on_main_thread(move || {
         let recents = crate::recents::get(&app2.state::<RecentsState>());
-        if let Ok(menu) = build_menu(&app2, &recents) {
+        let modes = crate::settings::get_settings(app2.state::<crate::settings::SettingsState>())
+            .unwrap_or_default();
+        if let Ok(menu) = build_menu(&app2, &recents, &modes) {
             let _ = app2.set_menu(menu);
         }
     });
@@ -206,6 +246,36 @@ mod recent_id_tests {
     fn rejects_non_recent_ids() {
         assert!(parse_recent_id("open").is_none());
         assert!(parse_recent_id("recent:bogus:/p").is_none());
+    }
+}
+
+#[cfg(test)]
+mod view_menu_tests {
+    use super::*;
+
+    #[test]
+    fn maps_the_two_view_menu_ids_to_mode_names() {
+        assert_eq!(writing_mode_for_menu_id("toggle-typewriter"), Some("typewriter"));
+        assert_eq!(writing_mode_for_menu_id("toggle-focus"), Some("focus"));
+    }
+
+    #[test]
+    fn leaves_every_other_menu_id_alone() {
+        // These must keep flowing to the frontend as menu:// events. A greedy
+        // match here would silently break Find, Save and Quit.
+        for id in ["find", "find-next", "replace", "save", "save-as", "open", "quit-poll"] {
+            assert_eq!(writing_mode_for_menu_id(id), None, "{id} must not be treated as a view mode");
+        }
+    }
+
+    #[test]
+    fn mode_names_are_ones_settings_accepts() {
+        // Guards the seam between the two modules: a rename on either side
+        // would otherwise make the menu item silently no-op.
+        for id in ["toggle-typewriter", "toggle-focus"] {
+            let name = writing_mode_for_menu_id(id).unwrap();
+            assert!(crate::settings::is_valid_writing_mode(name), "{name} rejected by settings");
+        }
     }
 }
 
