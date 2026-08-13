@@ -129,7 +129,8 @@ pub fn run() {
             watcher::unwatch_path,
             watcher::watcher_available,
             settings::get_settings,
-            settings::set_theme
+            settings::set_theme,
+            settings::set_writing_mode
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

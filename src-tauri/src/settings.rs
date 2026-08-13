@@ -7,11 +7,19 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     pub theme: String,
+    /// Typewriter mode (6c-ii, D5). `#[serde(default)]` so a settings file
+    /// written before this phase — which has only `theme` — still parses.
+    /// Without it, read_settings returns None and the stored theme is lost.
+    #[serde(default)]
+    pub typewriter: bool,
+    /// Focus mode (6c-ii, D5). Same defaulting rationale as above.
+    #[serde(default)]
+    pub focus: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { theme: "system".to_string() }
+        Settings { theme: "system".to_string(), typewriter: false, focus: false }
     }
 }
 
@@ -19,6 +27,31 @@ const VALID_THEMES: [&str; 3] = ["system", "light", "dark"];
 
 pub fn is_valid_theme(mode: &str) -> bool {
     VALID_THEMES.contains(&mode)
+}
+
+const VALID_MODES: [&str; 2] = ["typewriter", "focus"];
+
+pub fn is_valid_writing_mode(mode: &str) -> bool {
+    VALID_MODES.contains(&mode)
+}
+
+/// A copy of `current` with a new theme and **both modes preserved**.
+///
+/// Exists because building `Settings { theme }` fresh — which is what this
+/// file did before 6c-ii — silently cleared every other field the struct
+/// gained. Pure, so the preservation is provable without a Tauri app handle.
+pub fn with_theme(current: &Settings, theme: String) -> Settings {
+    Settings { theme, ..current.clone() }
+}
+
+/// A copy of `current` with one writing mode set and everything else
+/// preserved. None when the mode name is unknown.
+pub fn with_mode(current: &Settings, mode: &str, on: bool) -> Option<Settings> {
+    match mode {
+        "typewriter" => Some(Settings { typewriter: on, ..current.clone() }),
+        "focus" => Some(Settings { focus: on, ..current.clone() }),
+        _ => None,
+    }
 }
 
 /// Read settings from an exact file path. Missing / corrupt / invalid-theme → None
@@ -77,18 +110,53 @@ pub fn set_theme<R: Runtime>(
     if !is_valid_theme(&mode) {
         return Err(format!("invalid theme: {mode}"));
     }
-    let settings = Settings { theme: mode };
-    let changed = {
+    let settings = {
         let mut g = state.0.lock().map_err(|_| "settings lock poisoned")?;
-        let changed = g.as_ref() != Some(&settings);
-        if changed {
-            save(&app, &settings)?;
-            *g = Some(settings.clone());
+        let current = g.clone().unwrap_or_default();
+        let next = with_theme(&current, mode);
+        if g.as_ref() == Some(&next) {
+            None
+        } else {
+            save(&app, &next)?;
+            *g = Some(next.clone());
+            Some(next)
         }
-        changed
     };
-    if changed {
-        let _ = app.emit("settings://changed", settings);
+    if let Some(next) = settings {
+        let _ = app.emit("settings://changed", next);
+    }
+    Ok(())
+}
+
+/// Persist one writing mode + broadcast settings://changed to all windows,
+/// only when the value actually changed (a no-op write must not re-broadcast,
+/// or a window adopting a cross-window change echoes forever).
+///
+/// The whole write path for both modes lives here rather than in the frontend
+/// (spec §6.3): the View menu and the chrome toggle both land on this command,
+/// so the native checkmark cannot drift from the stored value, and a toggle
+/// works even when no window holds focus.
+#[tauri::command]
+pub fn set_writing_mode<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<SettingsState>,
+    mode: String,
+    on: bool,
+) -> Result<(), String> {
+    let settings = {
+        let mut g = state.0.lock().map_err(|_| "settings lock poisoned")?;
+        let current = g.clone().unwrap_or_default();
+        let next = with_mode(&current, &mode, on).ok_or(format!("invalid writing mode: {mode}"))?;
+        if g.as_ref() == Some(&next) {
+            None
+        } else {
+            save(&app, &next)?;
+            *g = Some(next.clone());
+            Some(next)
+        }
+    };
+    if let Some(next) = settings {
+        let _ = app.emit("settings://changed", next);
     }
     Ok(())
 }
@@ -116,7 +184,10 @@ mod store_tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
         std::fs::write(&path, r#"{"theme":"dark"}"#).unwrap();
-        assert_eq!(read_settings(&path), Some(Settings { theme: "dark".into() }));
+        assert_eq!(
+            read_settings(&path),
+            Some(Settings { theme: "dark".into(), typewriter: false, focus: false })
+        );
     }
 
     #[test]
@@ -153,8 +224,59 @@ mod store_tests {
     fn write_then_read_roundtrips() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
-        let s = Settings { theme: "light".into() };
+        let s = Settings { theme: "light".into(), typewriter: false, focus: false };
         write_settings(&path, &s).unwrap();
         assert_eq!(read_settings(&path), Some(s));
+    }
+
+    #[test]
+    fn modes_default_to_off_when_absent_from_the_file() {
+        // The owner's settings.json contains only `theme`. Without serde
+        // defaults this returns None and the stored theme is silently lost.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"theme":"dark"}"#).unwrap();
+        let s = read_settings(&path).expect("a theme-only file must still load");
+        assert_eq!(s.theme, "dark");
+        assert!(!s.typewriter);
+        assert!(!s.focus);
+    }
+
+    #[test]
+    fn modes_round_trip_through_a_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let s = Settings { theme: "light".into(), typewriter: true, focus: true };
+        write_settings(&path, &s).unwrap();
+        assert_eq!(read_settings(&path), Some(s));
+    }
+
+    #[test]
+    fn merging_a_theme_preserves_the_modes() {
+        // The trap: set_theme used to build a fresh Settings, which would
+        // silently switch both modes off whenever the theme changed.
+        let current = Settings { theme: "dark".into(), typewriter: true, focus: false };
+        let merged = with_theme(&current, "light".into());
+        assert_eq!(merged.theme, "light");
+        assert!(merged.typewriter, "changing the theme must not clear typewriter");
+        assert!(!merged.focus);
+    }
+
+    #[test]
+    fn merging_a_mode_preserves_the_theme_and_the_other_mode() {
+        let current = Settings { theme: "dark".into(), typewriter: false, focus: false };
+        let merged = with_mode(&current, "focus", true).unwrap();
+        assert_eq!(merged.theme, "dark", "toggling a mode must not touch the theme");
+        assert!(merged.focus);
+        assert!(!merged.typewriter, "toggling focus must not touch typewriter");
+    }
+
+    #[test]
+    fn an_unknown_mode_name_is_rejected() {
+        let current = Settings::default();
+        assert!(with_mode(&current, "zen", true).is_none());
+        assert!(is_valid_writing_mode("typewriter"));
+        assert!(is_valid_writing_mode("focus"));
+        assert!(!is_valid_writing_mode("zen"));
     }
 }
