@@ -38,7 +38,9 @@ import { ReplaceAllGuard } from './ReplaceAllGuard';
 import { codeTypewriter } from '../writingmodes/codeTypewriter';
 import { pmTypewriter } from '../writingmodes/pmTypewriter';
 import { HOLD_RATIO } from '../writingmodes/constants';
-import type { TypewriterSurface } from '../writingmodes/types';
+import type { TypewriterSurface, CountSurface } from '../writingmodes/types';
+import { codeCounts, pmCounts } from '../writingmodes/countSurfaces';
+import { useWordCount } from '../writingmodes/useWordCount';
 import type { WritingModes } from '../settings/writingModes';
 
 /**
@@ -108,7 +110,11 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   const liveDirtyRef = useRef<Set<string>>(new Set());
   const [liveHasEdits, setLiveHasEdits] = useState(false);
   const [liveView, setLiveView] = useState<EditorView | null>(null);
-  const [, bumpRibbon] = useReducer((x: number) => x + 1, 0);
+  // The value itself matters here (not just the setter): it is the only
+  // existing signal that fires on a Live selection-only change (onStateChange
+  // fires on every transaction, this included), which the word count below
+  // rides instead of adding a second subscription to the editor.
+  const [ribbonTick, bumpRibbon] = useReducer((x: number) => x + 1, 0);
   const [linkRequest, bumpLinkRequest] = useReducer((x: number) => x + 1, 0);
   // Code view's caret position, for the status bar. Reset on every Code<->Live
   // transition so a stale position from before the switch is never shown —
@@ -307,6 +313,24 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     if (showLive) return liveView ? pmTypewriter(liveView) : null;
     return codeView ? codeTypewriter(codeView) : null;
   }, [showLive, liveView, codeView]);
+
+  const countSurface = useMemo<CountSurface | null>(() => {
+    // Same construction as `surface` above, for the same reason: one driver
+    // per projection, no HTML-specific branch.
+    if (showLive) return liveView ? pmCounts(liveView) : null;
+    return codeView ? codeCounts(codeView) : null;
+  }, [showLive, liveView, codeView]);
+  // `useWordCount`'s `version` just needs to change whenever the document or
+  // selection does, so the debounce inside it restarts. `findEpoch` covers
+  // every real edit in either view. Selection-ONLY movement needs one signal
+  // per view, and both already exist: `codeCursor` (CodeView's onCursorChange
+  // fires on `docChanged || selectionSet`) for Code, `ribbonTick` (bumped by
+  // `handleLiveStateChange`, which fires on every transaction incl.
+  // selection-only) for Live. Neither is a new subscription — this just rides
+  // state DocumentView already maintains for find/typewriter/the ribbon.
+  const [countVersion, bumpCountVersion] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => { bumpCountVersion(); }, [findEpoch, codeCursor, ribbonTick]);
+  const counts = useWordCount(countSurface, countVersion);
 
   // Live views have no `codeCursor`-shaped signal of their own — the caret
   // moving is just another transaction. `onStateChange` already fires on
@@ -683,7 +707,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
           editable docPath={session.path ?? null}
           onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={handleLiveStateChange} onLinkShortcut={bumpLinkRequest} onError={onError}
         />
-        <StatusBar format={session.format} line={pos?.line} column={pos?.column} />
+        <StatusBar format={session.format} line={pos?.line} column={pos?.column} words={counts?.words} characters={counts?.characters} />
       </>
     );
   }
@@ -706,7 +730,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
           doc={live.doc} editable
           onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={handleLiveStateChange} onLinkShortcut={bumpLinkRequest} docPath={session.path ?? null} onError={onError}
         />
-        <StatusBar format={session.format} line={pos?.line} column={pos?.column} />
+        <StatusBar format={session.format} line={pos?.line} column={pos?.column} words={counts?.words} characters={counts?.characters} />
       </>
     );
   }
@@ -719,7 +743,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
         onChange={handleChange} onViewReady={setCodeView}
         onCursorChange={(line, column) => setCodeCursor({ line, column })}
       />
-      <StatusBar format={session.format} line={codeCursor?.line} column={codeCursor?.column} />
+      <StatusBar format={session.format} line={codeCursor?.line} column={codeCursor?.column} words={counts?.words} characters={counts?.characters} />
     </>
   );
 });

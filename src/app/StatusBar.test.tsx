@@ -46,10 +46,20 @@ describe('StatusBar', () => {
     expect(onlyColumn.querySelector('.status-bar-position')).toBeNull();
   });
 
-  it('always renders the counts slot, empty', async () => {
+  it('always renders the counts slot, empty when no counts are given', async () => {
     const c = await render(<StatusBar format="markdown" line={1} column={1} />);
     const counts = c.querySelector('.status-bar-counts');
     expect(counts).toBeTruthy();
     expect(counts?.textContent).toBe('');
+  });
+
+  it('shows thousands-separated words and characters when both are given', async () => {
+    const c = await render(<StatusBar format="markdown" words={1204} characters={6812} />);
+    expect(c.querySelector('.status-bar-counts')?.textContent).toBe('1,204 words · 6,812 characters');
+  });
+
+  it('shows no count when only one figure is given', async () => {
+    const c = await render(<StatusBar format="markdown" words={5} />);
+    expect(c.querySelector('.status-bar-counts')!.textContent).toBe('');
   });
 });

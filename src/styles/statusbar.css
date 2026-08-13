@@ -15,8 +15,9 @@
   user-select: none;
 }
 
-/* Right-aligned slot, intentionally empty here — 6c-ii fills it with word
-   count. margin-left: auto pushes it to the far edge without a spacer node. */
+/* Right-aligned slot: "1,204 words · 6,812 characters" (or empty, before the
+   count settles — see useWordCount). margin-left: auto pushes it to the far
+   edge without a spacer node. No color of its own — inherits .status-bar's. */
 .status-bar-counts {
   margin-left: auto;
 }
