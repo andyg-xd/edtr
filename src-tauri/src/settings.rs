@@ -29,12 +29,6 @@ pub fn is_valid_theme(mode: &str) -> bool {
     VALID_THEMES.contains(&mode)
 }
 
-const VALID_MODES: [&str; 2] = ["typewriter", "focus"];
-
-pub fn is_valid_writing_mode(mode: &str) -> bool {
-    VALID_MODES.contains(&mode)
-}
-
 /// A copy of `current` with a new theme and **both modes preserved**.
 ///
 /// Exists because building `Settings { theme }` fresh — which is what this
@@ -45,13 +39,29 @@ pub fn with_theme(current: &Settings, theme: String) -> Settings {
 }
 
 /// A copy of `current` with one writing mode set and everything else
-/// preserved. None when the mode name is unknown.
+/// preserved. `None` when the mode name is unknown.
+///
+/// This match is the **single source of truth** for which mode names exist —
+/// `is_valid_writing_mode` below is defined in terms of it rather than a
+/// separately-maintained name list, so there is no second list that could
+/// drift out of sync with this one (a real defect in an earlier draft of
+/// this file: `is_valid_writing_mode` and this match were once two
+/// independently hardcoded lists of "typewriter"/"focus").
 pub fn with_mode(current: &Settings, mode: &str, on: bool) -> Option<Settings> {
     match mode {
         "typewriter" => Some(Settings { typewriter: on, ..current.clone() }),
         "focus" => Some(Settings { focus: on, ..current.clone() }),
         _ => None,
     }
+}
+
+/// Whether `mode` is a recognized writing-mode name. Delegates to
+/// `with_mode` — using a throwaway `Settings::default()` as the base, since
+/// only whether the match succeeds matters here — so this can never
+/// disagree with what `with_mode` actually handles: there is exactly one
+/// list of valid names (the match arms above), not two.
+pub fn is_valid_writing_mode(mode: &str) -> bool {
+    with_mode(&Settings::default(), mode, false).is_some()
 }
 
 /// Read settings from an exact file path. Missing / corrupt / invalid-theme → None
@@ -112,17 +122,25 @@ pub fn get_settings(state: State<SettingsState>) -> Option<Settings> {
 /// and "save next", which would otherwise silently drop the other window's
 /// change — exactly the drift this task exists to close for `Settings`.
 ///
+/// `compute` returns a `Result` rather than a bare `Settings` so a caller can
+/// reject its input gracefully from inside the same lock acquisition, via the
+/// `?` below, instead of panicking while the guard is held: a panic here
+/// would poison the mutex, and every later `get_settings`/`set_theme`/
+/// `set_writing_mode` call takes that same lock, so one poisoned guard wedges
+/// settings for the rest of the process. `?` unwinds normally (it's an early
+/// return, not a panic), which drops `g` and unlocks cleanly.
+///
 /// Shared by every setter, so the guard-then-save-then-emit sequence is
 /// defined once instead of hand-synced per command.
 fn apply_if_changed<R: Runtime>(
     app: &AppHandle<R>,
     state: &State<SettingsState>,
-    compute: impl FnOnce(&Settings) -> Settings,
+    compute: impl FnOnce(&Settings) -> Result<Settings, String>,
 ) -> Result<(), String> {
     let settings = {
         let mut g = state.0.lock().map_err(|_| "settings lock poisoned")?;
         let current = g.clone().unwrap_or_default();
-        let next = compute(&current);
+        let next = compute(&current)?;
         if g.as_ref() == Some(&next) {
             None
         } else {
@@ -149,7 +167,7 @@ pub fn set_theme<R: Runtime>(
     if !is_valid_theme(&mode) {
         return Err(format!("invalid theme: {mode}"));
     }
-    apply_if_changed(&app, &state, |current| with_theme(current, mode))
+    apply_if_changed(&app, &state, |current| Ok(with_theme(current, mode)))
 }
 
 /// Persist one writing mode + broadcast settings://changed to all windows,
@@ -161,10 +179,15 @@ pub fn set_theme<R: Runtime>(
 /// so the native checkmark cannot drift from the stored value, and a toggle
 /// works even when no window holds focus.
 ///
-/// Validated up front, mirroring `set_theme`: `is_valid_writing_mode` (backed
-/// by `VALID_MODES`) is the one place that knows which mode names exist, so
-/// an unknown name is rejected before the lock is even touched, and the
-/// `with_mode` call below is guaranteed `Some`.
+/// Validated up front, mirroring `set_theme`: an unknown name is rejected
+/// before the lock is even touched. `with_mode` is also given a chance to
+/// reject the mode a second time, inside the closure passed to
+/// `apply_if_changed` — belt-and-suspenders, not redundant busywork: if a
+/// future mode name were ever added to one of `is_valid_writing_mode` /
+/// `with_mode` and not the other (which the doc comment on `with_mode`
+/// explains shouldn't be possible, since one is defined in terms of the
+/// other), this still degrades to a graceful `Err` via `.ok_or_else` rather
+/// than an `.expect()` panic while the mutex guard is held.
 #[tauri::command]
 pub fn set_writing_mode<R: Runtime>(
     app: AppHandle<R>,
@@ -176,7 +199,7 @@ pub fn set_writing_mode<R: Runtime>(
         return Err(format!("invalid writing mode: {mode}"));
     }
     apply_if_changed(&app, &state, |current| {
-        with_mode(current, &mode, on).expect("mode validated by is_valid_writing_mode above")
+        with_mode(current, &mode, on).ok_or_else(|| format!("invalid writing mode: {mode}"))
     })
 }
 
@@ -297,5 +320,25 @@ mod store_tests {
         assert!(is_valid_writing_mode("typewriter"));
         assert!(is_valid_writing_mode("focus"));
         assert!(!is_valid_writing_mode("zen"));
+    }
+
+    #[test]
+    fn is_valid_writing_mode_never_disagrees_with_with_mode() {
+        // Pins the invariant this round's fix establishes: is_valid_writing_mode
+        // and with_mode must never disagree on a mode name. Today
+        // is_valid_writing_mode is *defined* in terms of with_mode (see its doc
+        // comment), so this can't currently fail — it's a regression guard
+        // against a future edit reintroducing a second, independently
+        // maintained list of valid mode names (which is exactly what this
+        // round's review finding flagged: `VALID_MODES` used to duplicate
+        // `with_mode`'s match arms).
+        let current = Settings::default();
+        for mode in ["typewriter", "focus", "zen", "", "Typewriter", "focus "] {
+            assert_eq!(
+                is_valid_writing_mode(mode),
+                with_mode(&current, mode, true).is_some(),
+                "is_valid_writing_mode and with_mode disagree on {mode:?}"
+            );
+        }
     }
 }
