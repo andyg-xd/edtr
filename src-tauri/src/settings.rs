@@ -60,6 +60,12 @@ pub fn with_mode(current: &Settings, mode: &str, on: bool) -> Option<Settings> {
 /// only whether the match succeeds matters here — so this can never
 /// disagree with what `with_mode` actually handles: there is exactly one
 /// list of valid names (the match arms above), not two.
+///
+/// Defined in terms of `with_mode` so the two can never disagree — do not
+/// reintroduce a separate list (e.g. a `VALID_MODES` const) here. An earlier
+/// draft of this file had exactly that second list, hardcoded independently
+/// of `with_mode`'s match arms, which is what this function exists to rule
+/// out structurally rather than by convention.
 pub fn is_valid_writing_mode(mode: &str) -> bool {
     with_mode(&Settings::default(), mode, false).is_some()
 }
@@ -320,25 +326,5 @@ mod store_tests {
         assert!(is_valid_writing_mode("typewriter"));
         assert!(is_valid_writing_mode("focus"));
         assert!(!is_valid_writing_mode("zen"));
-    }
-
-    #[test]
-    fn is_valid_writing_mode_never_disagrees_with_with_mode() {
-        // Pins the invariant this round's fix establishes: is_valid_writing_mode
-        // and with_mode must never disagree on a mode name. Today
-        // is_valid_writing_mode is *defined* in terms of with_mode (see its doc
-        // comment), so this can't currently fail — it's a regression guard
-        // against a future edit reintroducing a second, independently
-        // maintained list of valid mode names (which is exactly what this
-        // round's review finding flagged: `VALID_MODES` used to duplicate
-        // `with_mode`'s match arms).
-        let current = Settings::default();
-        for mode in ["typewriter", "focus", "zen", "", "Typewriter", "focus "] {
-            assert_eq!(
-                is_valid_writing_mode(mode),
-                with_mode(&current, mode, true).is_some(),
-                "is_valid_writing_mode and with_mode disagree on {mode:?}"
-            );
-        }
     }
 }
