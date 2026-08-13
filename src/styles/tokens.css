@@ -155,7 +155,7 @@
 
    Custom properties cascade like any other property, and a media query adds
    no specificity of its own. `--dim-fg` is defined on TWO selectors above —
-   bare `:root` (0,0,1) for light, and `:root[data-theme='dark']` (0,2,0) for
+   bare `:root` (0,1,0) for light, and `:root[data-theme='dark']` (0,2,0) for
    dark — so an override written as bare `:root` here is only (0,1,0) and
    loses outright to the dark block's (0,2,0): the dim would silently fail to
    back off in dark theme with Increase Contrast on, which is the theme this

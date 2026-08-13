@@ -106,9 +106,17 @@ pub fn run() {
                 // no frontend listener to add or to forget.
                 let state = app.state::<settings::SettingsState>();
                 let current = settings::get_settings(state.clone()).unwrap_or_default();
+                // Exhaustive on purpose: `mode` only ever comes from
+                // `writing_mode_for_menu_id`, which today can only produce
+                // "typewriter"/"focus", but a catch-all arm here would
+                // silently toggle focus for any third name added there later.
+                // Every other link in this chain is single-sourced
+                // (`settings::with_mode`/`is_valid_writing_mode`); this makes
+                // the one remaining loose end fail closed instead.
                 let on = match mode {
                     "typewriter" => !current.typewriter,
-                    _ => !current.focus,
+                    "focus" => !current.focus,
+                    _ => return,
                 };
                 let _ = settings::set_writing_mode(app.clone(), state, mode.to_string(), on);
                 return;

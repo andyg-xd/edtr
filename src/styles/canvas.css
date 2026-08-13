@@ -9,12 +9,18 @@
 .live-view { flex: 1; overflow: auto; padding: var(--space-6) var(--space-7); }
 .live-view .ProseMirror { outline: none; max-width: 60rem; }
 
-/* Typewriter mode in a Live view (D8). Same scroll-padding-not-text rule as
-   Code view below; applied to the scroller itself, since here the scroller
-   IS the padded element (`.live-view`'s own shorthand above), so this
-   longhand must come after it or the shorthand will reset it. */
-.live-view.edtr-typewriter,
-.html-live-view.edtr-typewriter { padding-bottom: var(--edtr-end-pad, 0); }
+/* Typewriter mode in Markdown Live (D8). Same scroll-padding-not-text rule as
+   Code view below, and now the SAME shape too: the class stays on the
+   scroller (`.live-view`, where pmTypewriter.ts's `scrollerFor` puts it), but
+   the padding lands on the in-flow content child (`.ProseMirror`), not the
+   scroller itself. `padding-bottom` on an `overflow: auto` container is the
+   long-standing case where engines disagree about whether end-side padding
+   joins the scrollable region — if WKWebView drops it there, the last line
+   can never reach the hold position, and Code view working fine points
+   nowhere near the cause. HTML Live's equivalent lives in HtmlLiveView.tsx's
+   shadow stylesheet instead: this selector cannot reach across the shadow
+   boundary the way it reaches into the light DOM here. */
+.live-view.edtr-typewriter .ProseMirror { padding-bottom: var(--edtr-end-pad, 0); }
 
 /* Like .code-view/.live-view: scroll the rendered page internally so the
    window chrome + ribbon stay pinned. No padding — the HTML page controls
@@ -76,29 +82,51 @@
    variable is set from the live scroller height by codeTypewriter. */
 .cm-edtr-typewriter .cm-content { padding-bottom: var(--edtr-end-pad, 0); }
 
-/* Focus mode (6c-ii). Two rules, and the second is not optional.
+/* Focus mode (6c-ii). Three rules, and the second and third are not optional.
 
    1. `color` is inherited only by descendants that do not set their own, so a
       dimmed paragraph containing a link would keep the link bright. Hence `*`.
    2. That immediately over-reaches into find's highlight, which spec §5.2
       requires to stay legible through the dimming. This rule is more specific
       AND important, so it wins the fight rule 1 would otherwise pick.
+   3. The CURRENT match needs its OWN restore token, not the plain match's:
+      find bar's `--find-current-fg` is the foreground calibrated for the
+      SOLID `--find-current-bg` fill (design's near-black-on-orange pair in
+      dark theme); the generic `--fg` rule 2 uses is calibrated for Edtr's own
+      canvas instead, and beats findbar.css's `color: var(--find-current-fg)`
+      on specificity, silently turning the pair into light-on-orange. The
+      current mark always carries `.edtr-find` alongside `.edtr-find-current`
+      (pmSurface.ts), so rule 2's selector excludes `.edtr-find-current`
+      explicitly (`:not(...)`) rather than leaving the two rules to tie at
+      equal specificity and depend on which is written last.
+
+   The `*` on each restore rule matters too: `edtr-mark` can nest another
+   element inside it (an inline mark from the document itself), and without
+   the descendant form that inner element would still be caught by rule 1's
+   own `*` and stay dimmed.
 
    Hardening, not proof: a rendered file can still out-specify us with its own
    `!important`, and no build fails when it does. Recorded as debt, and it is
    why injecting our sheet last is NOT the defence — source order breaks ties
    only at equal specificity. */
 .edtr-dim, .edtr-dim * { color: var(--dim-fg) !important; }
-.edtr-dim edtr-mark, .edtr-dim edtr-mark * { color: var(--fg) !important; }
+.edtr-dim edtr-mark.edtr-find:not(.edtr-find-current),
+.edtr-dim edtr-mark.edtr-find:not(.edtr-find-current) * { color: var(--fg) !important; }
+.edtr-dim edtr-mark.edtr-find-current,
+.edtr-dim edtr-mark.edtr-find-current * { color: var(--find-current-fg) !important; }
 
-/* Focus mode in Code view (6c-ii, Task 10). Same two-rule shape as the
-   Live-view pair above, and for the same reasons: `*` because syntax
-   highlighting colours each token individually and a rule on the line alone
-   would lose that fight, and a second more-specific rule because that `*`
-   immediately over-reaches into find's highlight, which must stay legible
-   through the dim. Code view's highlight is CodeMirror decoration classes
-   (`cm-edtr-find`/`cm-edtr-find-current`, see find/codeSurface.ts), not the
-   `edtr-mark` custom element the Live views use — so the restore selector
-   differs, but the shape does not. */
+/* Focus mode in Code view (6c-ii, Task 10). Same three-rule shape as the
+   Live-view set above, and for the same reasons: `*` because syntax
+   highlighting colours each token individually (CodeMirror nests a
+   syntax-highlight span INSIDE a decoration mark, so without the descendant
+   form the inner token span stays caught by rule 1 and renders dimmed inside
+   a "restored" outer span) and a plain-vs-current split because the current
+   match needs `--find-current-fg`, not the generic foreground, for the same
+   reason as the Live-view rule above. Code view's highlight is CodeMirror
+   decoration classes (`cm-edtr-find`/`cm-edtr-find-current`, see
+   find/codeSurface.ts) applied as two separate, mutually exclusive marks —
+   never both on the same span, unlike the Live views' combined classes — so
+   there is no ordering tie to resolve here. */
 .cm-edtr-dim, .cm-edtr-dim * { color: var(--dim-fg) !important; }
-.cm-edtr-dim .cm-edtr-find, .cm-edtr-dim .cm-edtr-find-current { color: var(--fg) !important; }
+.cm-edtr-dim .cm-edtr-find, .cm-edtr-dim .cm-edtr-find * { color: var(--fg) !important; }
+.cm-edtr-dim .cm-edtr-find-current, .cm-edtr-dim .cm-edtr-find-current * { color: var(--find-current-fg) !important; }

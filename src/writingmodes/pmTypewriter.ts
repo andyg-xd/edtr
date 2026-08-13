@@ -71,8 +71,14 @@ export function pmTypewriter(
       // scrolling in that case.
       if (padActive) applyPadding(scroller);
       const head = view.state.selection.head;
-      // Defence in depth, matching what find's surfaces do: an out-of-range
-      // position throws out of coordsAtPos, and this runs from an effect.
+      // Unlike find's equivalent guard (pmSurface.ts), which is genuinely
+      // load-bearing because a stale match position CAN outlive the document
+      // version it was computed against, this one is not reachable in
+      // practice: ProseMirror's own invariants keep `selection.head` inside
+      // `[0, doc.content.size]` at all times. Kept as a cheap defensive check
+      // in front of `coordsAtPos` (which throws on an out-of-range position)
+      // rather than as a claim that it protects against something that can
+      // actually happen here.
       if (head < 0 || head > view.state.doc.content.size) return;
       const coords = view.coordsAtPos(head);
       // Null when the position is not currently rendered. Declining beats
@@ -80,10 +86,10 @@ export function pmTypewriter(
       if (!coords) return;
       scroll({ scroller, targetCentreY: (coords.top + coords.bottom) / 2, ratio });
     },
-    setEndPadding(ratio) {
+    setEndPadding(on) {
       const scroller = scrollerFor(view);
       if (!scroller) return;
-      if (ratio === null) {
+      if (!on) {
         padActive = false;
         scroller.classList.remove(PAD_CLASS);
         scroller.style.removeProperty(PAD_VAR);

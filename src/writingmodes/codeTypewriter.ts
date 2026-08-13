@@ -57,9 +57,9 @@ export function codeTypewriter(
         ratio,
       });
     },
-    setEndPadding(ratio) {
+    setEndPadding(on) {
       const el = view.scrollDOM;
-      if (ratio === null) {
+      if (!on) {
         padActive = false;
         el.classList.remove(PAD_CLASS);
         el.style.removeProperty(PAD_VAR);

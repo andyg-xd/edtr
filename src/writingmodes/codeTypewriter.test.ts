@@ -39,11 +39,11 @@ describe('codeTypewriter', () => {
     const view = mount('one');
     Object.defineProperty(view.scrollDOM, 'clientHeight', { value: 500, configurable: true });
     const surface = codeTypewriter(view);
-    surface.setEndPadding(HOLD_RATIO);
+    surface.setEndPadding(true);
     expect(view.scrollDOM.classList.contains('cm-edtr-typewriter')).toBe(true);
     expect(view.scrollDOM.style.getPropertyValue('--edtr-end-pad'))
       .toBe(`${Math.round(500 * END_PAD_RATIO)}px`);
-    surface.setEndPadding(null);
+    surface.setEndPadding(false);
     expect(view.scrollDOM.classList.contains('cm-edtr-typewriter')).toBe(false);
     expect(view.scrollDOM.style.getPropertyValue('--edtr-end-pad')).toBe('');
     view.destroy();
@@ -56,7 +56,7 @@ describe('codeTypewriter', () => {
     vi.spyOn(view, 'coordsAtPos').mockReturnValue({ top: 0, bottom: 10, left: 0, right: 0 });
     const surface = codeTypewriter(view, () => {});
     surface.holdCaret(HOLD_RATIO);
-    surface.setEndPadding(HOLD_RATIO);
+    surface.setEndPadding(true);
     expect(dispatch).not.toHaveBeenCalled();
     expect(view.state.doc.toString()).toBe(before);
     view.destroy();
@@ -67,7 +67,7 @@ describe('codeTypewriter', () => {
     Object.defineProperty(view.scrollDOM, 'clientHeight', { value: 500, configurable: true });
     vi.spyOn(view, 'coordsAtPos').mockReturnValue({ top: 0, bottom: 10, left: 0, right: 0 });
     const surface = codeTypewriter(view, () => {});
-    surface.setEndPadding(HOLD_RATIO);
+    surface.setEndPadding(true);
     expect(view.scrollDOM.style.getPropertyValue('--edtr-end-pad'))
       .toBe(`${Math.round(500 * END_PAD_RATIO)}px`);
 

@@ -35,8 +35,29 @@ export function textblockRanges(doc: PMNode): BlockRange[] {
  * only transaction this plugin ever sees is the enable/disable meta. That is
  * the strongest available no-beautify position: with no steps anywhere,
  * `tr.docChanged` is false and dirty tracking has nothing to observe.
+ *
+ * `props.decorations` runs on every state update — every keystroke and every
+ * selection move — and is memoised across calls for that reason. The
+ * decoration set depends on nothing but (document identity, active block's
+ * start): two closures below cache each of the two walks separately, since
+ * `textblockRanges` depends only on the document while the decoration set
+ * also depends on the selection. The Code-view twin (`codeFocus.ts`) bounds
+ * the identical job to `view.visibleRanges` instead; ProseMirror has no such
+ * viewport concept, so memoisation is the equivalent fix here — a caret move
+ * that stays inside the same block, or any update that touches neither the
+ * document nor the active block, now costs zero walks instead of two full
+ * `doc.descendants` traversals.
  */
 export function focusDimPlugin(): Plugin<FocusState> {
+  // Closed over for the life of this plugin instance (one per mounted view —
+  // `focusDimPlugin()` is called fresh at each view's construction, so this
+  // cache is never shared across documents).
+  let rangesDoc: PMNode | null = null;
+  let ranges: BlockRange[] = [];
+  let lastDoc: PMNode | null = null;
+  let lastActiveFrom: number | null = null;
+  let lastSet: DecorationSet = DecorationSet.empty;
+
   return new Plugin<FocusState>({
     key: focusKey,
     state: {
@@ -49,17 +70,26 @@ export function focusDimPlugin(): Plugin<FocusState> {
     props: {
       decorations(state) {
         if (!focusKey.getState(state)?.enabled) return DecorationSet.empty;
-        const active = activeBlock(textblockRanges(state.doc), state.selection.head);
+        if (state.doc !== rangesDoc) {
+          rangesDoc = state.doc;
+          ranges = textblockRanges(state.doc);
+        }
+        const active = activeBlock(ranges, state.selection.head);
+        // A null `active` (caret between blocks, empty doc) dims everything,
+        // which is correct: there is no active block to light.
+        const activeFrom = active ? active.from : null;
+        if (state.doc === lastDoc && activeFrom === lastActiveFrom) return lastSet;
         const decos: Decoration[] = [];
         state.doc.descendants((node, pos) => {
           if (!node.isTextblock) return true;
-          // A null `active` (caret between blocks, empty doc) dims everything,
-          // which is correct: there is no active block to light.
-          if (active && pos + 1 === active.from) return false;
+          if (activeFrom !== null && pos + 1 === activeFrom) return false;
           decos.push(Decoration.node(pos, pos + node.nodeSize, { class: 'edtr-dim' }));
           return false;
         });
-        return DecorationSet.create(state.doc, decos);
+        lastDoc = state.doc;
+        lastActiveFrom = activeFrom;
+        lastSet = DecorationSet.create(state.doc, decos);
+        return lastSet;
       },
     },
   });

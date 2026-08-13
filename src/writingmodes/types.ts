@@ -36,11 +36,15 @@ export interface TypewriterSurface {
   /** Scroll so the caret line's vertical centre rests at `ratio` of the scroller's height. */
   holdCaret(ratio: number): void;
   /**
-   * Add scroll padding below the last line, sized to `1 - ratio` of the
-   * scroller's visible height, so the final line can reach the hold position
-   * (D8). Passing null removes the padding entirely.
+   * Switch the end-of-document scroll padding on or off. When on, the padding
+   * is sized to `END_PAD_RATIO` (`1 - HOLD_RATIO`) of the scroller's visible
+   * height, so the final line can reach the hold position (D8). The ratio is
+   * a fixed design value, not a per-call knob — this used to take the ratio
+   * itself (`number | null`), but both drivers ignored whatever value was
+   * passed and always used the module constant, so the parameter was pure
+   * decoration; narrowed to a boolean to match what the drivers actually do.
    */
-  setEndPadding(ratio: number | null): void;
+  setEndPadding(on: boolean): void;
 }
 
 /** What focus mode needs from an editor. */

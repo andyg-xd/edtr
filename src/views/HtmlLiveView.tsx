@@ -74,7 +74,24 @@ const FIND_HIGHLIGHT_CSS =
  *    the `*`.
  * 2. That immediately over-reaches into find's highlight, which must stay
  *    legible through the dimming (spec §5.2). More specific AND important, so
- *    it wins the fight rule 1 would otherwise pick.
+ *    it wins the fight rule 1 would otherwise pick — but restoring the SHELL's
+ *    `--fg` token is not enough here, unlike the light-DOM restore rule in
+ *    canvas.css: HTML Live renders the file's own background, not Edtr's, so
+ *    `--fg` (calibrated against Edtr's own canvas) can land as light-on-white
+ *    or dark-on-black depending on the file's palette and Edtr's theme. The
+ *    plain highlight's own rule above uses `color:inherit` for exactly this
+ *    reason — it takes whatever colour the surrounding file content already
+ *    uses — but `inherit` is unavailable to the RESTORE rule, because the
+ *    parent it would inherit from is the dimmed element itself. So the
+ *    restore gets the same explicit, self-contained pair the current match
+ *    already has: a solid background plus a foreground calibrated to sit on
+ *    it, legible regardless of the file's own colours. One rule covers both
+ *    the plain and current mark, since the current mark always carries
+ *    `.edtr-find` alongside `.edtr-find-current` — and scoping to `.edtr-find`
+ *    (rather than the bare `edtr-mark` tag this used to be) also makes this
+ *    rule's specificity (0,2,1) unambiguously beat FIND_HIGHLIGHT_CSS's
+ *    `edtr-mark.edtr-find-current` (0,1,1) outright, rather than tying at
+ *    equal specificity and depending on injection order to settle it.
  *
  * Hardening, not proof: a file rule with both higher specificity and
  * `!important` still wins, and no build fails when it does. Appending this
@@ -83,7 +100,24 @@ const FIND_HIGHLIGHT_CSS =
  */
 const FOCUS_DIM_CSS =
   '.edtr-dim,.edtr-dim *{color:var(--dim-fg)!important}'
-  + '.edtr-dim edtr-mark,.edtr-dim edtr-mark *{color:var(--fg)!important}';
+  + '.edtr-dim edtr-mark.edtr-find,.edtr-dim edtr-mark.edtr-find *{'
+    + 'background:var(--find-current-bg)!important;color:var(--find-current-fg)!important}';
+
+/**
+ * Typewriter end padding for the shadow render (6c-ii). `canvas.css` cannot
+ * reach inside a shadow root, and even if it could, `pmTypewriter.ts`'s
+ * `scrollerFor` puts the `edtr-typewriter` class on the LIGHT-DOM host div
+ * (the `.html-live-view` element this component renders), which sits outside
+ * this shadow tree entirely — no selector in here could ever match that
+ * class. The custom property IS visible though:
+ * it inherits across the shadow boundary the same way the find/focus tokens
+ * above do, so this rule keys off the variable directly, on the in-flow
+ * content element (`.ProseMirror`, matching Markdown Live's shape in
+ * canvas.css) rather than the scroller. Its `, 0` fallback keeps it inert
+ * whenever the mode is off — the driver REMOVES the property rather than
+ * zeroing it, so an absent variable and an explicit 0 read the same way here.
+ */
+const TYPEWRITER_PAD_CSS = '.ProseMirror{padding-bottom:var(--edtr-end-pad, 0)}';
 
 /**
  * Browser-default reset for the shadow render, injected FIRST (lowest priority)
@@ -194,6 +228,14 @@ export function HtmlLiveView({
     focusStyle.setAttribute('data-edtr-focus', '');
     focusStyle.textContent = FOCUS_DIM_CSS;
     shadow.appendChild(focusStyle);
+
+    // Typewriter end padding. See TYPEWRITER_PAD_CSS for why this can't just
+    // be canvas.css's `.live-view.edtr-typewriter .ProseMirror` rule reused —
+    // the class lives outside this shadow tree entirely.
+    const typewriterStyle = document.createElement('style');
+    typewriterStyle.setAttribute('data-edtr-typewriter', '');
+    typewriterStyle.textContent = TYPEWRITER_PAD_CSS;
+    shadow.appendChild(typewriterStyle);
 
     const applyAttrs = (el: Element, attrs: Record<string, string>) => {
       for (const [k, v] of Object.entries(safeAttrs(attrs))) {

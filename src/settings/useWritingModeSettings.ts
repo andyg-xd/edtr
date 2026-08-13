@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { loadSettings, onSettingsChanged, setWritingMode } from './settingsStore';
-import { MODES_OFF, readCachedModes, writeCachedModes, type WritingMode, type WritingModes } from './writingModes';
+import { readCachedModes, writeCachedModes, type WritingMode, type WritingModes } from './writingModes';
 
 /**
  * App-wide writing-mode state for one window (D5).
@@ -49,5 +49,3 @@ export function useWritingModeSettings() {
 
   return { modes, setMode };
 }
-
-export { MODES_OFF };

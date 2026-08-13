@@ -377,7 +377,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   // the scroll short of the hold ratio with nothing left to re-trigger it.
   useEffect(() => {
     if (!typewriter) return;
-    typewriter.setEndPadding(modes.typewriter ? HOLD_RATIO : null);
+    typewriter.setEndPadding(modes.typewriter);
   }, [typewriter, modes.typewriter]);
 
   // Hold the caret on every cursor move while the mode is on. `codeCursor` is

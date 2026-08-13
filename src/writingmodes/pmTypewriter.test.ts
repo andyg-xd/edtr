@@ -76,7 +76,7 @@ describe('pmTypewriter', () => {
     vi.spyOn(view, 'coordsAtPos').mockReturnValue({ top: 0, bottom: 10, left: 0, right: 0 });
     const s = pmTypewriter(view, () => {});
     s.holdCaret(HOLD_RATIO);
-    s.setEndPadding(HOLD_RATIO);
+    s.setEndPadding(true);
     expect(dispatch).not.toHaveBeenCalled();
     view.destroy(); scroller.remove();
   });
@@ -88,11 +88,11 @@ describe('pmTypewriter', () => {
     Object.defineProperty(scroller, 'clientHeight', { value: 500, configurable: true });
     const view = mountIn(scroller, 'hello');
     const surface = pmTypewriter(view);
-    surface.setEndPadding(HOLD_RATIO);
+    surface.setEndPadding(true);
     expect(scroller.classList.contains('edtr-typewriter')).toBe(true);
     expect(scroller.style.getPropertyValue('--edtr-end-pad'))
       .toBe(`${Math.round(500 * END_PAD_RATIO)}px`);
-    surface.setEndPadding(null);
+    surface.setEndPadding(false);
     expect(scroller.classList.contains('edtr-typewriter')).toBe(false);
     expect(scroller.style.getPropertyValue('--edtr-end-pad')).toBe('');
     view.destroy(); scroller.remove();
@@ -110,7 +110,7 @@ describe('pmTypewriter', () => {
     const view = mountIn(scroller, 'hello');
     vi.spyOn(view, 'coordsAtPos').mockReturnValue({ top: 0, bottom: 10, left: 0, right: 0 });
     const surface = pmTypewriter(view, () => {});
-    surface.setEndPadding(HOLD_RATIO);
+    surface.setEndPadding(true);
     expect(scroller.style.getPropertyValue('--edtr-end-pad'))
       .toBe(`${Math.round(500 * END_PAD_RATIO)}px`);
 
