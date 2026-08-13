@@ -320,16 +320,30 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     if (showLive) return liveView ? pmCounts(liveView) : null;
     return codeView ? codeCounts(codeView) : null;
   }, [showLive, liveView, codeView]);
-  // `useWordCount`'s `version` just needs to change whenever the document or
-  // selection does, so the debounce inside it restarts. `findEpoch` covers
-  // every real edit in either view. Selection-ONLY movement needs one signal
-  // per view, and both already exist: `codeCursor` (CodeView's onCursorChange
-  // fires on `docChanged || selectionSet`) for Code, `ribbonTick` (bumped by
-  // `handleLiveStateChange`, which fires on every transaction incl.
-  // selection-only) for Live. Neither is a new subscription — this just rides
-  // state DocumentView already maintains for find/typewriter/the ribbon.
-  const [countVersion, bumpCountVersion] = useReducer((x: number) => x + 1, 0);
-  useEffect(() => { bumpCountVersion(); }, [findEpoch, codeCursor, ribbonTick]);
+  // `useWordCount`'s `version` just needs to CHANGE whenever the document or
+  // selection does, so the debounce inside it restarts — it is never read, only
+  // compared by reference. `findEpoch` covers every real edit in either view.
+  // Selection-ONLY movement needs one signal per view, and both already exist:
+  // `codeCursor` (CodeView's onCursorChange fires on `docChanged ||
+  // selectionSet`) for Code, `ribbonTick` (bumped by `handleLiveStateChange`,
+  // which fires on every transaction incl. selection-only) for Live. Neither is
+  // a new subscription — this just rides state DocumentView already maintains
+  // for find/typewriter/the ribbon.
+  //
+  // A memoized composite key, NOT a `useReducer`+`useEffect` pair that
+  // dispatches a derived bump: that shape was tried first and rejected in
+  // review — the effect fires strictly AFTER the render that changed one of
+  // its deps, so it lands as an unavoidable SECOND commit (React cannot batch
+  // a passive effect's setState with the render that scheduled it), on every
+  // keystroke in Code view and every transaction in Live view. None of
+  // CodeView/LiveView/HtmlLiveView is memoized, so that was a real second
+  // re-render of this whole subtree, for a value nobody needs until the 150ms
+  // debounce fires anyway. A `useMemo` recomputes the key inline, in the SAME
+  // render/commit as the state that changed — no extra commit, same triggers.
+  const countVersion = useMemo(
+    () => `${findEpoch}:${ribbonTick}:${codeCursor?.line}:${codeCursor?.column}`,
+    [findEpoch, ribbonTick, codeCursor],
+  );
   const counts = useWordCount(countSurface, countVersion);
 
   // Live views have no `codeCursor`-shaped signal of their own — the caret

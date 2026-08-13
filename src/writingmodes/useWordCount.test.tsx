@@ -45,16 +45,16 @@ describe('useWordCount', () => {
     containers.splice(0).forEach((c) => c.remove());
   });
 
-  it('reports nothing before the debounce elapses', () => {
+  it('reports nothing at 149ms, then the counts the instant 150ms elapses', async () => {
+    // Review finding: asserting null before ANY timer advance is true even if
+    // the debounce logic is entirely broken (e.g. it never fires at all). This
+    // makes the 150ms boundary itself the thing under test — a value at 149ms
+    // fails this, and no value at 150ms fails this too.
     const h = renderHook(() => useWordCount(surface, 0));
     containers.push(h.container);
+    await act(async () => { vi.advanceTimersByTime(149); });
     expect(h.result.current).toBeNull();
-  });
-
-  it('reports the document counts after 150ms', async () => {
-    const h = renderHook(() => useWordCount(surface, 0));
-    containers.push(h.container);
-    await act(async () => { vi.advanceTimersByTime(150); });
+    await act(async () => { vi.advanceTimersByTime(1); });
     expect(h.result.current).toEqual({ words: 3, characters: 13 });
   });
 
@@ -71,6 +71,33 @@ describe('useWordCount', () => {
     containers.push(h.container);
     await act(async () => { vi.advanceTimersByTime(150); });
     expect(h.result.current).toBeNull();
+  });
+
+  it('follows ONE surface through selected -> cleared -> whole document', async () => {
+    // Review finding: every surface above is STATIC -- permanently empty or
+    // permanently selected. `selectedText()` is re-read fresh on every debounce
+    // fire (see useWordCount.ts), but no test drove that same surface through a
+    // change, so a regression that memoized the first read (e.g. by the
+    // surface's own identity, which never changes here) instead of re-invoking
+    // it would have passed every test above. `version` still has to change each
+    // time -- that is what tells useWordCount to re-arm the debounce at all --
+    // but `selectedText()`'s RETURN VALUE is what must be seen to move.
+    let selected = 'one';
+    const s = { countableText: () => 'one two three', selectedText: () => selected };
+    const h = renderHook(({ v }: { v: number }) => useWordCount(s, v), { initialProps: { v: 0 } });
+    containers.push(h.container);
+    await act(async () => { vi.advanceTimersByTime(150); });
+    expect(h.result.current).toEqual({ words: 1, characters: 3 }); // "one"
+
+    selected = 'one two';
+    h.rerender({ v: 1 });
+    await act(async () => { vi.advanceTimersByTime(150); });
+    expect(h.result.current).toEqual({ words: 2, characters: 7 }); // "one two"
+
+    selected = ''; // cleared back to a bare caret
+    h.rerender({ v: 2 });
+    await act(async () => { vi.advanceTimersByTime(150); });
+    expect(h.result.current).toEqual({ words: 3, characters: 13 }); // "one two three"
   });
 
   it('does not recount until the debounce elapses again', async () => {

@@ -10,14 +10,18 @@ export const COUNT_DEBOUNCE_MS = 150;
  *
  * `version` is any value that changes when the document or selection changes —
  * `DocumentView` already maintains such counters for find, so this rides an
- * existing signal instead of adding a second change subscription.
+ * existing signal instead of adding a second change subscription. Deliberately
+ * NOT typed as `number`: it is only ever compared by identity as an effect
+ * dependency, never read, so `DocumentView` can hand this a memoized composite
+ * key (e.g. a template string of several of its own signals) instead of
+ * contorting several independent counters into one arithmetic value.
  *
  * Trailing-edge only: in a Live view each count allocates the document's whole
  * text, and doing that per keystroke is waste for a number nobody reads
  * mid-word. The visible cost is that the count can lag one keystroke, which is
  * the intended trade (spec §4.3), not a defect.
  */
-export function useWordCount(surface: CountSurface | null, version: number): TextCounts | null {
+export function useWordCount(surface: CountSurface | null, version: unknown): TextCounts | null {
   const [counts, setCounts] = useState<TextCounts | null>(null);
 
   useEffect(() => {
