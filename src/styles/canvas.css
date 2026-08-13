@@ -9,6 +9,13 @@
 .live-view { flex: 1; overflow: auto; padding: var(--space-6) var(--space-7); }
 .live-view .ProseMirror { outline: none; max-width: 60rem; }
 
+/* Typewriter mode in a Live view (D8). Same scroll-padding-not-text rule as
+   Code view below; applied to the scroller itself, since here the scroller
+   IS the padded element (`.live-view`'s own shorthand above), so this
+   longhand must come after it or the shorthand will reset it. */
+.live-view.edtr-typewriter,
+.html-live-view.edtr-typewriter { padding-bottom: var(--edtr-end-pad, 0); }
+
 /* Like .code-view/.live-view: scroll the rendered page internally so the
    window chrome + ribbon stay pinned. No padding — the HTML page controls
    its own margins via its injected stylesheet. */

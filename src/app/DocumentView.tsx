@@ -36,6 +36,7 @@ import {
 import type { FindSurface } from '../find/types';
 import { ReplaceAllGuard } from './ReplaceAllGuard';
 import { codeTypewriter } from '../writingmodes/codeTypewriter';
+import { pmTypewriter } from '../writingmodes/pmTypewriter';
 import { HOLD_RATIO } from '../writingmodes/constants';
 import type { TypewriterSurface } from '../writingmodes/types';
 import type { WritingModes } from '../settings/writingModes';
@@ -300,10 +301,24 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   }, [showLive, liveView, codeView]);
   const surfaceRef = useRef(surface); surfaceRef.current = surface;
 
-  const typewriter = useMemo<TypewriterSurface | null>(
-    () => (showLive ? null : codeView ? codeTypewriter(codeView) : null),
-    [showLive, codeView],
-  );
+  const typewriter = useMemo<TypewriterSurface | null>(() => {
+    // ONE driver for both Live views (Markdown and HTML) — same as `surface`
+    // above for find. Do not add an HTML-specific branch here.
+    if (showLive) return liveView ? pmTypewriter(liveView) : null;
+    return codeView ? codeTypewriter(codeView) : null;
+  }, [showLive, liveView, codeView]);
+
+  // Live views have no `codeCursor`-shaped signal of their own — the caret
+  // moving is just another transaction. `onStateChange` already fires on
+  // every one of those (incl. selection-only), and is already wired to
+  // bumpRibbon below; this is a second consumer of that same callback, not a
+  // new one, per its own prop documentation ("Fires on every transaction ...
+  // so a ribbon can re-render" — exactly the signal typewriter mode needs
+  // too).
+  const handleLiveStateChange = useCallback(() => {
+    bumpRibbon();
+    if (modes.typewriter) typewriter?.holdCaret(HOLD_RATIO);
+  }, [modes.typewriter, typewriter]);
 
   // Declared BEFORE the hold-caret effect below: on the same commit that
   // switches the mode on, effects run in declaration order, so the padding
@@ -666,7 +681,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
           key={`htmllive-${doc.id}`}
           doc={liveHtml.doc} styleText={liveHtml.styleText} bodyAttrs={liveHtml.bodyAttrs} rootAttrs={liveHtml.rootAttrs}
           editable docPath={session.path ?? null}
-          onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={bumpRibbon} onLinkShortcut={bumpLinkRequest} onError={onError}
+          onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={handleLiveStateChange} onLinkShortcut={bumpLinkRequest} onError={onError}
         />
         <StatusBar format={session.format} line={pos?.line} column={pos?.column} />
       </>
@@ -689,7 +704,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
         <LiveView
           key={`live-${doc.id}`}
           doc={live.doc} editable
-          onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={bumpRibbon} onLinkShortcut={bumpLinkRequest} docPath={session.path ?? null} onError={onError}
+          onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={handleLiveStateChange} onLinkShortcut={bumpLinkRequest} docPath={session.path ?? null} onError={onError}
         />
         <StatusBar format={session.format} line={pos?.line} column={pos?.column} />
       </>
