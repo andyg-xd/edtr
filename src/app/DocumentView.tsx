@@ -35,6 +35,10 @@ import {
 } from '../find/findState';
 import type { FindSurface } from '../find/types';
 import { ReplaceAllGuard } from './ReplaceAllGuard';
+import { codeTypewriter } from '../writingmodes/codeTypewriter';
+import { HOLD_RATIO } from '../writingmodes/constants';
+import type { TypewriterSurface } from '../writingmodes/types';
+import type { WritingModes } from '../settings/writingModes';
 
 /**
  * Matching is debounced so a fast typist doesn't re-scan the document on every
@@ -81,6 +85,8 @@ function livePosition(view: EditorView | null): { line: number; column: number }
 interface DocumentViewProps {
   doc: OpenDoc;
   effectiveTheme: 'light' | 'dark';
+  /** Writing-mode toggles (typewriter/focus), one subscription per window, shared by every DocumentView in it. */
+  modes: WritingModes;
   onDirtyChange: (dirty: boolean) => void;
   onLiveAvailableChange: (available: boolean) => void;
   onError: (msg: string | null) => void;
@@ -89,7 +95,7 @@ interface DocumentViewProps {
 }
 
 export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(function DocumentView(
-  { doc, effectiveTheme, onDirtyChange, onLiveAvailableChange, onError, onInfo }, ref,
+  { doc, effectiveTheme, modes, onDirtyChange, onLiveAvailableChange, onError, onInfo }, ref,
 ) {
   const session = doc.session;
   const viewMode = doc.viewMode;
@@ -293,6 +299,24 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     return codeView ? codeSurface(codeView) : null;
   }, [showLive, liveView, codeView]);
   const surfaceRef = useRef(surface); surfaceRef.current = surface;
+
+  const typewriter = useMemo<TypewriterSurface | null>(
+    () => (showLive ? null : codeView ? codeTypewriter(codeView) : null),
+    [showLive, codeView],
+  );
+
+  // Hold the caret on every cursor move while the mode is on. `codeCursor` is
+  // already updated by CodeView's onCursorChange, so this rides an existing
+  // signal rather than adding a second one.
+  useEffect(() => {
+    if (!typewriter || !modes.typewriter) return;
+    typewriter.holdCaret(HOLD_RATIO);
+  }, [typewriter, modes.typewriter, codeCursor]);
+
+  useEffect(() => {
+    if (!typewriter) return;
+    typewriter.setEndPadding(modes.typewriter ? HOLD_RATIO : null);
+  }, [typewriter, modes.typewriter]);
 
   // Recompute matches — debounced, and safe to re-run.
   useEffect(() => {

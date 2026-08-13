@@ -571,6 +571,7 @@ export function EditorWindow() {
                 ref={viewRef}
                 doc={active}
                 effectiveTheme={themeEffective}
+                modes={writingModes}
                 onDirtyChange={setActiveDirty}
                 onLiveAvailableChange={setActiveLiveAvailable}
                 onError={(m) => showError(m)}

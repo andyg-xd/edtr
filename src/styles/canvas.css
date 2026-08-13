@@ -63,3 +63,8 @@
   font-weight: 600;
   background: var(--th-bg);
 }
+
+/* Typewriter mode: room below the last line so it can reach the hold
+   position (D8). Scroll padding, never text — nothing reaches the file. The
+   variable is set from the live scroller height by codeTypewriter. */
+.cm-edtr-typewriter .cm-content { padding-bottom: var(--edtr-end-pad, 0); }

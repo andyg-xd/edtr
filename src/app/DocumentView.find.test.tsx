@@ -8,6 +8,7 @@ import { DocumentSession } from '../files/documentSession';
 import { formatForPath } from '../files/fileTypes';
 import type { OpenDoc, ViewMode } from '../files/openDocuments';
 import { codeSurface } from '../find/codeSurface';
+import { MODES_OFF } from '../settings/writingModes';
 
 // DocumentView unconditionally wires a window-level drag/drop listener via
 // getCurrentWebview() (image-drop support) on every mount — nothing to do with
@@ -132,7 +133,7 @@ async function mount(
   currentRoot = root;
   await act(async () => root.render(
     <DocumentView
-      ref={ref} doc={doc} effectiveTheme="light"
+      ref={ref} doc={doc} effectiveTheme="light" modes={MODES_OFF}
       onDirtyChange={onDirtyChange} onLiveAvailableChange={() => {}} onError={onError} onInfo={onInfo}
     />,
   ));
@@ -145,7 +146,7 @@ async function mount(
 async function rerender(root: ReturnType<typeof createRoot>, ref: RefObject<DocumentViewHandle | null>, doc: OpenDoc) {
   await act(async () => root.render(
     <DocumentView
-      ref={ref} doc={doc} effectiveTheme="light"
+      ref={ref} doc={doc} effectiveTheme="light" modes={MODES_OFF}
       onDirtyChange={() => {}} onLiveAvailableChange={() => {}} onError={() => {}} onInfo={() => {}}
     />,
   ));
