@@ -5,11 +5,18 @@ use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowB
 
 /// The smallest a window may be dragged (6c-ii-b, F7).
 ///
-/// **560, not the 480 first proposed, and the difference was measured.** The
-/// owner set 480 provisionally ("then see how that works"); rendering the real
-/// ribbon and the real status bar at a range of widths showed the RIBBON is the
-/// binding constraint and needs **553px** to stay on one line — at 480 it
-/// overflows its box by 74px. 560 is that requirement plus a little slack.
+/// **570, arrived at in two steps, and the second one corrected the first.**
+/// The owner set 480 provisionally ("then see how that works"). Rendering the
+/// real ribbon and status bar across a range of widths showed the RIBBON is the
+/// binding constraint at **553px**, so this was set to 560 — and the owner then
+/// found in the running app that the ribbon still clips below ~570, so 570 is
+/// the number that actually holds.
+///
+/// Worth knowing WHY the harness under-measured: it rendered the ribbon and the
+/// status bar in a bare container, without the surrounding window chrome the
+/// app puts around them. A component measured in isolation gives a floor, not
+/// the app's floor. The measurement was still what moved this off 480 — it was
+/// under-tight, not wrong — but the app is the authority on the final number.
 ///
 /// The status bar is nowhere near binding: 317px with typical counts, and
 /// **416px** with the widest string it can ever show (a huge document, with the
@@ -22,7 +29,7 @@ use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowB
 /// `tauri.conf.json`: that file governs the first window, these govern every
 /// window opened afterwards, and nothing in the build compares them. A test
 /// below reads the config and asserts they agree, so the two cannot drift.
-pub const MIN_WINDOW_WIDTH: f64 = 560.0;
+pub const MIN_WINDOW_WIDTH: f64 = 570.0;
 pub const MIN_WINDOW_HEIGHT: f64 = 320.0;
 use tauri::Emitter;
 
