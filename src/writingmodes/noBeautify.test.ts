@@ -29,7 +29,8 @@ import { describe, it, expect, vi } from 'vitest';
 import type { Node as PMNode } from 'prosemirror-model';
 import { EditorState, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import { toLive, toSource } from '../views/ViewSync';
+import { toLive, toSource, htmlWriteBack } from '../views/ViewSync';
+import { toLiveHtml } from '../views/htmlModel';
 import { dirtyTrackingPlugin, getDirtyBlockIds } from '../views/dirtyTracking';
 import { focusDimPlugin, pmFocus } from './pmFocus';
 import { pmTypewriter } from './pmTypewriter';
@@ -133,6 +134,118 @@ describe('writing modes never touch the file', () => {
 
     toSource(view.state.doc, SOURCE, gatedOn(dirty, realSerializer));
     expect(realSerializer).toHaveBeenCalled();
+
+    view.destroy(); host.remove();
+  });
+});
+
+/**
+ * The same guarantee, under the HTML schema (6c-ii-b Task 10).
+ *
+ * Every assertion above runs on `liveSchema`. Until this sub-phase, NOTHING in
+ * `src/writingmodes/` touched `htmlSchema` at all — which is the structural
+ * reason focus mode shipped visibly broken in HTML Live and the suite saw
+ * nothing. The no-beautify guarantee had exactly the same hole: it was proven
+ * for one of the two Live surfaces and assumed for the other.
+ *
+ * This drives the REAL HTML pipeline (`toLiveHtml` → `htmlWriteBack`), because
+ * that is the path a write actually takes, and asserts the file comes back
+ * byte-identical after all of this sub-phase's features have been exercised on
+ * it.
+ */
+describe('writing modes never touch an HTML file either', () => {
+  const HTML_SOURCE = [
+    '<!doctype html>',
+    '<html lang="en">',
+    '<head>',
+    '  <meta charset="utf-8">',
+    '  <style>.lead{color:#41576b}   .odd  {  margin : 0  }</style>',
+    '</head>',
+    '<body>',
+    '  <h1 class="lead">A   heading   with   odd   spacing</h1>',
+    '  <div class="wrap"><p class="odd">Nested paragraph.</p></div>',
+    '  <table><tr><td>cell</td></tr></table>',
+    '  <p>Trailing.</p>',
+    '</body>',
+    '</html>',
+    '',
+  ].join('\n');
+
+  function mountHtml() {
+    const result = toLiveHtml(HTML_SOURCE);
+    if (!result.ok) throw new Error(`fixture failed to project: ${result.reason}`);
+    const host = document.createElement('div');
+    host.className = 'html-live-view';
+    document.body.appendChild(host);
+    const shadow = host.attachShadow({ mode: 'open' });
+    const mountPoint = document.createElement('div');
+    shadow.appendChild(mountPoint);
+    const view = new EditorView(mountPoint, {
+      state: EditorState.create({
+        doc: result.doc,
+        plugins: [focusDimPlugin(), dirtyTrackingPlugin()],
+      }),
+    });
+    return { view, host };
+  }
+
+  it('leaves an HTML file byte-identical after all of this sub-phase’s features', () => {
+    const { view, host } = mountHtml();
+    vi.spyOn(view, 'coordsAtPos').mockReturnValue({ top: 0, bottom: 10, left: 0, right: 0 });
+
+    // Focus mode (Task 4's relative dim is pure CSS, but the DECORATION path is
+    // what could carry a transaction).
+    pmFocus(view).setFocusEnabled(true);
+
+    // Typewriter, including the 6c-ii-b guards: a suppressed hold must not
+    // dispatch either, and neither must one that goes through.
+    const tw = pmTypewriter(view, () => {});
+    window.dispatchEvent(new Event('pointerdown'));
+    tw.holdCaret(HOLD_RATIO);       // suppressed by the drag guard
+    window.dispatchEvent(new Event('pointerup'));
+    tw.holdCaret(HOLD_RATIO);       // allowed
+    tw.setEndPadding(true);
+    tw.setEndPadding(false);
+
+    // Selection movement + the count, including the selection-scoped read that
+    // Task 8 added.
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, 9)));
+    const surface = pmCounts(view);
+    const selCounts = countText(surface.selectedText());
+    const docCounts = countText(surface.countableText());
+
+    // Both reads did real work, so the byte assertion below cannot be satisfied
+    // by a pipeline that quietly did nothing.
+    expect(selCounts.characters).toBeGreaterThan(0);
+    expect(docCounts.words).toBeGreaterThan(0);
+
+    const dirty = getDirtyBlockIds(view.state);
+    expect(dirty.size, 'no writing-mode action may mark a block dirty').toBe(0);
+
+    const out = htmlWriteBack(view.state.doc, HTML_SOURCE, dirty);
+    expect(out).toBe(HTML_SOURCE);
+
+    view.destroy(); host.remove();
+  });
+
+  it('a REAL edit does change the HTML (proves the assertion above is not vacuous)', () => {
+    // Without this, `htmlWriteBack` returning its baseline for any reason at
+    // all — including being broken — would satisfy the test above. The same
+    // vacuity trap 6c-i-b's no-op test fell into.
+    const { view, host } = mountHtml();
+    const from = view.state.doc.resolve(1).start();
+    view.dispatch(view.state.tr.insertText('EDITED', from));
+
+    const dirty = getDirtyBlockIds(view.state);
+    expect(dirty.size, 'a real edit must mark a block dirty').toBeGreaterThan(0);
+
+    const out = htmlWriteBack(view.state.doc, HTML_SOURCE, dirty);
+    expect(out).not.toBe(HTML_SOURCE);
+    expect(out).toContain('EDITED');
+    // And everything it did NOT touch is still there verbatim — including the
+    // <style> block's odd spacing, which no serializer should have tidied.
+    expect(out).toContain('.lead{color:#41576b}   .odd  {  margin : 0  }');
+    expect(out).toContain('<!doctype html>');
 
     view.destroy(); host.remove();
   });
