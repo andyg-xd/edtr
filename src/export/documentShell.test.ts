@@ -26,14 +26,8 @@ describe('documentShell', () => {
   it('emits no blank line or undefined when extraHead is omitted', () => {
     const out = documentShell({ title: 'Notes', body: '<p>hi</p>' });
     expect(out).not.toContain('undefined');
-    // Split by lines and verify no empty line between </style> and </head>
-    const lines = out.split('\n');
-    const styleIdx = lines.findIndex((l) => l === '</style>');
-    const headIdx = lines.findIndex((l) => l === '</head>');
-    expect(styleIdx).toBeGreaterThan(-1);
-    expect(headIdx).toBeGreaterThan(-1);
-    // The </head> should be exactly one line after </style> with no blank line between
-    expect(headIdx).toBe(styleIdx + 1);
+    expect(out).toContain('</style>\n</head>');   // adjacent — no blank or extra line
+    expect(out).not.toMatch(/<\/style>\n\s*\n/);  // no blank line after </style> at all
   });
 });
 
