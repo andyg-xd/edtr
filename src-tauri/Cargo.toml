@@ -18,7 +18,18 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset"] }
+# `devtools` puts the WebView inspector in RELEASE builds too. Debug builds
+# already have it — tauri gates the inspector on
+# `any(debug_assertions, feature = "devtools")` — so this feature changes only
+# the bundled `.app`, which is the artifact every GUI matrix is actually walked
+# against. Without it, "zero console errors" was uncheckable on the thing we
+# ship (6c-ii matrix item 17 went unverified for exactly this reason) and a
+# defect seen in the release build could not be inspected where it appeared.
+# Trade-off, accepted for Edtr: the shipped app is inspectable by whoever has
+# it. Distribution is manual to a handful of people (6b), the app has no
+# secrets and no network surface, and the whole bundle is user-readable
+# JS on disk regardless.
+tauri = { version = "2", features = ["protocol-asset", "devtools"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tempfile = "3"
