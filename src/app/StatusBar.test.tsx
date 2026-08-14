@@ -62,4 +62,44 @@ describe('StatusBar', () => {
     const c = await render(<StatusBar format="markdown" words={5} />);
     expect(c.querySelector('.status-bar-counts')!.textContent).toBe('');
   });
+
+  it('labels the counts when they describe a SELECTION (6c-ii-b, F6)', async () => {
+    // Without the label the same pair of numbers means two different things
+    // and the bar swaps between them silently — the reader sees the figure
+    // drop with no way to tell a selection from a shorter document.
+    const c = await render(
+      <StatusBar format="markdown" words={12} characters={68} isSelection />,
+    );
+    expect(c.querySelector('.status-bar-counts')?.textContent)
+      .toBe('Selected: 12 words · 68 characters');
+  });
+
+  it('leaves the document count unlabelled and byte-identical to before', async () => {
+    // Regression guard: 6c-ii's format must not drift while adding the
+    // selection case. Same middle dot, same wording, no prefix.
+    const c = await render(
+      <StatusBar format="markdown" words={1204} characters={6812} isSelection={false} />,
+    );
+    expect(c.querySelector('.status-bar-counts')?.textContent)
+      .toBe('1,204 words · 6,812 characters');
+  });
+
+  it('treats an omitted isSelection as the document count', async () => {
+    const c = await render(<StatusBar format="markdown" words={3} characters={9} />);
+    expect(c.querySelector('.status-bar-counts')?.textContent).toBe('3 words · 9 characters');
+  });
+
+  it('uses ONE separator for both cases', async () => {
+    // The selection format was specified with a bullet and the document count
+    // has always used a middle dot; the owner chose the middle dot for both
+    // (2026-08-14) so the bar does not change punctuation with its state.
+    const sel = await render(<StatusBar format="markdown" words={1} characters={2} isSelection />);
+    const selText = sel.querySelector('.status-bar-counts')!.textContent!;
+    container!.remove(); container = null;
+    const doc = await render(<StatusBar format="markdown" words={1} characters={2} />);
+    const docText = doc.querySelector('.status-bar-counts')!.textContent!;
+    expect(selText).toContain(' · ');
+    expect(docText).toContain(' · ');
+    expect(selText.includes('•'), 'the bar must not switch punctuation with its state').toBe(false);
+  });
 });

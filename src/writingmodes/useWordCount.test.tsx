@@ -55,7 +55,7 @@ describe('useWordCount', () => {
     await act(async () => { vi.advanceTimersByTime(149); });
     expect(h.result.current).toBeNull();
     await act(async () => { vi.advanceTimersByTime(1); });
-    expect(h.result.current).toEqual({ words: 3, characters: 13 });
+    expect(h.result.current).toEqual({ words: 3, characters: 13, isSelection: false });
   });
 
   it('reports the SELECTION when one exists', async () => {
@@ -63,7 +63,7 @@ describe('useWordCount', () => {
     const h = renderHook(() => useWordCount(selected, 0));
     containers.push(h.container);
     await act(async () => { vi.advanceTimersByTime(150); });
-    expect(h.result.current).toEqual({ words: 2, characters: 7 });
+    expect(h.result.current).toEqual({ words: 2, characters: 7, isSelection: true });
   });
 
   it('reports null for a null surface', async () => {
@@ -87,17 +87,17 @@ describe('useWordCount', () => {
     const h = renderHook(({ v }: { v: number }) => useWordCount(s, v), { initialProps: { v: 0 } });
     containers.push(h.container);
     await act(async () => { vi.advanceTimersByTime(150); });
-    expect(h.result.current).toEqual({ words: 1, characters: 3 }); // "one"
+    expect(h.result.current).toEqual({ words: 1, characters: 3, isSelection: true }); // "one"
 
     selected = 'one two';
     h.rerender({ v: 1 });
     await act(async () => { vi.advanceTimersByTime(150); });
-    expect(h.result.current).toEqual({ words: 2, characters: 7 }); // "one two"
+    expect(h.result.current).toEqual({ words: 2, characters: 7, isSelection: true }); // "one two"
 
     selected = ''; // cleared back to a bare caret
     h.rerender({ v: 2 });
     await act(async () => { vi.advanceTimersByTime(150); });
-    expect(h.result.current).toEqual({ words: 3, characters: 13 }); // "one two three"
+    expect(h.result.current).toEqual({ words: 3, characters: 13, isSelection: false }); // "one two three"
   });
 
   it('does not recount until the debounce elapses again', async () => {
@@ -113,5 +113,28 @@ describe('useWordCount', () => {
     // Three version bumps, still only the trailing edge fires.
     await act(async () => { vi.advanceTimersByTime(150); });
     expect(countable).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports isSelection alongside the numbers, so the bar can label them (6c-ii-b, F6)', async () => {
+    // The scope travels WITH the counts rather than being re-derived at the
+    // point of display: the hook is the only place that knows which of the two
+    // texts it actually counted, and asking the status bar to work it out
+    // again would be a second source of truth that could disagree.
+    let selected = '';
+    const s2 = { countableText: () => 'one two three', selectedText: () => selected };
+    const h = renderHook(({ v }: { v: number }) => useWordCount(s2, v), { initialProps: { v: 0 } });
+    containers.push(h.container);
+    await act(async () => { vi.advanceTimersByTime(150); });
+    expect(h.result.current?.isSelection, 'a bare caret is not a selection').toBe(false);
+
+    selected = 'one two';
+    h.rerender({ v: 1 });
+    await act(async () => { vi.advanceTimersByTime(150); });
+    expect(h.result.current?.isSelection).toBe(true);
+
+    selected = '';
+    h.rerender({ v: 2 });
+    await act(async () => { vi.advanceTimersByTime(150); });
+    expect(h.result.current?.isSelection, 'clearing the selection must clear the label').toBe(false);
   });
 });

@@ -760,7 +760,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
           editable docPath={session.path ?? null}
           onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={handleLiveStateChange} onLinkShortcut={bumpLinkRequest} onError={onError}
         />
-        <StatusBar format={session.format} line={pos?.line} column={pos?.column} words={counts?.words} characters={counts?.characters} />
+        <StatusBar format={session.format} line={pos?.line} column={pos?.column} words={counts?.words} characters={counts?.characters} isSelection={counts?.isSelection} />
       </>
     );
   }
@@ -783,7 +783,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
           doc={live.doc} editable
           onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={handleLiveStateChange} onLinkShortcut={bumpLinkRequest} docPath={session.path ?? null} onError={onError}
         />
-        <StatusBar format={session.format} line={pos?.line} column={pos?.column} words={counts?.words} characters={counts?.characters} />
+        <StatusBar format={session.format} line={pos?.line} column={pos?.column} words={counts?.words} characters={counts?.characters} isSelection={counts?.isSelection} />
       </>
     );
   }
@@ -796,7 +796,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
         onChange={handleChange} onViewReady={setCodeView}
         onCursorChange={(line, column) => setCodeCursor({ line, column })}
       />
-      <StatusBar format={session.format} line={codeCursor?.line} column={codeCursor?.column} words={counts?.words} characters={counts?.characters} />
+      <StatusBar format={session.format} line={codeCursor?.line} column={codeCursor?.column} words={counts?.words} characters={counts?.characters} isSelection={counts?.isSelection} />
     </>
   );
 });

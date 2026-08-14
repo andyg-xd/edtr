@@ -11,6 +11,20 @@ export interface TextCounts {
 }
 
 /**
+ * Counts plus WHAT they describe (6c-ii-b, F6).
+ *
+ * `TextCounts` alone is ambiguous at the point of display: the same pair of
+ * numbers means the whole document or just the selection, and the status bar
+ * silently swapped between the two with nothing to say so. Kept separate from
+ * `TextCounts` so `countText` — a pure function over a string that has no idea
+ * where the string came from — is not made to carry a flag it cannot know.
+ */
+export interface ScopedCounts extends TextCounts {
+  /** True when these describe the selection rather than the whole document. */
+  isSelection: boolean;
+}
+
+/**
  * What the word count needs from an editor.
  *
  * Deliberately NOT an extension of `find/types.ts`'s `FindSurface` (spec §3.3):

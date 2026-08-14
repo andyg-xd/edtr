@@ -23,14 +23,24 @@ interface StatusBarProps {
    */
   words?: number;
   characters?: number;
+  /**
+   * True when `words`/`characters` describe the SELECTION rather than the whole
+   * document (6c-ii-b, F6).
+   *
+   * Without it the same pair of numbers means two different things and the bar
+   * changes between them silently — the reader sees the figure drop and has no
+   * way to tell a selection from a shorter document.
+   */
+  isSelection?: boolean;
 }
 
 /**
- * Bottom-of-canvas status bar: `[format] [Ln n, Col n] ……… [words · characters]`.
+ * Bottom-of-canvas status bar: `[format] [Ln n, Col n] ……… [words · characters]`,
+ * or `Selected: N words · M characters` while something is selected.
  * Purely presentational; every view decides for itself whether it has a real
  * position or count to report (DocumentView).
  */
-export function StatusBar({ format, line, column, words, characters }: StatusBarProps) {
+export function StatusBar({ format, line, column, words, characters, isSelection }: StatusBarProps) {
   const hasPosition = line !== undefined && column !== undefined;
   const hasCounts = words !== undefined && characters !== undefined;
   return (
@@ -40,7 +50,7 @@ export function StatusBar({ format, line, column, words, characters }: StatusBar
         <span className="status-bar-position">Ln {line}, Col {column}</span>
       )}
       <span className="status-bar-counts">
-        {hasCounts && `${words!.toLocaleString()} words · ${characters!.toLocaleString()} characters`}
+        {hasCounts && `${isSelection ? 'Selected: ' : ''}${words!.toLocaleString()} words · ${characters!.toLocaleString()} characters`}
       </span>
     </div>
   );

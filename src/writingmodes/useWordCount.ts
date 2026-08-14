@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { countText } from './countText';
-import type { CountSurface, TextCounts } from './types';
+import type { CountSurface, ScopedCounts } from './types';
 
 /** Debounce in milliseconds (spec §4.3). Exact, so a test can assert it. */
 export const COUNT_DEBOUNCE_MS = 150;
@@ -21,14 +21,21 @@ export const COUNT_DEBOUNCE_MS = 150;
  * mid-word. The visible cost is that the count can lag one keystroke, which is
  * the intended trade (spec §4.3), not a defect.
  */
-export function useWordCount(surface: CountSurface | null, version: unknown): TextCounts | null {
-  const [counts, setCounts] = useState<TextCounts | null>(null);
+export function useWordCount(surface: CountSurface | null, version: unknown): ScopedCounts | null {
+  const [counts, setCounts] = useState<ScopedCounts | null>(null);
 
   useEffect(() => {
     if (!surface) { setCounts(null); return; }
     const t = setTimeout(() => {
+      // The hook already distinguishes these two cases in order to choose what
+      // to count; it simply used to throw the distinction away. Reporting it is
+      // what lets the bar say which one the numbers describe (F6).
       const selected = surface.selectedText();
-      setCounts(countText(selected === '' ? surface.countableText() : selected));
+      const isSelection = selected !== '';
+      setCounts({
+        ...countText(isSelection ? selected : surface.countableText()),
+        isSelection,
+      });
     }, COUNT_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [surface, version]);
