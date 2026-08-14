@@ -4,6 +4,8 @@ import { Node as PMNode } from 'prosemirror-model';
 import { EditorState, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { liveSchema } from '../views/liveSchema';
+import { toLiveHtml } from '../views/htmlModel';
+import { activeBlock } from './activeBlock';
 import { focusDimPlugin, pmFocus, textblockRanges } from './pmFocus';
 
 function mount(paragraphs: string[]): EditorView {
@@ -172,6 +174,121 @@ describe('focus mode over a Live view', () => {
     expect(spy).toHaveBeenCalledTimes(1);
 
     spy.mockRestore();
+    view.destroy();
+  });
+});
+
+/**
+ * The HTML schema (HTML Live) — closing the gap that let 6c-ii's focus-mode
+ * defect ship (6c-ii-b Task 2, structural gap G1).
+ *
+ * Every test above this point uses `liveSchema`. Until this block existed, NO
+ * test in `src/writingmodes/` touched `htmlSchema` at all, for any of the
+ * three writing modes — so the design's load-bearing claim, that ONE driver
+ * serves both Live views, was asserted for focus mode and never exercised on
+ * the HTML side. That is the structural reason 1005 tests could not see a
+ * defect the owner found in minutes.
+ *
+ * These drive a REAL `toLiveHtml` parse rather than hand-built nodes, so the
+ * fixture has production shape: heading, paragraph nested in a container, a
+ * list item, a table cell, a code block, a blockquote, and a horizontal rule
+ * (an ATOM, not a textblock — the walk must step over it without counting it).
+ *
+ * Scope note, so these are not mistaken for a regression test for the defect
+ * itself: 6c-ii's HTML Live focus bug was a COLOUR defect, not a DOM one. The
+ * dim class does reach the right elements here and always did; what was wrong
+ * was dimming to a fixed absolute colour over a palette Edtr does not own.
+ * That is asserted in `HtmlLiveView`'s own stylesheet test (Task 4), which is
+ * the test that fails before its fix. These prove the structure the fix rests
+ * on, which nothing proved before.
+ */
+describe('focus mode under the HTML schema', () => {
+  const SOURCE = `<html><body>
+  <h1>Heading one</h1>
+  <p>An ordinary paragraph.</p>
+  <div><p>Nested in a container.</p></div>
+  <ul><li><p>A list item.</p></li></ul>
+  <table><tr><td>A table cell</td></tr></table>
+  <pre><code>const x = 1;</code></pre>
+  <blockquote><p>A quoted paragraph.</p></blockquote>
+  <hr>
+  <p>A trailing paragraph.</p>
+</body></html>`;
+
+  function htmlDoc(): PMNode {
+    const res = toLiveHtml(SOURCE);
+    if (!res.ok) throw new Error(`fixture failed to parse: ${res.reason}`);
+    return res.doc;
+  }
+
+  function mountHtml(doc: PMNode): EditorView {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    return new EditorView(host, {
+      state: EditorState.create({ doc, plugins: [focusDimPlugin()] }),
+    });
+  }
+
+  it('finds the innermost textblock inside every container the HTML schema builds', () => {
+    const doc = htmlDoc();
+    const ranges = textblockRanges(doc);
+    // heading, paragraph, div>p, li>p, td>p, codeBlock, blockquote>p, trailing p.
+    // The <hr> is an atom and contributes nothing — if it were counted this
+    // would be 9. The container nodes (div, ul, li, table, tr, td, blockquote)
+    // must never be lightable units themselves.
+    expect(ranges).toHaveLength(8);
+
+    const owners = ranges.map((r) => doc.resolve(r.from).parent.type.name);
+    expect(owners).toEqual([
+      'heading', 'paragraph', 'paragraph', 'paragraph',
+      'paragraph', 'codeBlock', 'paragraph', 'paragraph',
+    ]);
+    expect(owners).not.toContain('div');
+    expect(owners).not.toContain('table');
+    expect(owners).not.toContain('bulletList');
+  });
+
+  it('lights the caret\'s own block and dims every other one, in each container type', () => {
+    const doc = htmlDoc();
+    const ranges = textblockRanges(doc);
+
+    // Walk the caret through EVERY textblock. A container type whose position
+    // maths were wrong would return null here, and pmFocus dims everything
+    // when `activeBlock` is null (pmFocus.ts:78-80) — which presents as the
+    // caret's own block fading instead of lighting.
+    for (const r of ranges) {
+      const mid = Math.floor((r.from + r.to) / 2);
+      const active = activeBlock(ranges, mid);
+      expect(active, `no active block for caret at ${mid}`).not.toBeNull();
+      expect(active!.from).toBe(r.from);
+
+      const view = mountHtml(doc);
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, mid)));
+      pmFocus(view).setFocusEnabled(true);
+      // 8 textblocks, one lit, so 7 dimmed.
+      expect(dimmedCount(view), `wrong dim count with caret at ${mid}`).toBe(ranges.length - 1);
+      view.destroy();
+    }
+  });
+
+  it('dims nothing until it is switched on, exactly as under liveSchema', () => {
+    const view = mountHtml(htmlDoc());
+    expect(dimmedCount(view)).toBe(0);
+    pmFocus(view).setFocusEnabled(true);
+    expect(dimmedCount(view)).toBeGreaterThan(0);
+    pmFocus(view).setFocusEnabled(false);
+    expect(dimmedCount(view)).toBe(0);
+    view.destroy();
+  });
+
+  it('carries no document change, so dirty tracking sees nothing (no-beautify)', () => {
+    const view = mountHtml(htmlDoc());
+    const before = view.state.doc;
+    pmFocus(view).setFocusEnabled(true);
+    pmFocus(view).setFocusEnabled(false);
+    // Same node by IDENTITY, not merely equal: a re-created doc would defeat
+    // the point even if it compared equal.
+    expect(view.state.doc).toBe(before);
     view.destroy();
   });
 });
