@@ -90,3 +90,34 @@ describe('HTML Live focus dim', () => {
     expect(canvas).toContain('var(--dim-fg)');
   });
 });
+
+describe('HTML Live dimmed find matches (6c-ii-b, F8)', () => {
+  it('distinguishes the current match from the plain ones inside a dimmed block', () => {
+    // The residual the 6c-ii fix wave surfaced and left for the owner to rule
+    // on: one selector covered both, so every match inside a dimmed block wore
+    // the current match's colours and the current one was invisible among them.
+    expect(FOCUS_DIM_CSS).toContain('.edtr-dim edtr-mark.edtr-find-current');
+    expect(FOCUS_DIM_CSS).toMatch(/\.edtr-dim edtr-mark\.edtr-find-current\{[^}]*outline/);
+  });
+
+  it('distinguishes by a RING, not by restoring an Edtr foreground token', () => {
+    // Code view and Markdown Live split the two by colour, restoring the plain
+    // match to `var(--fg)`. That is correct there and wrong here: `--fg` is
+    // calibrated against Edtr's canvas and this surface renders the file's, so
+    // it would reintroduce the exact defect F3 fixed one rule above. Asserted
+    // so a later "make it consistent with canvas.css" change has to confront
+    // the reason rather than discover it.
+    expect(FOCUS_DIM_CSS).not.toContain('var(--fg)');
+    const currentRule = FOCUS_DIM_CSS.match(/\.edtr-dim edtr-mark\.edtr-find-current\{([^}]*)\}/);
+    expect(currentRule).not.toBeNull();
+    expect(currentRule![1]).toContain('var(--find-current-fg)');
+  });
+
+  it('keeps both kinds of match on the self-contained colour pair', () => {
+    // Legibility over an unknown backdrop comes first; the ring adds the
+    // distinction in a channel that does not depend on the backdrop at all.
+    expect(FOCUS_DIM_CSS).toMatch(
+      /\.edtr-dim edtr-mark\.edtr-find,[^{]*\{[^}]*var\(--find-current-bg\)/,
+    );
+  });
+});

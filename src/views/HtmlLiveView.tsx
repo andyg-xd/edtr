@@ -160,7 +160,27 @@ export const FOCUS_DIM_CSS =
   // the same mistake as rule 1's, and it was fixed once already in 6c-ii's fix
   // wave for this rule while rule 1 kept it.
   + '.edtr-dim edtr-mark.edtr-find,.edtr-dim edtr-mark.edtr-find *{'
-    + 'background:var(--find-current-bg)!important;color:var(--find-current-fg)!important}';
+    + 'background:var(--find-current-bg)!important;color:var(--find-current-fg)!important}'
+  // Rule 4 — inside a dimmed block, tell the CURRENT match apart from the rest
+  // (6c-ii-b, F8/D-D).
+  //
+  // Rule 3 deliberately covers both, because both must be legible against a
+  // background we do not control, and the one pair we know is self-contained
+  // is the current match's. That left every match inside a dimmed block
+  // wearing the current match's colours, so the current one was invisible
+  // among them.
+  //
+  // This is the split Code view and Markdown Live already have, but NOT the
+  // same mechanism, and the difference is the point. `canvas.css` splits them
+  // by colour — the plain match restores to `var(--fg)`, Edtr's own
+  // foreground. HTML Live cannot: `--fg` is calibrated against Edtr's canvas,
+  // and this surface renders the FILE's canvas, so restoring to it would
+  // reintroduce exactly the light-on-white / dark-on-black mistake F3 just
+  // fixed one rule above. Distinguishing by a RING instead keeps both matches
+  // on the one colour pair that is safe over any background, and adds the
+  // distinction in a channel that does not depend on the backdrop at all.
+  + '.edtr-dim edtr-mark.edtr-find-current{'
+    + 'outline:2px solid var(--find-current-fg)!important;outline-offset:1px}';
 
 /**
  * Typewriter end padding for the shadow render (6c-ii). `canvas.css` cannot
