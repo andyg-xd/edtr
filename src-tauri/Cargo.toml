@@ -37,3 +37,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 notify = "6"
 
+# macOS-only, and only to arrange the Web Inspector's presentation — see
+# src/devtools.rs. Kept target-scoped so no other platform pays for it.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSUserDefaults", "NSDictionary", "NSString", "NSValue"] }
+

@@ -1,4 +1,5 @@
 mod assets;
+mod devtools;
 mod fs;
 mod menu;
 mod recents;
@@ -22,6 +23,9 @@ pub fn run() {
         .manage(settings::SettingsState::default())
         .menu(|handle| menu::build_menu(handle, &[], &settings::Settings::default()))
         .setup(|app| {
+            // Before any window exists, so the first inspector opened already
+            // sees it (see devtools.rs for why this is a preference).
+            devtools::prefer_detached_inspector();
             let handle = app.handle();
             let loaded = recents::load(handle);
             if let Ok(mut l) = app.state::<recents::RecentsState>().0.lock() {
