@@ -7,7 +7,7 @@ import { EditorView as PmView } from 'prosemirror-view';
 import { liveSchema } from '../views/liveSchema';
 import { pmTypewriter } from './pmTypewriter';
 import { codeTypewriter } from './codeTypewriter';
-import { isPointerDown, resetPointerStateForTests } from './pointerState';
+import { isPointerDown, resetPointerStateForTests, subscribePointerRelease } from './pointerState';
 import { HOLD_RATIO } from './constants';
 
 /**
@@ -137,6 +137,63 @@ describe('range selections never hold', () => {
     view.dispatch({ selection: { anchor: 3, head: 3 } });
     surface.holdCaret(HOLD_RATIO);
     expect(calls).toHaveLength(1);
+    cleanup();
+  });
+});
+
+describe('re-arming on release (the regression the first drag guard shipped)', () => {
+  it('notifies release subscribers on pointerup, pointercancel and blur', () => {
+    const seen: string[] = [];
+    const un = subscribePointerRelease(() => seen.push('release'));
+    window.dispatchEvent(new Event('pointerdown'));
+    window.dispatchEvent(new Event('pointerup'));
+    expect(seen).toHaveLength(1);
+    window.dispatchEvent(new Event('pointerdown'));
+    window.dispatchEvent(new Event('pointercancel'));
+    expect(seen).toHaveLength(2);
+    window.dispatchEvent(new Event('pointerdown'));
+    window.dispatchEvent(new Event('blur'));
+    expect(seen).toHaveLength(3);
+    un();
+    window.dispatchEvent(new Event('pointerup'));
+    expect(seen, 'unsubscribe must actually detach').toHaveLength(3);
+  });
+
+  it('a PLAIN CLICK holds the caret line, via the release', () => {
+    // The exact defect found in GUI validation. A click changes the selection
+    // on pointerdown, which the drag guard suppresses, and pointerup carries
+    // no selection change — so without the re-arm nothing holds for a click at
+    // all, and the first keystroke then lurches the viewport the whole way.
+    //
+    // Mirrors DocumentView's wiring: subscribe holdCaret to the release.
+    const { surface, calls, cleanup } = pmSetup('hello there');
+    const un = subscribePointerRelease(() => surface.holdCaret(HOLD_RATIO));
+
+    window.dispatchEvent(new Event('pointerdown'));
+    surface.holdCaret(HOLD_RATIO);          // the click's own selection change
+    expect(calls, 'suppressed while the button is down').toHaveLength(0);
+
+    window.dispatchEvent(new Event('pointerup'));
+    expect(calls, 'the release must hold from the final caret position').toHaveLength(1);
+
+    un();
+    cleanup();
+  });
+
+  it('finishing a drag-select on a RANGE still holds nothing', () => {
+    // The release fires for a drag too, so the collapsed-selection guard is
+    // what stops a completed drag-select from scrolling. Without it this fix
+    // would have reintroduced a jump at the end of every drag.
+    const { view, surface, calls, cleanup } = pmSetup('hello there');
+    const un = subscribePointerRelease(() => surface.holdCaret(HOLD_RATIO));
+
+    window.dispatchEvent(new Event('pointerdown'));
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 6)));
+    surface.holdCaret(HOLD_RATIO);
+    window.dispatchEvent(new Event('pointerup'));
+
+    expect(calls, 'a completed drag-select must not scroll').toHaveLength(0);
+    un();
     cleanup();
   });
 });

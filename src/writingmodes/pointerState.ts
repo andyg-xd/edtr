@@ -22,18 +22,26 @@
  */
 let pointerDown = false;
 let installed = false;
+const releaseListeners = new Set<() => void>();
+
+function release(): void {
+  pointerDown = false;
+  // Copied before iterating: a listener that unsubscribes itself would
+  // otherwise mutate the set mid-iteration.
+  for (const cb of [...releaseListeners]) cb();
+}
 
 function install(): void {
   if (installed || typeof window === 'undefined') return;
   installed = true;
   window.addEventListener('pointerdown', () => { pointerDown = true; }, true);
-  window.addEventListener('pointerup', () => { pointerDown = false; }, true);
-  window.addEventListener('pointercancel', () => { pointerDown = false; }, true);
+  window.addEventListener('pointerup', release, true);
+  window.addEventListener('pointercancel', release, true);
   // Releasing the button outside the window can mean no pointerup ever
   // arrives. Without this the flag latches on and typewriter mode stops
   // holding for the rest of the session — a worse failure than the one being
   // fixed, and an invisible one.
-  window.addEventListener('blur', () => { pointerDown = false; });
+  window.addEventListener('blur', release);
 }
 
 export function isPointerDown(): boolean {
@@ -41,7 +49,31 @@ export function isPointerDown(): boolean {
   return pointerDown;
 }
 
+/**
+ * Run `cb` whenever a pointer is released. Returns an unsubscribe function.
+ *
+ * Typewriter mode needs this and does not work without it. A click's selection
+ * change happens on POINTERDOWN, which the drag guard suppresses — and
+ * pointerup carries no selection change of its own, so nothing would ever
+ * re-run the hold and a plain click would never centre the caret at all. The
+ * next thing to call `holdCaret` would be the first keystroke, by which point
+ * the caret is far from the hold line and the viewport lurches the whole
+ * distance in one jump. That is a real regression the first version of the
+ * drag guard shipped, found in GUI validation.
+ *
+ * So: suppress during the drag, then re-arm once, on release, from the final
+ * caret position. A release that ends on a RANGE selection still holds
+ * nothing — the collapsed-selection guard in the drivers covers that — so
+ * finishing a drag-select does not scroll either.
+ */
+export function subscribePointerRelease(cb: () => void): () => void {
+  install();
+  releaseListeners.add(cb);
+  return () => { releaseListeners.delete(cb); };
+}
+
 /** Test-only: drop the latched state between cases. */
 export function resetPointerStateForTests(): void {
   pointerDown = false;
+  releaseListeners.clear();
 }

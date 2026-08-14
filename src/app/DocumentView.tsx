@@ -41,6 +41,7 @@ import { pmFocus } from '../writingmodes/pmFocus';
 import { codeFocus } from '../writingmodes/codeFocus';
 import { HOLD_RATIO } from '../writingmodes/constants';
 import type { TypewriterSurface, CountSurface, FocusSurface } from '../writingmodes/types';
+import { subscribePointerRelease } from '../writingmodes/pointerState';
 import { codeCounts, pmCounts } from '../writingmodes/countSurfaces';
 import { useWordCount } from '../writingmodes/useWordCount';
 import type { WritingModes } from '../settings/writingModes';
@@ -387,6 +388,24 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     if (!typewriter || !modes.typewriter) return;
     typewriter.holdCaret(HOLD_RATIO);
   }, [typewriter, modes.typewriter, codeCursor]);
+
+  // Re-arm the hold when a pointer is released (6c-ii-b, F1 follow-up).
+  //
+  // The drag guard in the drivers suppresses holds while a pointer is down,
+  // which is what stops a drag-select running away. But a plain CLICK changes
+  // the selection on pointerdown too, so it is suppressed by the same guard —
+  // and pointerup carries no selection change, so without this nothing would
+  // ever hold for a click. The first keystroke would then hold from a caret
+  // that has drifted far off the line, lurching the viewport in one jump.
+  // Found in GUI validation of the first version of that guard.
+  //
+  // Held from the FINAL caret position, after the pointer is up. A release
+  // that ends on a range selection still scrolls nothing, because the drivers'
+  // collapsed-selection guard rejects it.
+  useEffect(() => {
+    if (!typewriter || !modes.typewriter) return;
+    return subscribePointerRelease(() => typewriter.holdCaret(HOLD_RATIO));
+  }, [typewriter, modes.typewriter]);
 
   // Drive the enable/disable toggle only -- the decoration plugin derives
   // WHICH block is dimmed straight from the editor's own selection state on
