@@ -98,8 +98,67 @@ const FIND_HIGHLIGHT_CSS =
  * stylesheet last does not change that — source order only breaks ties at
  * equal specificity.
  */
-const FOCUS_DIM_CSS =
-  '.edtr-dim,.edtr-dim *{color:var(--dim-fg)!important}'
+export const FOCUS_DIM_CSS =
+  // Rule 1 — dim the block RELATIVELY, never to a fixed colour (6c-ii-b, F3).
+  //
+  // `currentColor` inside the `color` property resolves to the INHERITED
+  // colour, so this fades the colour the file's own content is already sitting
+  // in, toward whatever is behind it, rather than replacing it with one of
+  // ours. The fade is an ALPHA reduction, which is what makes it independent of
+  // both Edtr's theme and the file's background.
+  //
+  // Be precise about the limit of this, because it is easy to overclaim: an
+  // element that sets its OWN colour does not keep that hue. Our `!important`
+  // wins, and `currentColor` in the `color` property is the inherited value,
+  // not the element's own specified one — CSS gives no way to read back a
+  // colour you are overriding. So a dimmed block flattens to one faded tone,
+  // exactly as it did before this change (which forced every element to one
+  // flat token). What changed is that the tone is now derived from the file's
+  // own inherited colour and reduced in alpha, instead of being an Edtr colour
+  // chosen against Edtr's canvas. `opacity` is the only mechanism that would
+  // preserve per-element hue, and it is rejected below for a harder reason.
+  //
+  // That is the whole fix: 6c-ii dimmed to `var(--dim-fg)`, an
+  // Edtr shell token calibrated against Edtr's own canvas — but HTML Live
+  // renders the FILE's canvas (forced white, see SCAFFOLD_DEFAULT_CSS). In
+  // dark theme that token is a dark grey, which on white reads as ordinary
+  // body text, so nothing appeared to dim at all; in light theme it is
+  // mid-grey, which correctly lightens the file's dark text and DARKENS every
+  // colour lighter than itself — on the benchmark file, 4 of its 5 text
+  // colours. A bidirectional symptom is the signature of an absolute colour
+  // imposed on a palette we do not own.
+  `.edtr-dim{color:color-mix(in srgb,currentColor,transparent var(--dim-fade))!important}`
+  // Rule 2 — descendants take the block's already-dimmed colour VERBATIM.
+  //
+  // `inherit`, emphatically NOT the same `color-mix` as rule 1: `currentColor`
+  // would re-mix against the parent's already-faded value at every level, so a
+  // span inside a link inside a paragraph would land at 0.32³ ≈ 3% and vanish.
+  // `inherit` copies the parent's computed value exactly, so the fade applies
+  // once no matter how deep the file's markup nests.
+  //
+  // The `*` is still required for the original reason: `color` is inherited
+  // only by descendants that do not set their own, so without this a dimmed
+  // paragraph containing a link would keep the link at full strength. The cost
+  // is that descendants lose their individual hues inside a dimmed block —
+  // which is exactly what the previous implementation did too, since it forced
+  // every descendant to one flat token. No regression, and the block itself
+  // now keeps its own hue where it did not before.
+  + '.edtr-dim *{color:inherit!important}'
+  // Rule 3 — find's highlight stays legible through the dimming (spec §5.2).
+  //
+  // Specificity (0,2,1) beats both rules above, so the mark is restored rather
+  // than faded — which is precisely why this dim is expressed as a colour and
+  // not as `opacity` on the block. Opacity would be simpler, would preserve
+  // hues perfectly and would not compound, but an ancestor's opacity CANNOT be
+  // undone by a descendant: this restore rule would stop working, and with it
+  // the capability 6c-i shipped and matrix items 9 and 19 exist to protect. Do
+  // not "simplify" this to opacity.
+  //
+  // The restore needs an explicit, self-contained pair rather than the shell's
+  // `--fg`: the file supplies the background here, so an Edtr token calibrated
+  // against Edtr's canvas can land as light-on-white or dark-on-black. That is
+  // the same mistake as rule 1's, and it was fixed once already in 6c-ii's fix
+  // wave for this rule while rule 1 kept it.
   + '.edtr-dim edtr-mark.edtr-find,.edtr-dim edtr-mark.edtr-find *{'
     + 'background:var(--find-current-bg)!important;color:var(--find-current-fg)!important}';
 

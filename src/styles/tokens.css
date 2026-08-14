@@ -58,8 +58,22 @@
 
   /* Focus mode's dimmed text (6c-ii, D6). A token rather than a literal so
      colour stays in this file, and so the reduced-contrast override below has
-     exactly one place to act. */
+     exactly one place to act.
+
+     Used by the two surfaces whose palette EDTR owns — Code view and Markdown
+     Live — where an absolute colour is exactly right. HTML Live cannot use it:
+     it renders the file's own canvas and the file's own palette, so it fades
+     relatively via `--dim-fade` instead (6c-ii-b, F3). */
   --dim-fg: var(--fg-disabled);
+
+  /* How far focus mode fades a dimmed block in HTML Live, as the `transparent`
+     share of a color-mix — so 68% leaves 32% of the file's own colour.
+     Calibrated to match what `--dim-fg` achieves on the surfaces Edtr owns:
+     black text faded to 32% over white lands at ~#b6b6b6, which is
+     `--fg-disabled` in the light theme almost exactly. Expressed as a fade
+     rather than a colour precisely because HTML Live has no single background
+     to calibrate a colour against. */
+  --dim-fade: 68%;
 
   /* Spacing scale — replaces 12+ ad-hoc padding combinations. */
   --space-1: 2px;
