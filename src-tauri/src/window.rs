@@ -2,6 +2,28 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+
+/// The smallest a window may be dragged (6c-ii-b, F7).
+///
+/// **560, not the 480 first proposed, and the difference was measured.** The
+/// owner set 480 provisionally ("then see how that works"); rendering the real
+/// ribbon and the real status bar at a range of widths showed the RIBBON is the
+/// binding constraint and needs **553px** to stay on one line — at 480 it
+/// overflows its box by 74px. 560 is that requirement plus a little slack.
+///
+/// The status bar is nowhere near binding: 317px with typical counts, and
+/// **416px** with the widest string it can ever show (a huge document, with the
+/// new "Selected:" label). That is why spec D3's "drop the characters figure
+/// when the bar does not fit at the minimum width" is NOT implemented — at any
+/// floor that leaves the ribbon usable, the bar always fits, so the rule could
+/// never fire.
+///
+/// These MUST stay in step with the `minWidth`/`minHeight` in
+/// `tauri.conf.json`: that file governs the first window, these govern every
+/// window opened afterwards, and nothing in the build compares them. A test
+/// below reads the config and asserts they agree, so the two cannot drift.
+pub const MIN_WINDOW_WIDTH: f64 = 560.0;
+pub const MIN_WINDOW_HEIGHT: f64 = 320.0;
 use tauri::Emitter;
 
 /// What a freshly-opened window should load. Matches the TS `OpenPayload`
@@ -75,6 +97,14 @@ pub fn open_in_new_window(
     WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
         .title("Edtr")
         .inner_size(800.0, 600.0)
+        // Must be repeated here, not just in tauri.conf.json (6c-ii-b, F7).
+        // That config block describes only the FIRST window; every window the
+        // Preview model opens comes through this builder and inherits nothing
+        // from it. Setting the floor in one place would leave the app's own
+        // ⌘O / Finder / Dock-drop windows unconstrained -- which is the
+        // majority of them, and would look correct on the one window anybody
+        // checks first. Kept as literals matching MIN_INNER_SIZE below.
+        .min_inner_size(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
         .build()
         .map_err(|e| {
             // Don't leak a stranded payload if the window failed to build.
@@ -291,6 +321,27 @@ pub fn quit_vote(app: AppHandle, window: WebviewWindow, vote: String, poll: Stat
 pub fn quit_ack(window: WebviewWindow, poll: State<QuitPollState>) {
     if let Ok(mut p) = poll.0.lock() {
         p.mark_ack(window.label());
+    }
+}
+
+#[cfg(test)]
+mod min_size_tests {
+    use super::*;
+
+    /// The window floor lives in TWO places that no compiler compares:
+    /// `tauri.conf.json` (the first window) and the builder above (every window
+    /// opened afterwards). A mismatch would be invisible — the app would start
+    /// correctly and only misbehave on the second window, which is exactly the
+    /// kind of asymmetry that reaches a user instead of a test.
+    #[test]
+    fn the_config_and_the_builder_agree_on_the_minimum_size() {
+        let conf = include_str!("../tauri.conf.json");
+        let parsed: serde_json::Value = serde_json::from_str(conf).expect("tauri.conf.json parses");
+        let win = &parsed["app"]["windows"][0];
+        let w = win["minWidth"].as_f64().expect("tauri.conf.json sets minWidth");
+        let h = win["minHeight"].as_f64().expect("tauri.conf.json sets minHeight");
+        assert_eq!(w, MIN_WINDOW_WIDTH, "minWidth in tauri.conf.json must match MIN_WINDOW_WIDTH");
+        assert_eq!(h, MIN_WINDOW_HEIGHT, "minHeight in tauri.conf.json must match MIN_WINDOW_HEIGHT");
     }
 }
 
