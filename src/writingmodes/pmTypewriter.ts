@@ -1,5 +1,6 @@
 import type { EditorView } from 'prosemirror-view';
 import { scrollToRatio } from './scrollToRatio';
+import { isPointerDown } from './pointerState';
 import { END_PAD_RATIO } from './constants';
 import type { TypewriterSurface } from './types';
 
@@ -61,6 +62,29 @@ export function pmTypewriter(
 
   return {
     holdCaret(ratio) {
+      // Two guards, both of which must pass before anything scrolls (6c-ii-b, F1).
+      //
+      // 1. NOT during a pointer drag. `holdCaret` runs on every selection
+      //    change, and a drag-select changes the selection on every pointer
+      //    move — so scrolling moves the content out from under the held
+      //    pointer, which extends the selection further, which fires another
+      //    hold. A feedback loop, not a timing race: delaying the scroll only
+      //    slows the loop down.
+      // 2. ONLY for a collapsed caret. Typewriter mode holds the CARET line;
+      //    a range selection has no single line to hold, and yanking the
+      //    viewport while someone is selecting text is hostile regardless of
+      //    where it would land. This also covers drags that never touch the
+      //    pointer, such as ⇧↓.
+      //
+      // Both are needed. Guard 2 alone would still let the initial mousedown
+      // through — that click collapses the selection — and that one scroll is
+      // exactly the jolt that displaces the drag before it starts. Guard 1
+      // alone would miss keyboard selection entirely.
+      //
+      // Placed ahead of the padding write as well, so a suppressed hold costs
+      // no DOM work at all.
+      if (isPointerDown()) return;
+      if (!view.state.selection.empty) return;
       const scroller = scrollerFor(view);
       if (!scroller) return;
       // Keep the padding sized to the scroller's CURRENT height before
