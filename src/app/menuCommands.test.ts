@@ -17,6 +17,8 @@ function tracked(): MenuHandlers & { calls: string[] } {
     onFindNext: () => calls.push('find-next'),
     onFindPrev: () => calls.push('find-prev'),
     onReplace: () => calls.push('replace'),
+    onToggleTypewriter: () => calls.push('toggle-typewriter'),
+    onToggleFocus: () => calls.push('toggle-focus'),
   };
 }
 
@@ -35,6 +37,8 @@ function makeHandlers(): MenuHandlers {
     onFindNext: vi.fn(),
     onFindPrev: vi.fn(),
     onReplace: vi.fn(),
+    onToggleTypewriter: vi.fn(),
+    onToggleFocus: vi.fn(),
   };
 }
 
@@ -70,11 +74,40 @@ describe('dispatchMenuCommand', () => {
     expect(handlers.onReplace).toHaveBeenCalledTimes(1);
   });
 
-  it('MENU_COMMANDS contains every command that dispatchMenuCommand handles', () => {
-    const all = [
-      'open', 'open-folder', 'save', 'save-as', 'close', 'quit-poll', 'quit-abort',
-      'find', 'find-next', 'find-prev', 'replace',
-    ] as const satisfies readonly MenuCommand[];
-    expect(MENU_COMMANDS as readonly string[]).toEqual(all);
+  it('every command in MENU_COMMANDS reaches exactly one handler', () => {
+    // The real safety net, and deliberately DATA-DRIVEN rather than a literal
+    // list. The test this replaced asserted MENU_COMMANDS equalled a hardcoded
+    // array, which forced you to notice a new command but never forced it to
+    // WORK: `dispatchMenuCommand` returns void, so TypeScript does not require
+    // the switch to be exhaustive, and a command with no `case` is a silent
+    // no-op at runtime — the ⌥⌘F failure shape.
+    //
+    // The Proxy means no command→handler mapping is maintained here either;
+    // any handler the dispatcher calls is recorded by name, so this cannot
+    // drift out of step with MenuHandlers.
+    for (const cmd of MENU_COMMANDS) {
+      const called: string[] = [];
+      const handlers = new Proxy({} as MenuHandlers, {
+        get: (_target, prop: string) => () => { called.push(prop); },
+      });
+      dispatchMenuCommand(cmd, handlers);
+      expect(
+        called,
+        `"${cmd}" dispatched to no handler — add a case to dispatchMenuCommand`,
+      ).toHaveLength(1);
+    }
+  });
+
+  it('fails for a command that has no dispatch case (probe for the test above)', () => {
+    // Proves the assertion above is not vacuous: a command name that is NOT in
+    // the switch must record zero handler calls. If dispatchMenuCommand ever
+    // grew a catch-all `default`, the test above would stop detecting missing
+    // cases and this would fail, which is the warning we want.
+    const called: string[] = [];
+    const handlers = new Proxy({} as MenuHandlers, {
+      get: (_target, prop: string) => () => { called.push(prop); },
+    });
+    dispatchMenuCommand('not-a-real-command' as MenuCommand, handlers);
+    expect(called).toHaveLength(0);
   });
 });

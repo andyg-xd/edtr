@@ -21,7 +21,8 @@ pub fn run() {
         .manage(window::LaunchOpen::default())
         .manage(recents::RecentsState::default())
         .manage(settings::SettingsState::default())
-        .menu(|handle| menu::build_menu(handle, &[], &settings::Settings::default()))
+        .manage(menu::MenuModeState::default())
+        .menu(|handle| menu::build_menu(handle, &[], menu::MenuModes::default()))
         .setup(|app| {
             // Before any window exists, so the first inspector opened already
             // sees it (see devtools.rs for why this is a preference).
@@ -101,30 +102,6 @@ pub fn run() {
                 });
                 return;
             }
-            if let Some(mode) = menu::writing_mode_for_menu_id(id.as_str()) {
-                // App-wide state (spec §6.3): handled entirely here, with no
-                // hop through a focused window's frontend. `set_writing_mode`
-                // owns persist + broadcast + the checkmark rebuild, so this
-                // is the one write path for both the menu and the chrome
-                // toggle — there is no `menu://` event for these two ids, and
-                // no frontend listener to add or to forget.
-                let state = app.state::<settings::SettingsState>();
-                let current = settings::get_settings(state.clone()).unwrap_or_default();
-                // Exhaustive on purpose: `mode` only ever comes from
-                // `writing_mode_for_menu_id`, which today can only produce
-                // "typewriter"/"focus", but a catch-all arm here would
-                // silently toggle focus for any third name added there later.
-                // Every other link in this chain is single-sourced
-                // (`settings::with_mode`/`is_valid_writing_mode`); this makes
-                // the one remaining loose end fail closed instead.
-                let on = match mode {
-                    "typewriter" => !current.typewriter,
-                    "focus" => !current.focus,
-                    _ => return,
-                };
-                let _ = settings::set_writing_mode(app.clone(), state, mode.to_string(), on);
-                return;
-            }
             let Some(event_name) = menu::menu_event_name(id.as_str()) else { return };
             // Deliver to the FOCUSED window only. `emit_to(<label>, …)` targets
             // that label; only that window's window-scoped listener (see
@@ -158,7 +135,7 @@ pub fn run() {
             watcher::watcher_available,
             settings::get_settings,
             settings::set_theme,
-            settings::set_writing_mode
+            menu::sync_view_menu
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

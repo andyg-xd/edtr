@@ -15,7 +15,7 @@ import { pickFiles, pickFolder, pickSavePath, openInNewWindow, takePendingOpen, 
 import { basename } from '../files/fileTypes';
 import { recordRecent } from '../files/recents';
 import { useTheme } from '../settings/useTheme';
-import { useWritingModeSettings } from '../settings/useWritingModeSettings';
+import { useWindowWritingModes } from '../settings/useWindowWritingModes';
 import { useOpenDocuments } from './useOpenDocuments';
 import { docIsDirty, windowIsDirty, type OpenDoc, type ViewMode } from '../files/openDocuments';
 import { isEmptyWindow, type OpenPayload } from '../files/openPayload';
@@ -52,7 +52,7 @@ export function EditorWindow() {
   const [watcherUnavailable, setWatcherUnavailable] = useState(false);
   const watcherAvailableRef = useRef(true);
   const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme();
-  const { modes: writingModes, setMode: setWritingMode } = useWritingModeSettings();
+  const { modes: writingModes, setMode: setWritingMode, toggleMode: toggleWritingMode } = useWindowWritingModes();
   const viewRef = useRef<DocumentViewHandle>(null);
 
   // Per-doc reload-banner state + a per-doc remount nonce. The nonce forces the
@@ -440,6 +440,10 @@ export function EditorWindow() {
     onFindNext: () => viewRef.current?.findNext(),
     onFindPrev: () => viewRef.current?.findPrev(),
     onReplace: () => viewRef.current?.openReplace(),
+    // The View menu items carry no state of their own -- they flip THIS
+    // window's mode, and the checkmark follows from the resulting state.
+    onToggleTypewriter: () => toggleWritingMode('typewriter'),
+    onToggleFocus: () => toggleWritingMode('focus'),
   });
 
   const effectiveViewMode: ViewMode = active && active.viewMode === 'live' && activeLiveAvailable ? 'live' : 'code';

@@ -5,21 +5,22 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Persisted settings.
+///
+/// 6c-ii's `typewriter`/`focus` fields were REMOVED in 6c-ii-b: under D-A the
+/// writing modes are per-window state that always starts off, so there is
+/// nothing to persist. Removing them is safe for existing settings files —
+/// serde ignores unknown fields by default (there is no
+/// `deny_unknown_fields`), so a file written by 6c-ii still parses and its
+/// stored `theme` still loads. The two stale keys simply sit there until the
+/// next write drops them.
 pub struct Settings {
     pub theme: String,
-    /// Typewriter mode (6c-ii, D5). `#[serde(default)]` so a settings file
-    /// written before this phase — which has only `theme` — still parses.
-    /// Without it, read_settings returns None and the stored theme is lost.
-    #[serde(default)]
-    pub typewriter: bool,
-    /// Focus mode (6c-ii, D5). Same defaulting rationale as above.
-    #[serde(default)]
-    pub focus: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { theme: "system".to_string(), typewriter: false, focus: false }
+        Settings { theme: "system".to_string() }
     }
 }
 
@@ -36,38 +37,6 @@ pub fn is_valid_theme(mode: &str) -> bool {
 /// gained. Pure, so the preservation is provable without a Tauri app handle.
 pub fn with_theme(current: &Settings, theme: String) -> Settings {
     Settings { theme, ..current.clone() }
-}
-
-/// A copy of `current` with one writing mode set and everything else
-/// preserved. `None` when the mode name is unknown.
-///
-/// This match is the **single source of truth** for which mode names exist —
-/// `is_valid_writing_mode` below is defined in terms of it rather than a
-/// separately-maintained name list, so there is no second list that could
-/// drift out of sync with this one (a real defect in an earlier draft of
-/// this file: `is_valid_writing_mode` and this match were once two
-/// independently hardcoded lists of "typewriter"/"focus").
-pub fn with_mode(current: &Settings, mode: &str, on: bool) -> Option<Settings> {
-    match mode {
-        "typewriter" => Some(Settings { typewriter: on, ..current.clone() }),
-        "focus" => Some(Settings { focus: on, ..current.clone() }),
-        _ => None,
-    }
-}
-
-/// Whether `mode` is a recognized writing-mode name. Delegates to
-/// `with_mode` — using a throwaway `Settings::default()` as the base, since
-/// only whether the match succeeds matters here — so this can never
-/// disagree with what `with_mode` actually handles: there is exactly one
-/// list of valid names (the match arms above), not two.
-///
-/// Defined in terms of `with_mode` so the two can never disagree — do not
-/// reintroduce a separate list (e.g. a `VALID_MODES` const) here. An earlier
-/// draft of this file had exactly that second list, hardcoded independently
-/// of `with_mode`'s match arms, which is what this function exists to rule
-/// out structurally rather than by convention.
-pub fn is_valid_writing_mode(mode: &str) -> bool {
-    with_mode(&Settings::default(), mode, false).is_some()
 }
 
 /// Read settings from an exact file path. Missing / corrupt / invalid-theme → None
@@ -119,9 +88,12 @@ pub fn get_settings(state: State<SettingsState>) -> Option<Settings> {
 /// what's stored — saves it to disk, updates the in-memory state, and
 /// broadcasts settings://changed to all windows. Returns whether it actually
 /// wrote (`Ok(true)`) or `compute` produced no change (`Ok(false)`), so a
-/// caller that only needs a follow-up action on a real change — `set_writing_mode`'s
-/// menu rebuild, specifically — doesn't have to run that follow-up
-/// unconditionally on every no-op call.
+/// caller that only needs a follow-up action on a real change doesn't have to
+/// run that follow-up unconditionally on every no-op call. (6c-ii-b removed
+/// the one caller that used this -- `set_writing_mode`'s menu rebuild -- so
+/// the return value is currently unused by `set_theme`; the signal is kept
+/// because the emit-if-changed behaviour it reports on is what stops a
+/// cross-window adoption echoing into a loop.)
 ///
 /// A no-op (`compute` returns the same value that's already stored) neither
 /// saves nor emits, so a window adopting a cross-window change doesn't echo
@@ -136,7 +108,7 @@ pub fn get_settings(state: State<SettingsState>) -> Option<Settings> {
 /// reject its input gracefully from inside the same lock acquisition, via the
 /// `?` below, instead of panicking while the guard is held: a panic here
 /// would poison the mutex, and every later `get_settings`/`set_theme`/
-/// `set_writing_mode` call takes that same lock, so one poisoned guard wedges
+/// settings command takes that same lock, so one poisoned guard wedges
 /// settings for the rest of the process. `?` unwinds normally (it's an early
 /// return, not a panic), which drops `g` and unlocks cleanly.
 ///
@@ -185,53 +157,6 @@ pub fn set_theme<R: Runtime>(
     Ok(())
 }
 
-/// Persist one writing mode + broadcast settings://changed to all windows,
-/// only when the value actually changed (a no-op write must not re-broadcast,
-/// or a window adopting a cross-window change echoes forever).
-///
-/// The whole write path for both modes lives here rather than in the frontend
-/// (spec §6.3): the View menu and the chrome toggle both land on this command,
-/// so the native checkmark cannot drift from the stored value, and a toggle
-/// works even when no window holds focus.
-///
-/// Validated up front, mirroring `set_theme`: an unknown name is rejected
-/// before the lock is even touched. `with_mode` is also given a chance to
-/// reject the mode a second time, inside the closure passed to
-/// `apply_if_changed` — belt-and-suspenders, not redundant busywork: if a
-/// future mode name were ever added to one of `is_valid_writing_mode` /
-/// `with_mode` and not the other (which the doc comment on `with_mode`
-/// explains shouldn't be possible, since one is defined in terms of the
-/// other), this still degrades to a graceful `Err` via `.ok_or_else` rather
-/// than an `.expect()` panic while the mutex guard is held.
-#[tauri::command]
-pub fn set_writing_mode<R: Runtime>(
-    app: AppHandle<R>,
-    state: State<SettingsState>,
-    mode: String,
-    on: bool,
-) -> Result<(), String> {
-    if !is_valid_writing_mode(&mode) {
-        return Err(format!("invalid writing mode: {mode}"));
-    }
-    let changed = apply_if_changed(&app, &state, |current| {
-        with_mode(current, &mode, on).ok_or_else(|| format!("invalid writing mode: {mode}"))
-    })?;
-    // Keep the View menu's checkmarks in step with whichever affordance
-    // flipped the mode — the native menu item or the chrome toggle both land
-    // on this command (spec §6.3), so this is the one place a rebuild needs
-    // to be triggered from. Only rebuild when something actually changed —
-    // `rebuild` is idempotent so a rebuild on a no-op wouldn't be wrong, just
-    // a wasted main-thread hop and menu reconstruction on every redundant
-    // toggle call. `apply_if_changed` has already returned by this point,
-    // which drops its settings-mutex guard before this line runs, so this
-    // call is never made from inside the locked section. `menu::rebuild`
-    // itself hops to the main thread (menu ops must run there), so calling it
-    // from here — on whatever thread invoked this command — is safe.
-    if changed {
-        crate::menu::rebuild(&app);
-    }
-    Ok(())
-}
 
 #[cfg(test)]
 mod store_tests {
@@ -258,7 +183,7 @@ mod store_tests {
         std::fs::write(&path, r#"{"theme":"dark"}"#).unwrap();
         assert_eq!(
             read_settings(&path),
-            Some(Settings { theme: "dark".into(), typewriter: false, focus: false })
+            Some(Settings { theme: "dark".into() })
         );
     }
 
@@ -296,59 +221,41 @@ mod store_tests {
     fn write_then_read_roundtrips() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
-        let s = Settings { theme: "light".into(), typewriter: false, focus: false };
+        let s = Settings { theme: "light".into() };
         write_settings(&path, &s).unwrap();
         assert_eq!(read_settings(&path), Some(s));
     }
 
     #[test]
-    fn modes_default_to_off_when_absent_from_the_file() {
-        // The owner's settings.json contains only `theme`. Without serde
-        // defaults this returns None and the stored theme is silently lost.
+    fn a_settings_file_written_by_6c_ii_still_loads() {
+        // 6c-ii-b REMOVED the `typewriter`/`focus` fields, so every settings
+        // file already on disk carries two keys the struct no longer has. This
+        // is the forward-compatibility claim the struct's doc comment makes,
+        // asserted rather than assumed: serde ignores unknown fields by
+        // default (there is no `deny_unknown_fields`), so the stored theme
+        // must survive. If it did not, upgrading would silently reset the
+        // user's theme -- exactly the failure the `#[serde(default)]` attrs
+        // were added to prevent when these fields were INTRODUCED.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
-        std::fs::write(&path, r#"{"theme":"dark"}"#).unwrap();
-        let s = read_settings(&path).expect("a theme-only file must still load");
+        std::fs::write(&path, r#"{"theme":"dark","typewriter":true,"focus":true}"#).unwrap();
+        let s = read_settings(&path).expect("a 6c-ii settings file must still load");
         assert_eq!(s.theme, "dark");
-        assert!(!s.typewriter);
-        assert!(!s.focus);
     }
 
-    #[test]
-    fn modes_round_trip_through_a_write() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("settings.json");
-        let s = Settings { theme: "light".into(), typewriter: true, focus: true };
-        write_settings(&path, &s).unwrap();
-        assert_eq!(read_settings(&path), Some(s));
-    }
 
     #[test]
-    fn merging_a_theme_preserves_the_modes() {
-        // The trap: set_theme used to build a fresh Settings, which would
-        // silently switch both modes off whenever the theme changed.
-        let current = Settings { theme: "dark".into(), typewriter: true, focus: false };
+    fn merging_a_theme_preserves_every_other_field() {
+        // The trap this guards: set_theme used to build a fresh Settings from
+        // scratch, so growing the struct would make a theme change silently
+        // clear whatever else it had gained. 6c-ii-b removed the two mode
+        // fields (they no longer persist), which leaves `theme` alone in the
+        // struct and this assertion looking trivially true TODAY. It is kept,
+        // and named for the general property rather than for the modes,
+        // because the trap returns the moment any second field is added --
+        // which is exactly when nobody would think to re-derive it.
+        let current = Settings { theme: "dark".into() };
         let merged = with_theme(&current, "light".into());
         assert_eq!(merged.theme, "light");
-        assert!(merged.typewriter, "changing the theme must not clear typewriter");
-        assert!(!merged.focus);
-    }
-
-    #[test]
-    fn merging_a_mode_preserves_the_theme_and_the_other_mode() {
-        let current = Settings { theme: "dark".into(), typewriter: false, focus: false };
-        let merged = with_mode(&current, "focus", true).unwrap();
-        assert_eq!(merged.theme, "dark", "toggling a mode must not touch the theme");
-        assert!(merged.focus);
-        assert!(!merged.typewriter, "toggling focus must not touch typewriter");
-    }
-
-    #[test]
-    fn an_unknown_mode_name_is_rejected() {
-        let current = Settings::default();
-        assert!(with_mode(&current, "zen", true).is_none());
-        assert!(is_valid_writing_mode("typewriter"));
-        assert!(is_valid_writing_mode("focus"));
-        assert!(!is_valid_writing_mode("zen"));
     }
 }

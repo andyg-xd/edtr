@@ -7,32 +7,11 @@ export type WritingMode = keyof WritingModes;
 
 export const MODES_OFF: WritingModes = { typewriter: false, focus: false };
 
-const STORAGE_KEY = 'edtr.writingModes';
-
-/**
- * The synchronous paint cache, mirroring what `theme.ts` does for the theme.
- * Without it a window paints undimmed and unscrolled, then snaps once the
- * Tauri round trip lands — a visible flicker on every window open.
- *
- * Anything unparseable reads as both modes off, which is the safe direction:
- * a window that fails to restore a mode is mildly annoying, one that dims
- * without being asked looks broken.
+/*
+ * 6c-ii-b (D-A) removed `readCachedModes`/`writeCachedModes` and the
+ * `edtr.writingModes` localStorage key they used. They existed to paint a
+ * window's persisted modes synchronously and avoid a flicker when the Tauri
+ * round trip landed. Per-window modes always start off, so there is nothing to
+ * restore, nothing to paint early, and no flicker to prevent -- the cache
+ * would only have been able to restore a value that must not be restored.
  */
-export function readCachedModes(): WritingModes {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return MODES_OFF;
-    const parsed = JSON.parse(raw) as Partial<WritingModes>;
-    return { typewriter: parsed.typewriter === true, focus: parsed.focus === true };
-  } catch {
-    return MODES_OFF;
-  }
-}
-
-export function writeCachedModes(modes: WritingModes): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(modes));
-  } catch {
-    // A full or disabled localStorage must not break the toggle itself.
-  }
-}
