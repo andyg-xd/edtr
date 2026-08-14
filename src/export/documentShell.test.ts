@@ -22,6 +22,19 @@ describe('documentShell', () => {
     const out = documentShell({ title: 't', body: '', extraHead: '<style>.k{color:red}</style>' });
     expect(out).toContain('.k{color:red}');
   });
+
+  it('emits no blank line or undefined when extraHead is omitted', () => {
+    const out = documentShell({ title: 'Notes', body: '<p>hi</p>' });
+    expect(out).not.toContain('undefined');
+    // Split by lines and verify no empty line between </style> and </head>
+    const lines = out.split('\n');
+    const styleIdx = lines.findIndex((l) => l === '</style>');
+    const headIdx = lines.findIndex((l) => l === '</head>');
+    expect(styleIdx).toBeGreaterThan(-1);
+    expect(headIdx).toBeGreaterThan(-1);
+    // The </head> should be exactly one line after </style> with no blank line between
+    expect(headIdx).toBe(styleIdx + 1);
+  });
 });
 
 describe('EXPORT_STYLES', () => {

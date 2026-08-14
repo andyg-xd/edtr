@@ -16,8 +16,7 @@ export function documentShell(opts: { title: string; body: string; extraHead?: s
 <title>${escapeHtml(opts.title)}</title>
 <style>
 ${EXPORT_STYLES}
-</style>
-${opts.extraHead ?? ''}
+</style>${opts.extraHead ? `\n${opts.extraHead}` : ''}
 </head>
 <body>
 ${opts.body}
