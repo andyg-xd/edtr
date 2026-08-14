@@ -4,6 +4,7 @@ mod fs;
 mod menu;
 mod recents;
 mod settings;
+mod spike_pdf;
 mod watcher;
 mod window;
 
@@ -27,6 +28,7 @@ pub fn run() {
             // Before any window exists, so the first inspector opened already
             // sees it (see devtools.rs for why this is a preference).
             devtools::prefer_detached_inspector();
+            spike_pdf::maybe_run(app.handle());
             let handle = app.handle();
             let loaded = recents::load(handle);
             if let Ok(mut l) = app.state::<recents::RecentsState>().0.lock() {

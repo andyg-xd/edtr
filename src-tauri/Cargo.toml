@@ -41,5 +41,7 @@ notify = "6"
 # src/devtools.rs. Kept target-scoped so no other platform pays for it.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSUserDefaults", "NSDictionary", "NSString", "NSValue"] }
+objc2-foundation = { version = "0.3", features = ["NSUserDefaults", "NSDictionary", "NSString", "NSValue", "NSURL"] }
+# SPIKE (6c-iii): NSPrintInfo/NSPrintOperation for export-to-PDF feasibility.
+objc2-app-kit = { version = "0.3", features = ["NSPrintInfo", "NSPrintOperation", "NSGraphics", "NSResponder", "NSView", "NSWindow"] }
 
