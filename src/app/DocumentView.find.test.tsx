@@ -134,6 +134,7 @@ async function mount(
   await act(async () => root.render(
     <DocumentView
       ref={ref} doc={doc} effectiveTheme="light" modes={MODES_OFF}
+      onSetWritingMode={() => {}} onExport={() => {}}
       onDirtyChange={onDirtyChange} onLiveAvailableChange={() => {}} onError={onError} onInfo={onInfo}
     />,
   ));
@@ -147,6 +148,7 @@ async function rerender(root: ReturnType<typeof createRoot>, ref: RefObject<Docu
   await act(async () => root.render(
     <DocumentView
       ref={ref} doc={doc} effectiveTheme="light" modes={MODES_OFF}
+      onSetWritingMode={() => {}} onExport={() => {}}
       onDirtyChange={() => {}} onLiveAvailableChange={() => {}} onError={() => {}} onInfo={() => {}}
     />,
   ));

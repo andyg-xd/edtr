@@ -44,7 +44,8 @@ import type { TypewriterSurface, CountSurface, FocusSurface } from '../writingmo
 import { subscribePointerRelease } from '../writingmodes/pointerState';
 import { codeCounts, pmCounts } from '../writingmodes/countSurfaces';
 import { useWordCount } from '../writingmodes/useWordCount';
-import type { WritingModes } from '../settings/writingModes';
+import type { WritingMode, WritingModes } from '../settings/writingModes';
+import { DocumentToolbar } from './DocumentToolbar';
 
 /**
  * Matching is debounced so a fast typist doesn't re-scan the document on every
@@ -93,6 +94,10 @@ interface DocumentViewProps {
   effectiveTheme: 'light' | 'dark';
   /** Writing-mode toggles (typewriter/focus), one subscription per window, shared by every DocumentView in it. */
   modes: WritingModes;
+  /** Flips one writing mode on/off — the persistent toolbar's controls call this in every view (6c-iii, Task 6). */
+  onSetWritingMode: (mode: WritingMode, on: boolean) => void;
+  /** The persistent toolbar's Export button — a placeholder until Task 7 wires the real export flow. */
+  onExport: (kind: 'html' | 'pdf') => void;
   onDirtyChange: (dirty: boolean) => void;
   onLiveAvailableChange: (available: boolean) => void;
   onError: (msg: string | null) => void;
@@ -101,7 +106,7 @@ interface DocumentViewProps {
 }
 
 export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(function DocumentView(
-  { doc, effectiveTheme, modes, onDirtyChange, onLiveAvailableChange, onError, onInfo }, ref,
+  { doc, effectiveTheme, modes, onSetWritingMode, onExport, onDirtyChange, onLiveAvailableChange, onError, onInfo }, ref,
 ) {
   const session = doc.session;
   const viewMode = doc.viewMode;
@@ -744,9 +749,12 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     const pos = livePosition(liveView);
     return (
       <>
-        {liveView && (
-          <RibbonView view={liveView} controls={htmlRibbon} linkRequest={linkRequest} docPath={session.path ?? null} onError={onError} canInsertImage={htmlCanInsertImage} />
-        )}
+        <DocumentToolbar
+          formatting={liveView && (
+            <RibbonView view={liveView} controls={htmlRibbon} linkRequest={linkRequest} docPath={session.path ?? null} onError={onError} canInsertImage={htmlCanInsertImage} />
+          )}
+          modes={modes} onSetMode={onSetWritingMode} onExport={onExport}
+        />
         {liveView && isHtmlInTable(liveView.state) && (
           <div className="ribbon-context">
             <RibbonView view={liveView} controls={htmlTableRibbon} ariaLabel="Table tools" docPath={session.path ?? null} onError={onError} />
@@ -768,9 +776,12 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     const pos = livePosition(liveView);
     return (
       <>
-        {liveView && (
-          <RibbonView view={liveView} controls={markdownRibbon} linkRequest={linkRequest} docPath={session.path ?? null} onError={onError} canInsertImage={mdCanInsertImage} />
-        )}
+        <DocumentToolbar
+          formatting={liveView && (
+            <RibbonView view={liveView} controls={markdownRibbon} linkRequest={linkRequest} docPath={session.path ?? null} onError={onError} canInsertImage={mdCanInsertImage} />
+          )}
+          modes={modes} onSetMode={onSetWritingMode} onExport={onExport}
+        />
         {liveView && isInTable(liveView.state) && (
           <div className="ribbon-context">
             <RibbonView view={liveView} controls={markdownTableRibbon} ariaLabel="Table tools" docPath={session.path ?? null} onError={onError} />
@@ -789,6 +800,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   }
   return (
     <>
+      <DocumentToolbar formatting={null} modes={modes} onSetMode={onSetWritingMode} onExport={onExport} />
       {findBar}
       {replaceGuard}
       <CodeView

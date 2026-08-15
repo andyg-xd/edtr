@@ -92,3 +92,9 @@
 }
 .tsp-cell.tsp-on { background: var(--accent); border-color: var(--accent-border); }
 .tsp-caption { margin-top: var(--space-3); text-align: center; font-size: var(--text-sm); color: var(--fg-muted); }
+
+/* The persistent toolbar row (6c-iii, D9): formatting on the left, document
+   actions on the right, present in every view. */
+.doc-toolbar { display: flex; align-items: center; gap: var(--space-4); width: 100%; }
+.doc-toolbar-formatting { flex: 1 1 auto; min-width: 0; }
+.doc-toolbar-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-3); }

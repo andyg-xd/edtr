@@ -54,6 +54,10 @@ export function EditorWindow() {
   const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme();
   const { modes: writingModes, setMode: setWritingMode, toggleMode: toggleWritingMode } = useWindowWritingModes();
   const viewRef = useRef<DocumentViewHandle>(null);
+  // Placeholder until Task 7 (6c-iii) wires the real export flow (a kind
+  // picker + exportController). The toolbar's Export button needs a handler
+  // to call today; this one does nothing.
+  const handleExport = useCallback((_kind: 'html' | 'pdf') => {}, []);
 
   // Per-doc reload-banner state + a per-doc remount nonce. The nonce forces the
   // active DocumentView to remount after a reload so Code + Live re-derive from
@@ -515,8 +519,6 @@ export function EditorWindow() {
         }}
         themeMode={themeMode}
         onSetThemeMode={setThemeMode}
-        writingModes={writingModes}
-        onSetWritingMode={setWritingMode}
       />
       {degraded && (
         <div className="notice notice-info" role="status">
@@ -576,6 +578,8 @@ export function EditorWindow() {
                 doc={active}
                 effectiveTheme={themeEffective}
                 modes={writingModes}
+                onSetWritingMode={setWritingMode}
+                onExport={handleExport}
                 onDirtyChange={setActiveDirty}
                 onLiveAvailableChange={setActiveLiveAvailable}
                 onError={(m) => showError(m)}

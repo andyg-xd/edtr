@@ -83,6 +83,7 @@ async function mountWith(modes: WritingModes) {
   await act(async () => root!.render(
     <DocumentView
       ref={ref} doc={makeDoc()} effectiveTheme="light" modes={modes}
+      onSetWritingMode={() => {}} onExport={() => {}}
       onDirtyChange={() => {}} onLiveAvailableChange={() => {}}
       onError={() => {}} onInfo={() => {}}
     />,
@@ -110,10 +111,20 @@ describe('DocumentView typewriter wiring', () => {
     await act(async () => root!.render(
       <DocumentView
         doc={makeDoc()} effectiveTheme="light" modes={MODES_OFF}
+        onSetWritingMode={() => {}} onExport={() => {}}
         onDirtyChange={() => {}} onLiveAvailableChange={() => {}}
         onError={() => {}} onInfo={() => {}}
       />,
     ));
     expect(subscribers.size, 'a stale subscriber would scroll with the mode off').toBe(0);
+  });
+
+  it('shows the document actions in Code view', async () => {
+    // The whole reason the toolbar was restructured (6c-iii, Task 6): Code
+    // view mounts no RibbonView at all, so if the actions zone weren't
+    // unconditional, Typewriter/Focus/Export would be unreachable here even
+    // though both writing modes genuinely work in Code view.
+    await mountWith(MODES_OFF);
+    expect(container!.querySelector('.doc-toolbar-actions')).not.toBeNull();
   });
 });

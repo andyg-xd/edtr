@@ -1,9 +1,7 @@
 import { useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ThemeControl } from './ThemeControl';
-import { ModeControls } from '../writingmodes/ModeControls';
 import type { ThemeMode } from '../settings/theme';
-import type { WritingMode, WritingModes } from '../settings/writingModes';
 
 export type ViewMode = 'code' | 'live';
 
@@ -15,11 +13,10 @@ interface WindowChromeProps {
   liveDisabled: boolean;
   themeMode: ThemeMode;
   onSetThemeMode: (mode: ThemeMode) => void;
-  writingModes: WritingModes;
-  onSetWritingMode: (mode: WritingMode, on: boolean) => void;
 }
 
-/** Top bar: filename + dirty dot + Live/Code toggle + writing-mode toggles + theme control. Keeps the OS title in sync. */
+/** Top bar: filename + dirty dot + Live/Code toggle + theme control. Keeps the OS title in sync.
+ *  The writing-mode toggles moved to the persistent document toolbar (6c-iii, Task 6) — see `DocumentToolbar.tsx`. */
 export function WindowChrome({
   name,
   dirty,
@@ -28,8 +25,6 @@ export function WindowChrome({
   liveDisabled,
   themeMode,
   onSetThemeMode,
-  writingModes,
-  onSetWritingMode,
 }: WindowChromeProps) {
   useEffect(() => {
     const title = name ? `${dirty ? '• ' : ''}${name}` : 'Edtr';
@@ -65,7 +60,6 @@ export function WindowChrome({
           Code
         </button>
       </div>
-      <ModeControls modes={writingModes} onSetMode={onSetWritingMode} />
       <ThemeControl mode={themeMode} onSetMode={onSetThemeMode} />
     </header>
   );
