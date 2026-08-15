@@ -30,4 +30,20 @@ describe('buildExport', () => {
     expect(html).toContain('.k{color:red}');
     expect(html).toContain('<p>x</p>');
   });
+
+  it('surfaces a failed image embed all the way through to `failures`', async () => {
+    // Hardcoding `failures: []` in buildExport would leave every OTHER test
+    // in this file green — none of them look at a fetch that actually
+    // rejects. `failures` is the user's only signal that an exported file
+    // shipped with a broken image, so the pass-through from `inlineAssets`
+    // to buildExport's return value needs its own proof.
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+    const r = toLive('# Title\n\n![alt](pics/photo.png)\n', null);
+    if (!r.ok) throw new Error('fixture failed');
+    const { failures } = await buildExport({
+      format: 'markdown', doc: r.doc, source: '', title: 't',
+      resolve: (src) => `asset://${src}`,
+    });
+    expect(failures).toEqual(['pics/photo.png']);
+  });
 });
