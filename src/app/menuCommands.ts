@@ -7,7 +7,7 @@ import type { OpenPayload } from '../files/openPayload';
  * exactly how ⌥⌘F shipped firing an event nobody heard.
  */
 export const MENU_COMMANDS = [
-  'open', 'open-folder', 'save', 'save-as', 'close',
+  'open', 'open-folder', 'save', 'save-as', 'close', 'print',
   'quit-poll', 'quit-abort',
   'find', 'find-next', 'find-prev', 'replace',
   'toggle-typewriter', 'toggle-focus',
@@ -29,6 +29,8 @@ export interface MenuHandlers {
   onQuitAbort: () => void;
   /** An OS/warm open delivered a payload to this (focused) window. */
   onOpenPayload: (payload: OpenPayload) => void;
+  /** ⌘P — export this document to PDF through the native print panel. */
+  onPrint: () => void;
   /** ⌘F — open the find bar (or refocus it if it is already open). */
   onFind: () => void;
   /** ⌘G — go to the next match. */
@@ -55,6 +57,7 @@ export function dispatchMenuCommand(command: MenuCommand, handlers: MenuHandlers
     case 'save': handlers.onSave(); break;
     case 'save-as': handlers.onSaveAs(); break;
     case 'close': handlers.onCloseRequest(); break;
+    case 'print': handlers.onPrint(); break;
     case 'quit-poll': handlers.onQuitPoll(); break;
     case 'quit-abort': handlers.onQuitAbort(); break;
     case 'find': handlers.onFind(); break;

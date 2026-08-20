@@ -15,7 +15,7 @@ vi.mock('./buildExport', () => ({ buildExport: mockBuildExport }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ save: mockSave }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mockInvoke }));
 
-import { exportAsHtml } from './exportController';
+import { exportAsHtml, exportAsPdf } from './exportController';
 import type { ExportInput } from './buildExport';
 
 const INPUT: ExportInput = {
@@ -62,5 +62,41 @@ describe('exportAsHtml', () => {
     const payload = mockInvoke.mock.calls[0][1] as { path: string };
     expect(payload.path).toBe('/somewhere/else/renamed.html');
     expect(payload.path).not.toBe('Notes.html');
+  });
+});
+
+describe('exportAsPdf', () => {
+  it('hands the built document to the print pipeline and nothing else', async () => {
+    mockBuildExport.mockResolvedValue({ html: '<html>printable</html>', failures: [] });
+    const result = await exportAsPdf(INPUT);
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke).toHaveBeenCalledWith('print_html', { html: '<html>printable</html>' });
+    expect(result).toEqual({ failures: [] });
+  });
+
+  it('never opens a save panel', async () => {
+    // The distinction between the two kinds. macOS's print panel is where the
+    // user chooses "Save as PDF" and picks a location, so a save panel here
+    // would ask them for a path twice and then not use the first one.
+    mockBuildExport.mockResolvedValue({ html: '<html>x</html>', failures: [] });
+    await exportAsPdf(INPUT);
+    expect(mockSave).not.toHaveBeenCalled();
+  });
+
+  it('reports the same image failures the HTML path reports', async () => {
+    // The failures are a property of BUILDING the document, not of writing it,
+    // so a PDF is exactly as affected by a missing image as an HTML export.
+    mockBuildExport.mockResolvedValue({ html: '<html>x</html>', failures: ['pics/a.png'] });
+    const result = await exportAsPdf(INPUT);
+    expect(result.failures).toEqual(['pics/a.png']);
+  });
+
+  it('lets a failed print reject rather than reporting success', async () => {
+    // `EditorWindow` catches this and raises the export error banner. Swallowing
+    // it would leave the user believing a PDF is on its way when no print
+    // window ever opened.
+    mockBuildExport.mockResolvedValue({ html: '<html>x</html>', failures: [] });
+    mockInvoke.mockRejectedValue('Could not open the print view: bad label');
+    await expect(exportAsPdf(INPUT)).rejects.toBe('Could not open the print view: bad label');
   });
 });

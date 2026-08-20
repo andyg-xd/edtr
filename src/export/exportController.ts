@@ -32,3 +32,21 @@ export async function exportAsHtml(
   });
   return { status: 'written', failures };
 }
+
+/**
+ * Export to PDF by handing the built document to macOS's print pipeline
+ * (6c-iii, D7). Nothing here writes a file: the system print panel does, and
+ * "Save as PDF" is where the PDF comes from.
+ *
+ * Unlike `exportAsHtml` there is no cancel branch to report. `print_html`
+ * resolves once the print window has been asked for — the panel is a sheet
+ * that outlives the call — so whether the user saves or cancels is not
+ * knowable here, and pretending otherwise would mean inventing a status this
+ * function cannot observe. `failures` still comes back, because the missing
+ * images it names were already missing when the document was built.
+ */
+export async function exportAsPdf(input: ExportInput): Promise<{ failures: string[] }> {
+  const { html, failures } = await buildExport(input);
+  await invoke('print_html', { html });
+  return { failures };
+}

@@ -1,5 +1,6 @@
 mod assets;
 mod devtools;
+mod export;
 mod fs;
 mod menu;
 mod recents;
@@ -83,7 +84,14 @@ pub fn run() {
                 // prunes any window that never acked (a crashed webview) so a
                 // dead webview can't wedge the quit. A window still deliberating
                 // on its guard HAS acked, so it is never force-quit.
-                let labels: Vec<String> = app.webview_windows().into_keys().collect();
+                // Print windows are excluded: they have no frontend, so they can
+                // never ack or vote, and including one would wedge the poll
+                // until the 1500ms grace timer pruned it.
+                let labels: Vec<String> = app
+                    .webview_windows()
+                    .into_keys()
+                    .filter(|l| !export::is_print_window(l))
+                    .collect();
                 let generation = match app.state::<window::QuitPollState>().0.lock() {
                     Ok(mut p) => p.start(labels),
                     Err(_) => return,
@@ -103,6 +111,20 @@ pub fn run() {
                 return;
             }
             let Some(event_name) = menu::menu_event_name(id.as_str()) else { return };
+            // A focused print window has no frontend listening, so ⌘W would do
+            // nothing at all and the window could not be dismissed by keyboard.
+            // Rust closes it directly; every other command is simply not
+            // delivered to it (see the filter below).
+            if let Some(w) = app
+                .webview_windows()
+                .into_values()
+                .find(|w| export::is_print_window(w.label()) && w.is_focused().unwrap_or(false))
+            {
+                if id == "close" {
+                    let _ = w.close();
+                }
+                return;
+            }
             // Deliver to the FOCUSED window only. `emit_to(<label>, …)` targets
             // that label; only that window's window-scoped listener (see
             // MenuBridge) fires. (Plain `.emit()` is a global broadcast — do not
@@ -110,7 +132,7 @@ pub fn run() {
             if let Some(w) = app
                 .webview_windows()
                 .into_values()
-                .find(|w| w.is_focused().unwrap_or(false))
+                .find(|w| !export::is_print_window(w.label()) && w.is_focused().unwrap_or(false))
             {
                 let label = w.label().to_string();
                 let _ = app.emit_to(label.as_str(), event_name, ());
@@ -135,7 +157,8 @@ pub fn run() {
             watcher::watcher_available,
             settings::get_settings,
             settings::set_theme,
-            menu::sync_view_menu
+            menu::sync_view_menu,
+            export::print_html
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -181,9 +204,16 @@ pub fn run() {
                     app_handle.exit(0);
                     return;
                 }
-                // Quit when the last window closes (macOS otherwise keeps a
-                // windowless app alive).
-                if app_handle.webview_windows().is_empty() {
+                // Quit when the last EDITOR window closes (macOS otherwise keeps
+                // a windowless app alive). A lingering print window must not
+                // hold the app open — it carries no document and no unsaved
+                // work — so it is not counted here, and it dies with the
+                // process when the app exits.
+                let editors_left = app_handle
+                    .webview_windows()
+                    .into_keys()
+                    .any(|l| !export::is_print_window(&l));
+                if !editors_left {
                     app_handle.exit(0);
                 }
             }

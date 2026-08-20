@@ -10,6 +10,7 @@ function tracked(): MenuHandlers & { calls: string[] } {
     onSave: () => calls.push('save'),
     onSaveAs: () => calls.push('save-as'),
     onCloseRequest: () => calls.push('close'),
+    onPrint: () => calls.push('print'),
     onQuitPoll: () => calls.push('quit-poll'),
     onQuitAbort: () => calls.push('quit-abort'),
     onOpenPayload: () => {},
@@ -30,6 +31,7 @@ function makeHandlers(): MenuHandlers {
     onSave: vi.fn(),
     onSaveAs: vi.fn(),
     onCloseRequest: vi.fn(),
+    onPrint: vi.fn(),
     onQuitPoll: vi.fn(),
     onQuitAbort: vi.fn(),
     onOpenPayload: vi.fn(),
@@ -45,7 +47,7 @@ function makeHandlers(): MenuHandlers {
 describe('dispatchMenuCommand', () => {
   it('routes each command to exactly its own handler', () => {
     const all = [
-      'open', 'open-folder', 'save', 'save-as', 'close', 'quit-poll', 'quit-abort',
+      'open', 'open-folder', 'save', 'save-as', 'close', 'print', 'quit-poll', 'quit-abort',
       'find', 'find-next', 'find-prev', 'replace',
     ] as const satisfies readonly MenuCommand[];
     for (const cmd of all) {
@@ -65,6 +67,19 @@ describe('dispatchMenuCommand', () => {
     expect(handlers[handler]).toHaveBeenCalledTimes(1);
     for (const [name, fn] of Object.entries(handlers)) {
       if (name !== handler) expect(fn, name).not.toHaveBeenCalled();
+    }
+  });
+
+  it('routes print to its handler and nothing else', () => {
+    // ⌘P is the newest command and the one whose Rust half landed FIRST, so
+    // the contract test caught it as an orphan before this existed. Named
+    // explicitly rather than left to the data-driven sweep below because a
+    // mis-routed print would silently print from the wrong handler.
+    const handlers = makeHandlers();
+    dispatchMenuCommand('print', handlers);
+    expect(handlers.onPrint).toHaveBeenCalledTimes(1);
+    for (const [name, fn] of Object.entries(handlers)) {
+      if (name !== 'onPrint') expect(fn, name).not.toHaveBeenCalled();
     }
   });
 

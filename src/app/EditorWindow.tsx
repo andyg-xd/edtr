@@ -11,7 +11,7 @@ import { FolderSidebar } from './FolderSidebar';
 import { useMenuAndCloseGuard } from './MenuBridge';
 import { quitVoteFor } from './quitVote';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
-import { exportAsHtml } from '../export/exportController';
+import { exportAsHtml, exportAsPdf } from '../export/exportController';
 import { toLive } from '../views/ViewSync';
 import { resolveExportAsset } from '../export/exportResolve';
 import { exportTitle } from '../export/exportTitle';
@@ -98,8 +98,6 @@ export function EditorWindow() {
   // to `exportController` for the dialog + atomic write.
   const handleExport = useCallback(async (kind: 'html' | 'pdf') => {
     if (!active) return;
-    if (kind === 'pdf') return; // Task 8 wires the native print pipeline.
-
     const session = active.session;
     const format = session.format;
 
@@ -127,14 +125,27 @@ export function EditorWindow() {
       pmDoc = projected.doc;
     }
 
+    const input = {
+      format,
+      doc: pmDoc,
+      source: session.text,
+      title,
+      resolve: (src: string) => resolveExportAsset(src, path),
+    };
+
+    // Everything above this line is shared between the two kinds deliberately:
+    // a PDF is the same built document as an HTML export, just handed to the
+    // print panel instead of written to disk. Two paths here would be two
+    // chances for them to disagree about what the document is.
     try {
-      const result = await exportAsHtml({
-        format,
-        doc: pmDoc,
-        source: session.text,
-        title,
-        resolve: (src) => resolveExportAsset(src, path),
-      }, `${title}.html`);
+      if (kind === 'pdf') {
+        const { failures } = await exportAsPdf(input);
+        if (failures.length > 0) {
+          setInfoNotice('Some images could not be embedded and still point at their original files.');
+        }
+        return;
+      }
+      const result = await exportAsHtml(input, `${title}.html`);
       if (result.status === 'written' && result.failures.length > 0) {
         setInfoNotice('Some images could not be embedded and still point at their original files.');
       }
@@ -487,6 +498,9 @@ export function EditorWindow() {
     onSave: handleSave,
     onSaveAs: handleSaveAs,
     onCloseRequest: requestClose,
+    // File → Print… is the same operation as Export → PDF, not a second one:
+    // both build the document and hand it to the native print panel.
+    onPrint: () => { void handleExport('pdf'); },
     onQuitPoll,
     onQuitAbort,
     onOpenPayload: handleOpenPayload,

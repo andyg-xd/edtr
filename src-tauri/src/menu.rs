@@ -143,6 +143,7 @@ pub fn menu_event_name(id: &str) -> Option<&'static str> {
         "save" => "menu://save",
         "save-as" => "menu://save-as",
         "close" => "menu://close",
+        "print" => "menu://print",
         "find" => "menu://find",
         "find-next" => "menu://find-next",
         "find-prev" => "menu://find-prev",
@@ -179,6 +180,7 @@ pub fn build_menu<R: Runtime>(
     let save = MenuItem::with_id(app, "save", "Save", true, Some("Cmd+S"))?;
     let save_as = MenuItem::with_id(app, "save-as", "Save As…", true, Some("Cmd+Shift+S"))?;
     let close = MenuItem::with_id(app, "close", "Close Window", true, Some("Cmd+W"))?;
+    let print = MenuItem::with_id(app, "print", "Print…", true, Some("Cmd+P"))?;
     let find = MenuItem::with_id(app, "find", "Find…", true, Some("Cmd+F"))?;
     let find_next = MenuItem::with_id(app, "find-next", "Find Next", true, Some("Cmd+G"))?;
     let find_prev = MenuItem::with_id(app, "find-prev", "Find Previous", true, Some("Cmd+Shift+G"))?;
@@ -203,6 +205,8 @@ pub fn build_menu<R: Runtime>(
         .item(&recent_menu)
         .item(&save)
         .item(&save_as)
+        .separator()
+        .item(&print)
         .separator()
         .item(&close)
         .build()?;
@@ -333,7 +337,7 @@ mod view_menu_tests {
         // comparable (see menuCommands.contract.test.ts, which reads this file
         // and asserts the two lists match).
         for id in [
-            "open", "open-folder", "save", "save-as", "close",
+            "open", "open-folder", "save", "save-as", "close", "print",
             "find", "find-next", "find-prev", "replace",
             "toggle-typewriter", "toggle-focus",
         ] {
@@ -376,6 +380,7 @@ mod menu_event_name_tests {
             ("save", "menu://save"),
             ("save-as", "menu://save-as"),
             ("close", "menu://close"),
+            ("print", "menu://print"),
             ("find", "menu://find"),
             ("find-next", "menu://find-next"),
             ("find-prev", "menu://find-prev"),
