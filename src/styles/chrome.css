@@ -45,4 +45,12 @@
 }
 
 .editor-body { display: flex; flex: 1; min-height: 0; }
-.doc-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+/* `min-width: 0` is the row-axis twin of the `min-height: 0` beside it, and
+   it is load-bearing. `.doc-pane` is a flex item of the ROW `.editor-body`,
+   so it defaults to `min-width: auto` and refuses to shrink below its
+   content's intrinsic width. One unwrapped 20,000-character line in Code view
+   therefore stretched the pane to ~156,000px (measured), which scrolled the
+   whole window sideways and carried the toolbar's right-aligned controls off
+   with it. CodeMirror's own `.cm-scroller` still scrolls that line
+   internally, which is where the overflow belongs. */
+.doc-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
