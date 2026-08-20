@@ -94,7 +94,31 @@
 .tsp-caption { margin-top: var(--space-3); text-align: center; font-size: var(--text-sm); color: var(--fg-muted); }
 
 /* The persistent toolbar row (6c-iii, D9): formatting on the left, document
-   actions on the right, present in every view. */
-.doc-toolbar { display: flex; align-items: center; gap: var(--space-4); width: 100%; }
+   actions on the right, present in every view.
+
+   The ROW owns the padding, the surface and the rule beneath it. All three
+   used to sit on `.ribbon`, which fills only the FORMATTING zone — so the
+   rule stopped short of the actions zone and read as a broken line, and the
+   actions zone needed a right inset of its own just to clear the window
+   edge. Owning them here makes both ends symmetric for free, and gives every
+   view the same row height — including Code view, which has no ribbon. */
+.doc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
 .doc-toolbar-formatting { flex: 1 1 auto; min-width: 0; }
+/* Inside the row the ribbon is a ZONE, not a row: it must not paint the
+   surface or the rule a second time, and must not add a second inset. The
+   contextual table ribbon is a SIBLING of `.doc-toolbar` rather than a
+   descendant, so it keeps `.ribbon`'s own chrome untouched. */
+.doc-toolbar-formatting .ribbon {
+  padding: 0;
+  background: transparent;
+  border-bottom: none;
+}
 .doc-toolbar-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-3); }
