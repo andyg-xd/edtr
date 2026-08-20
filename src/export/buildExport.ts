@@ -3,12 +3,13 @@ import { pmToHtml } from './pmToHtml';
 import { htmlSourceToBody } from './htmlSourceToBody';
 import { inlineAssets } from './inlineAssets';
 import { documentShell } from './documentShell';
+import { plaintextToBody } from './plaintextToBody';
 
 export interface ExportInput {
-  format: 'markdown' | 'html';
-  /** The live projection. Required for Markdown; unused for HTML (D4). */
+  format: 'markdown' | 'html' | 'plaintext';
+  /** The live projection. Required for Markdown; unused otherwise (D4). */
   doc: PMNode | null;
-  /** The file's own text. Required for HTML; unused for Markdown. */
+  /** The file's own text. Required for HTML and plaintext; unused for Markdown. */
   source: string;
   /** Shown as the document title — the file's name, without the extension. */
   title: string;
@@ -29,7 +30,11 @@ export async function buildExport(
 ): Promise<{ html: string; failures: string[] }> {
   const { body, head } = input.format === 'html'
     ? htmlSourceToBody(input.source)
-    : { body: input.doc ? pmToHtml(input.doc) : '', head: '' };
+    : input.format === 'plaintext'
+      // No projection to read: a .txt has no Live view, and its text is not
+      // markup. `plaintextToBody` escapes and preserves it verbatim.
+      ? { body: plaintextToBody(input.source), head: '' }
+      : { body: input.doc ? pmToHtml(input.doc) : '', head: '' };
 
   const inlined = await inlineAssets(body, input.resolve);
   return {

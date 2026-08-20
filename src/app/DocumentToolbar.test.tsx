@@ -27,7 +27,7 @@ describe('DocumentToolbar', () => {
     // The whole reason this component exists: Code view has no ribbon, and
     // the writing modes work there.
     const c = await render(
-      <DocumentToolbar formatting={null} modes={MODES_OFF} onSetMode={() => {}} onExport={() => {}} canExport />,
+      <DocumentToolbar formatting={null} modes={MODES_OFF} onSetMode={() => {}} onExport={() => {}} />,
     );
     expect(c.querySelector('.mode-controls')).not.toBeNull();
     expect(c.querySelector('[data-testid="export-button"]')).not.toBeNull();
@@ -37,7 +37,7 @@ describe('DocumentToolbar', () => {
     const c = await render(
       <DocumentToolbar
         formatting={<div data-testid="fmt" />}
-        modes={MODES_OFF} onSetMode={() => {}} onExport={() => {}} canExport
+        modes={MODES_OFF} onSetMode={() => {}} onExport={() => {}}
       />,
     );
     expect(c.querySelector('[data-testid="fmt"]')).not.toBeNull();
@@ -50,7 +50,7 @@ describe('DocumentToolbar', () => {
     // that ignored `formatting` and always rendered some hardcoded node would
     // still pass both. This asserts the zone is truly empty for `null`.
     const c = await render(
-      <DocumentToolbar formatting={null} modes={MODES_OFF} onSetMode={() => {}} onExport={() => {}} canExport />,
+      <DocumentToolbar formatting={null} modes={MODES_OFF} onSetMode={() => {}} onExport={() => {}} />,
     );
     expect(c.querySelector('.doc-toolbar-formatting')?.childElementCount).toBe(0);
   });
@@ -63,7 +63,7 @@ describe('DocumentToolbar', () => {
     // which is why this is retargeted rather than deleted.
     const onExport = vi.fn();
     const c = await render(
-      <DocumentToolbar formatting={null} modes={MODES_OFF} onSetMode={() => {}} onExport={onExport} canExport />,
+      <DocumentToolbar formatting={null} modes={MODES_OFF} onSetMode={() => {}} onExport={onExport} />,
     );
     await act(async () => {
       c.querySelector<HTMLButtonElement>('[data-testid="export-button"]')!.click();

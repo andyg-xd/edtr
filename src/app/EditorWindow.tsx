@@ -101,13 +101,7 @@ export function EditorWindow() {
     if (kind === 'pdf') return; // Task 8 wires the native print pipeline.
 
     const session = active.session;
-    // Narrowed into a local const so it still reads as 'markdown' | 'html'
-    // after the awaits below -- TS drops property narrowing across calls.
     const format = session.format;
-    // Plaintext has no projection to export. The Export button is already
-    // disabled for it; this is the same decision on the handler side, so the
-    // two cannot silently disagree if the control is ever re-enabled.
-    if (format === 'plaintext') return;
 
     // Live edits have to reach the source first: `buildExport` reads the
     // session's text for HTML and re-derives the Markdown projection from it,

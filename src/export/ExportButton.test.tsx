@@ -85,19 +85,3 @@ describe('ExportButton', () => {
     expect(c.textContent, 'outside click did not dismiss').not.toContain('PDF');
   });
 });
-
-describe('ExportButton when there is nothing to export', () => {
-  it('cannot be opened while disabled', async () => {
-    // Plaintext has no Live projection and no HTML source, so there is
-    // nothing to build an export from. A control that opens a menu whose
-    // choices then silently do nothing is the "visibly dead control" this
-    // project has rejected before -- it is disabled instead.
-    const onExport = vi.fn();
-    const c = await render(<ExportButton onExport={onExport} disabled />);
-    const trigger = c.querySelector('[data-testid="export-button"]') as HTMLButtonElement;
-    expect(trigger.disabled).toBe(true);
-    await click(trigger);
-    expect(c.querySelector('[data-testid="export-menu"]')).toBeNull();
-    expect(onExport).not.toHaveBeenCalled();
-  });
-});

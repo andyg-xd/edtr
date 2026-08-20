@@ -3,8 +3,6 @@ import { anchorTo } from '../ui/anchorTo';
 
 interface ExportButtonProps {
   onExport: (kind: 'html' | 'pdf') => void;
-  /** Off for plaintext, which has neither a Live projection nor HTML source. */
-  disabled?: boolean;
 }
 
 type Phase = 'measuring' | 'visible';
@@ -22,7 +20,7 @@ type Phase = 'measuring' | 'visible';
  * button count as "inside" for the outside-click check -- otherwise the
  * mousedown would close the menu a moment before the click reopened it.
  */
-export function ExportButton({ onExport, disabled = false }: ExportButtonProps) {
+export function ExportButton({ onExport }: ExportButtonProps) {
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('measuring');
   const [pos, setPos] = useState({ left: 0, top: 0 });
@@ -79,7 +77,6 @@ export function ExportButton({ onExport, disabled = false }: ExportButtonProps) 
         data-testid="export-button"
         aria-haspopup="menu"
         aria-expanded={open}
-        disabled={disabled}
         onClick={() => setOpen((v) => !v)}
       >
         Export

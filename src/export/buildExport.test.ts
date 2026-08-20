@@ -47,3 +47,38 @@ describe('buildExport', () => {
     expect(failures).toEqual(['pics/photo.png']);
   });
 });
+
+describe('buildExport — plaintext', () => {
+  it('builds a standalone document from a .txt file', async () => {
+    const { html } = await buildExport({
+      format: 'plaintext', doc: null,
+      source: 'Plain notes.\n\n  Indented line.',
+      title: 'notes', resolve: () => null,
+    });
+    expect(html.startsWith('<!doctype html>')).toBe(true);
+    expect(html).toContain('<title>notes</title>');
+    expect(html).toContain('<pre class="plaintext">');
+    expect(html).toContain('  Indented line.');
+  });
+
+  it('never lets a .txt file\'s contents become markup', async () => {
+    const { html } = await buildExport({
+      format: 'plaintext', doc: null,
+      source: '<script>alert(1)</scr' + 'ipt>\n# Not a heading',
+      title: 't', resolve: () => null,
+    });
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).not.toContain('<script>alert');
+    expect(html).toContain('# Not a heading');
+  });
+
+  it('ignores the doc argument entirely for plaintext', async () => {
+    // Guards the branch order in buildExport: plaintext must not fall through
+    // to the Markdown path, which reads `doc` and would emit an empty body.
+    const { html } = await buildExport({
+      format: 'plaintext', doc: null, source: 'content here',
+      title: 't', resolve: () => null,
+    });
+    expect(html).toContain('content here');
+  });
+});

@@ -1,10 +1,5 @@
 import { EXPORT_STYLES } from './exportStyles';
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!
-  ));
-}
+import { escapeHtml } from './escapeHtml';
 
 /** Wrap a body fragment in a standalone document (6c-iii, D10). */
 export function documentShell(opts: { title: string; body: string; extraHead?: string }): string {

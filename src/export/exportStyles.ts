@@ -20,6 +20,11 @@ p, ul, ol, blockquote, table, pre { margin: 0 0 1em; }
 a { color: #0b5cad; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
 pre { padding: 12px 14px; background: #f5f5f5; border-radius: 6px; overflow-x: auto; }
+/* A plaintext export is the whole document, not a code sample: its long lines
+   must WRAP. The overflow-x rule above is right for a fenced code block on
+   screen, but useless on paper -- a scrollbar cannot be scrolled, so the line
+   is simply cut off at the page edge. */
+pre.plaintext { white-space: pre-wrap; overflow-wrap: break-word; background: none; padding: 0; }
 pre code { font-size: 0.88em; }
 blockquote { padding-left: 1em; border-left: 3px solid #d4d4d4; color: #444; }
 table { border-collapse: collapse; width: 100%; }
