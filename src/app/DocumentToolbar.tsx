@@ -9,6 +9,8 @@ interface DocumentToolbarProps {
   modes: WritingModes;
   onSetMode: (mode: WritingMode, on: boolean) => void;
   onExport: (kind: 'html' | 'pdf') => void;
+  /** False for plaintext — nothing to build an export from. */
+  canExport: boolean;
 }
 
 /**
@@ -33,7 +35,7 @@ export function DocumentToolbar(props: DocumentToolbarProps) {
       <div className="doc-toolbar-formatting">{props.formatting}</div>
       <div className="doc-toolbar-actions">
         <ModeControls modes={props.modes} onSetMode={props.onSetMode} />
-        <ExportButton onExport={props.onExport} />
+        <ExportButton onExport={props.onExport} disabled={!props.canExport} />
       </div>
     </div>
   );

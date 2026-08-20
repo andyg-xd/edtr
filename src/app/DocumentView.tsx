@@ -753,7 +753,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
           formatting={liveView && (
             <RibbonView view={liveView} controls={htmlRibbon} linkRequest={linkRequest} docPath={session.path ?? null} onError={onError} canInsertImage={htmlCanInsertImage} />
           )}
-          modes={modes} onSetMode={onSetWritingMode} onExport={onExport}
+          modes={modes} onSetMode={onSetWritingMode} onExport={onExport} canExport
         />
         {liveView && isHtmlInTable(liveView.state) && (
           <div className="ribbon-context">
@@ -780,7 +780,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
           formatting={liveView && (
             <RibbonView view={liveView} controls={markdownRibbon} linkRequest={linkRequest} docPath={session.path ?? null} onError={onError} canInsertImage={mdCanInsertImage} />
           )}
-          modes={modes} onSetMode={onSetWritingMode} onExport={onExport}
+          modes={modes} onSetMode={onSetWritingMode} onExport={onExport} canExport
         />
         {liveView && isInTable(liveView.state) && (
           <div className="ribbon-context">
@@ -800,7 +800,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   }
   return (
     <>
-      <DocumentToolbar formatting={null} modes={modes} onSetMode={onSetWritingMode} onExport={onExport} />
+      <DocumentToolbar formatting={null} modes={modes} onSetMode={onSetWritingMode} onExport={onExport} canExport={session.format !== 'plaintext'} />
       {findBar}
       {replaceGuard}
       <CodeView

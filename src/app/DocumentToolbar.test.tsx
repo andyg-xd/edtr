@@ -27,7 +27,7 @@ describe('DocumentToolbar', () => {
     // The whole reason this component exists: Code view has no ribbon, and
     // the writing modes work there.
     const c = await render(
-      <DocumentToolbar formatting={null} modes={MODES_OFF} onSetMode={() => {}} onExport={() => {}} />,
+      <DocumentToolbar formatting={null} modes={MODES_OFF} onSetMode={() => {}} onExport={() => {}} canExport />,
     );
     expect(c.querySelector('.mode-controls')).not.toBeNull();
     expect(c.querySelector('[data-testid="export-button"]')).not.toBeNull();
@@ -37,7 +37,7 @@ describe('DocumentToolbar', () => {
     const c = await render(
       <DocumentToolbar
         formatting={<div data-testid="fmt" />}
-        modes={MODES_OFF} onSetMode={() => {}} onExport={() => {}}
+        modes={MODES_OFF} onSetMode={() => {}} onExport={() => {}} canExport
       />,
     );
     expect(c.querySelector('[data-testid="fmt"]')).not.toBeNull();
@@ -50,18 +50,27 @@ describe('DocumentToolbar', () => {
     // that ignored `formatting` and always rendered some hardcoded node would
     // still pass both. This asserts the zone is truly empty for `null`.
     const c = await render(
-      <DocumentToolbar formatting={null} modes={MODES_OFF} onSetMode={() => {}} onExport={() => {}} />,
+      <DocumentToolbar formatting={null} modes={MODES_OFF} onSetMode={() => {}} onExport={() => {}} canExport />,
     );
     expect(c.querySelector('.doc-toolbar-formatting')?.childElementCount).toBe(0);
   });
 
-  it('wires the Export button through to onExport (placeholder for Task 7)', async () => {
+  it("wires the Export button's chosen kind through to onExport", async () => {
+    // Task 6 asserted this against the placeholder, where the trigger called
+    // `onExport` directly. Task 7 put a menu behind it, so the trigger now
+    // only opens; the kind is reported by the item. The INTENT under test is
+    // unchanged -- that the toolbar's prop actually reaches the control --
+    // which is why this is retargeted rather than deleted.
     const onExport = vi.fn();
     const c = await render(
-      <DocumentToolbar formatting={null} modes={MODES_OFF} onSetMode={() => {}} onExport={onExport} />,
+      <DocumentToolbar formatting={null} modes={MODES_OFF} onSetMode={() => {}} onExport={onExport} canExport />,
     );
     await act(async () => {
       c.querySelector<HTMLButtonElement>('[data-testid="export-button"]')!.click();
+    });
+    expect(onExport, 'the trigger must only open the menu').not.toHaveBeenCalled();
+    await act(async () => {
+      c.querySelector<HTMLButtonElement>('[data-testid="export-html"]')!.click();
     });
     expect(onExport).toHaveBeenCalledWith('html');
   });

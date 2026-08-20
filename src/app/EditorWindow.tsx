@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Node as PMNode } from 'prosemirror-model';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -10,6 +11,10 @@ import { FolderSidebar } from './FolderSidebar';
 import { useMenuAndCloseGuard } from './MenuBridge';
 import { quitVoteFor } from './quitVote';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
+import { exportAsHtml } from '../export/exportController';
+import { toLive } from '../views/ViewSync';
+import { resolveExportAsset } from '../export/exportResolve';
+import { exportTitle } from '../export/exportTitle';
 import { ReloadBanner } from './ReloadBanner';
 import { pickFiles, pickFolder, pickSavePath, openInNewWindow, takePendingOpen, takeLaunchOpen, saveSession, readFolder, readSession } from '../files/fileController';
 import { basename } from '../files/fileTypes';
@@ -54,11 +59,6 @@ export function EditorWindow() {
   const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme();
   const { modes: writingModes, setMode: setWritingMode, toggleMode: toggleWritingMode } = useWindowWritingModes();
   const viewRef = useRef<DocumentViewHandle>(null);
-  // Placeholder until Task 7 (6c-iii) wires the real export flow (a kind
-  // picker + exportController). The toolbar's Export button needs a handler
-  // to call today; this one does nothing.
-  const handleExport = useCallback((_kind: 'html' | 'pdf') => {}, []);
-
   // Per-doc reload-banner state + a per-doc remount nonce. The nonce forces the
   // active DocumentView to remount after a reload so Code + Live re-derive from
   // the freshly-adopted session text.
@@ -92,6 +92,62 @@ export function EditorWindow() {
     setError(message);
     setErrorAction(action);
   }, []);
+
+  // File → Export (6c-iii). Lives here, beside save, because exporting is a
+  // file operation: it flushes exactly like a save, then hands a pure input
+  // to `exportController` for the dialog + atomic write.
+  const handleExport = useCallback(async (kind: 'html' | 'pdf') => {
+    if (!active) return;
+    if (kind === 'pdf') return; // Task 8 wires the native print pipeline.
+
+    const session = active.session;
+    // Narrowed into a local const so it still reads as 'markdown' | 'html'
+    // after the awaits below -- TS drops property narrowing across calls.
+    const format = session.format;
+    // Plaintext has no projection to export. The Export button is already
+    // disabled for it; this is the same decision on the handler side, so the
+    // two cannot silently disagree if the control is ever re-enabled.
+    if (format === 'plaintext') return;
+
+    // Live edits have to reach the source first: `buildExport` reads the
+    // session's text for HTML and re-derives the Markdown projection from it,
+    // so an unflushed edit would export the document as it was BEFORE the
+    // edit. Same call `saveDoc` makes, and it raises its own banner on a
+    // serializer throw -- hence the bare early return.
+    if (!flushActive()) return;
+
+    const path = session.path ?? null;
+    const title = exportTitle(path);
+
+    // Derived from the SOURCE, not from the Live view's doc: the source is
+    // this app's single source of truth, and the live doc is only kept
+    // current while Live view is showing -- exporting from Code view would
+    // otherwise ship a stale projection, or none at all.
+    let pmDoc: PMNode | null = null;
+    if (format === 'markdown') {
+      const projected = toLive(session.text, path);
+      if (!projected.ok) {
+        showError("Edtr couldn't build an export from this document. Try again from Code view, or fix the part that won't convert.");
+        return;
+      }
+      pmDoc = projected.doc;
+    }
+
+    try {
+      const result = await exportAsHtml({
+        format,
+        doc: pmDoc,
+        source: session.text,
+        title,
+        resolve: (src) => resolveExportAsset(src, path),
+      }, `${title}.html`);
+      if (result.status === 'written' && result.failures.length > 0) {
+        setInfoNotice('Some images could not be embedded and still point at their original files.');
+      }
+    } catch (e) {
+      showError(`Edtr couldn't export this document. ${String(e)}`);
+    }
+  }, [active, flushActive, showError]);
 
   // Reset the active-status flags whenever the active doc changes wholesale.
   const resetActiveFlags = useCallback(() => {

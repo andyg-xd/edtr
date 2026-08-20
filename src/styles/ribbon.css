@@ -122,3 +122,34 @@
   border-bottom: none;
 }
 .doc-toolbar-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-3); }
+
+/* Export menu. Positioned via anchorTo (ExportButton.tsx) — `left`/`top` are
+   set inline per-open from the trigger's rect, the same way the insert
+   popover, the table size picker and the tooltip all position themselves.
+   `fixed` takes it out of the toolbar's containing block so those viewport
+   coordinates apply directly. */
+.export-menu {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: var(--space-2);
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px var(--shadow);
+}
+.export-menu-item {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font-size: var(--text-base);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease);
+}
+.export-menu-item:hover { background: var(--btn-hover-bg); }
