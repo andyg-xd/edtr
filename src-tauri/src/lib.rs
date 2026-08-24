@@ -111,33 +111,65 @@ pub fn run() {
                 return;
             }
             let Some(event_name) = menu::menu_event_name(id.as_str()) else { return };
-            // A focused print window has no frontend listening, so ⌘W would do
-            // nothing at all and the window could not be dismissed by keyboard.
-            // Rust closes it directly; every other command is simply not
-            // delivered to it (see the filter below).
-            if let Some(w) = app
-                .webview_windows()
-                .into_values()
+            // Delivery is by LABEL, never a broadcast: `emit_to(<label>, …)`
+            // fires only that window's window-scoped listener (see MenuBridge).
+            // Plain `.emit()` is global — do not use it here.
+            //
+            // A print window is the awkward case. It has no frontend, so it can
+            // receive nothing, yet it keeps key status once its panel is
+            // dismissed — which is how ⌘P (and every other command) came to be
+            // silently dropped while one lingered. `route_menu_command` decides
+            // what to do about that; this block only carries the decision out.
+            let windows = app.webview_windows();
+            let focused_print = windows
+                .values()
                 .find(|w| export::is_print_window(w.label()) && w.is_focused().unwrap_or(false))
-            {
-                if id == "close" {
+                .map(|w| w.label().to_string());
+            let focused_editor = windows
+                .values()
+                .find(|w| !export::is_print_window(w.label()) && w.is_focused().unwrap_or(false))
+                .map(|w| w.label().to_string());
+            // Liveness is resolved HERE, not in the policy: the remembered
+            // parent may have been closed while the print window lingered.
+            let parent = export::print_parent(&app).filter(|p| windows.contains_key(p));
+            // Every editor window still open, for the case where the window
+            // that printed has since been closed.
+            let open_editors: Vec<String> = windows
+                .keys()
+                .filter(|l| !export::is_print_window(l))
+                .cloned()
+                .collect();
+
+            let close_focused_print = || {
+                if let Some(w) = focused_print.as_ref().and_then(|l| windows.get(l)) {
                     let _ = w.close();
                 }
-                return;
-            }
-            // Deliver to the FOCUSED window only. `emit_to(<label>, …)` targets
-            // that label; only that window's window-scoped listener (see
-            // MenuBridge) fires. (Plain `.emit()` is a global broadcast — do not
-            // use it here.)
-            if let Some(w) = app
-                .webview_windows()
-                .into_values()
-                .find(|w| !export::is_print_window(w.label()) && w.is_focused().unwrap_or(false))
-            {
-                let label = w.label().to_string();
-                let _ = app.emit_to(label.as_str(), event_name, ());
+            };
+            match menu::route_menu_command(
+                id.as_str(),
+                focused_print.as_deref(),
+                parent.as_deref(),
+                focused_editor.as_deref(),
+                &open_editors,
+            ) {
+                menu::MenuRoute::ClosePrintWindow => close_focused_print(),
+                menu::MenuRoute::ClearPrintWindowAndDeliver(to) => {
+                    close_focused_print();
+                    // Hand key status back explicitly rather than leaving it to
+                    // whatever macOS promotes next, so the window that is about
+                    // to act on the command is the one the user is looking at.
+                    if let Some(w) = windows.get(&to) {
+                        let _ = w.set_focus();
+                    }
+                    let _ = app.emit_to(to.as_str(), event_name, ());
+                }
+                menu::MenuRoute::Deliver(to) => {
+                    let _ = app.emit_to(to.as_str(), event_name, ());
+                }
+                menu::MenuRoute::Drop => {}
             }
         })
+        .manage(export::PrintParent::default())
         .invoke_handler(tauri::generate_handler![
             fs::read_text_file,
             fs::write_text_file_atomic,

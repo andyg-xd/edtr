@@ -169,6 +169,69 @@ pub fn menu_event_name(id: &str) -> Option<&'static str> {
 /// and Replace items that need `on_menu_event` delivery, for the same reason:
 /// macOS offers a key equivalent to the menu before the webview, so ⌘F must be owned
 /// by a native menu item rather than a webview keymap binding.
+/// Where a menu command should go, given who holds focus.
+///
+/// Pure, and separate from acting on it, because the interesting cases are all
+/// about a window that cannot receive anything: a print window has no frontend,
+/// so a command delivered to it is a command silently lost. That is exactly how
+/// a second print became impossible — the print window keeps key status after
+/// its panel is dismissed, and the router handled only its close.
+#[derive(Debug, PartialEq, Eq)]
+pub enum MenuRoute {
+    /// Close the focused print window; deliver nothing.
+    ClosePrintWindow,
+    /// Clear the transient print window, then deliver to the editor it came from.
+    ClearPrintWindowAndDeliver(String),
+    /// Deliver to the focused editor window.
+    Deliver(String),
+    /// No window can take this command.
+    Drop,
+}
+
+/// Decide where `id` goes.
+///
+/// `print_parent` must already have been checked for liveness by the caller —
+/// only it knows which windows are open. Every label handed back is a window
+/// the caller resolved, never one invented here.
+pub fn route_menu_command(
+    id: &str,
+    focused_print_window: Option<&str>,
+    print_parent: Option<&str>,
+    focused_editor: Option<&str>,
+    open_editors: &[String],
+) -> MenuRoute {
+    if focused_print_window.is_some() {
+        // ⌘W means "dismiss this window", the one command a print window is
+        // genuinely the subject of.
+        if id == "close" {
+            return MenuRoute::ClosePrintWindow;
+        }
+        // Anything else is aimed at the document, so the transient window is
+        // cleared out of the way and the command follows the user's intent back
+        // to the editor it started from. When the parent is gone, the window is
+        // still cleared — there is simply nowhere to deliver.
+        return match print_parent {
+            Some(p) if !crate::export::is_print_window(p) => {
+                MenuRoute::ClearPrintWindowAndDeliver(p.to_string())
+            }
+            // The window that printed is gone. Clearing the stray and
+            // delivering nothing is indistinguishable from the command being
+            // ignored — which is the whole defect this routing exists to fix —
+            // so when exactly ONE editor remains there is nothing ambiguous
+            // about where the user meant it to go. With several open there
+            // genuinely is, and guessing would be worse than doing nothing.
+            _ => match open_editors {
+                [only] => MenuRoute::ClearPrintWindowAndDeliver(only.clone()),
+                _ => MenuRoute::ClosePrintWindow,
+            },
+        };
+    }
+    match focused_editor {
+        Some(e) => MenuRoute::Deliver(e.to_string()),
+        None => MenuRoute::Drop,
+    }
+}
+
 pub fn build_menu<R: Runtime>(
     app: &AppHandle<R>,
     recents: &[RecentEntry],
@@ -356,6 +419,76 @@ mod view_menu_tests {
         for id in ["quit", "recent:clear", "recent:file:/tmp/a.md", "nonsense"] {
             assert_eq!(menu_event_name(id), None, "{id} must not emit a menu:// event");
         }
+    }
+
+    #[test]
+    fn close_dismisses_a_focused_print_window_and_delivers_nothing() {
+        assert_eq!(
+            route_menu_command("close", Some("edtr-print-1-0"), Some("main"), None, &[]),
+            MenuRoute::ClosePrintWindow
+        );
+    }
+
+    #[test]
+    fn any_other_command_clears_the_print_window_and_follows_the_user_back() {
+        // The defect this fixes: every one of these used to be dropped on the
+        // floor, so with a print window open the app's menu went dead.
+        for id in ["print", "save", "find", "open", "toggle-focus"] {
+            assert_eq!(
+                route_menu_command(id, Some("edtr-print-1-0"), Some("main"), None, &[]),
+                MenuRoute::ClearPrintWindowAndDeliver("main".to_string()),
+                "{id} must reach the editor it came from"
+            );
+        }
+    }
+
+    #[test]
+    fn a_command_is_never_delivered_to_a_print_window() {
+        // A print window has no frontend, so "delivering" there loses the
+        // command exactly as silently as dropping it. Guarded because the
+        // parent label is remembered state and could go stale.
+        assert_eq!(
+            route_menu_command("save", Some("edtr-print-1-0"), Some("edtr-print-1-1"), None, &[]),
+            MenuRoute::ClosePrintWindow
+        );
+    }
+
+    #[test]
+    fn a_closed_parent_still_gets_the_stray_window_cleared() {
+        assert_eq!(
+            route_menu_command("save", Some("edtr-print-1-0"), None, None, &[]),
+            MenuRoute::ClosePrintWindow
+        );
+    }
+
+    #[test]
+    fn a_lost_parent_falls_back_to_the_one_remaining_editor() {
+        // The exact shape of the defect reported on 2026-08-21: the stray
+        // window closes and nothing is saved, which reads as the command being
+        // swallowed. With one editor left there is no ambiguity to respect.
+        let editors = vec!["editor-1".to_string()];
+        assert_eq!(
+            route_menu_command("save", Some("edtr-print-1-0"), None, None, &editors),
+            MenuRoute::ClearPrintWindowAndDeliver("editor-1".to_string())
+        );
+    }
+
+    #[test]
+    fn a_lost_parent_with_several_editors_declines_to_guess() {
+        let editors = vec!["editor-1".to_string(), "editor-2".to_string()];
+        assert_eq!(
+            route_menu_command("save", Some("edtr-print-1-0"), None, None, &editors),
+            MenuRoute::ClosePrintWindow
+        );
+    }
+
+    #[test]
+    fn with_no_print_window_focused_nothing_about_delivery_changes() {
+        assert_eq!(
+            route_menu_command("save", None, Some("main"), Some("window-2"), &[]),
+            MenuRoute::Deliver("window-2".to_string())
+        );
+        assert_eq!(route_menu_command("save", None, Some("main"), None, &[]), MenuRoute::Drop);
     }
 
     #[test]

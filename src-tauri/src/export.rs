@@ -37,6 +37,25 @@ pub const PRINT_LABEL_PREFIX: &str = "edtr-print-";
 /// The pid is still in the name so a stale file is attributable to a run.
 static PRINT_SEQ: AtomicUsize = AtomicUsize::new(0);
 
+/// The editor window a print came from.
+///
+/// A print window keeps key status once its panel is dismissed, and it has no
+/// frontend of its own, so a menu command arriving in that state has nowhere to
+/// go unless we remember where the print started. One slot rather than a map,
+/// and that is exact rather than lazy: culling guarantees at most one print
+/// window exists, so there is never a second parent to remember.
+#[derive(Default)]
+pub struct PrintParent(pub std::sync::Mutex<Option<String>>);
+
+/// The editor window the current print came from, if one was recorded.
+///
+/// The label is NOT checked for liveness here — the caller knows which windows
+/// are open and is the one that can check. That split is deliberate: the policy
+/// decision (`menu::route_menu_command`) stays pure and testable.
+pub fn print_parent(app: &AppHandle) -> Option<String> {
+    app.state::<PrintParent>().0.lock().ok().and_then(|p| p.clone())
+}
+
 /// A unique (label, temp-file path) pair for one print operation.
 pub fn print_identity() -> (String, std::path::PathBuf) {
     let n = PRINT_SEQ.fetch_add(1, Ordering::Relaxed);
@@ -62,7 +81,20 @@ pub fn labels_to_cull(labels: impl IntoIterator<Item = String>) -> Vec<String> {
 /// WebKit prints from the loaded DOM and an export is self-contained (images
 /// are already inlined, so nothing is fetched later).
 #[tauri::command]
-pub fn print_html(app: AppHandle, html: String) -> Result<(), String> {
+pub fn print_html(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    html: String,
+) -> Result<(), String> {
+    // Who asked. `window` is the CALLING window, injected by Tauri
+    // (`WebviewWindow` implements `CommandArg`), so this is the editor the user
+    // was looking at rather than a guess about focus.
+    if !is_print_window(window.label()) {
+        if let Ok(mut p) = app.state::<PrintParent>().0.lock() {
+            *p = Some(window.label().to_string());
+        }
+    }
+
     // At most one print window can ever exist: a starting print closes the one
     // a previous print left behind (the owner's choice at Task 8's GUI gate).
     // This BOUNDS the stray window rather than removing it — nothing here can
