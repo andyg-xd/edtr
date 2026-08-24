@@ -17,7 +17,7 @@
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
-use tauri::{AppHandle, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 /// Label prefix for every transient print window.
 ///
@@ -45,6 +45,16 @@ pub fn print_identity() -> (String, std::path::PathBuf) {
     (stem, path)
 }
 
+/// Which of `labels` should a starting print close first?
+///
+/// Only ever print windows. Kept pure, and separate from the closing itself, so
+/// the dangerous case is the one under test: culling an *editor* label would
+/// close a user's document — unsaved work and all — without ever passing the
+/// unsaved-changes guard.
+pub fn labels_to_cull(labels: impl IntoIterator<Item = String>) -> Vec<String> {
+    labels.into_iter().filter(|l| is_print_window(l)).collect()
+}
+
 /// Print an already-built export document through the native print panel.
 ///
 /// The document is written to a temp file because a webview needs a URL to
@@ -53,6 +63,25 @@ pub fn print_identity() -> (String, std::path::PathBuf) {
 /// are already inlined, so nothing is fetched later).
 #[tauri::command]
 pub fn print_html(app: AppHandle, html: String) -> Result<(), String> {
+    // At most one print window can ever exist: a starting print closes the one
+    // a previous print left behind (the owner's choice at Task 8's GUI gate).
+    // This BOUNDS the stray window rather than removing it — nothing here can
+    // tell that a panel was dismissed, and both candidate signals for that were
+    // measured and refuted (see PLAN.md's debt entry) — so what it buys is that
+    // print windows cannot accumulate one per print.
+    //
+    // The cost, taken deliberately: two prints can no longer be in flight at
+    // once. A print panel is a sheet, and a sheet is window-modal rather than
+    // app-modal, so a user genuinely can click back to a document and print
+    // again while the first panel is still up; that first panel now goes away
+    // with its window.
+    let open = app.webview_windows();
+    for label in labels_to_cull(open.keys().cloned()) {
+        if let Some(w) = open.get(&label) {
+            let _ = w.close();
+        }
+    }
+
     let (label, path) = print_identity();
     std::fs::write(&path, html).map_err(|e| format!("Could not prepare the document: {e}"))?;
 
@@ -134,6 +163,26 @@ mod tests {
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
         assert!(name.contains(&std::process::id().to_string()), "{name} must name its process");
         assert!(name.ends_with(".html"), "{name} must be loadable as HTML");
+    }
+
+    #[test]
+    fn a_starting_print_culls_every_print_window_that_is_still_open() {
+        let culled = labels_to_cull(vec![
+            "main".to_string(),
+            "window-2".to_string(),
+            "edtr-print-123-0".to_string(),
+            "edtr-print-123-1".to_string(),
+        ]);
+        assert_eq!(culled.len(), 2, "both print windows must be culled: {culled:?}");
+        assert!(culled.iter().all(|l| is_print_window(l)), "{culled:?}");
+    }
+
+    #[test]
+    fn culling_never_touches_an_editor_window() {
+        // Not a cosmetic guard: closing an editor window from here would
+        // bypass the unsaved-changes guard completely and lose the buffer.
+        let culled = labels_to_cull(vec!["main".to_string(), "window-2".to_string()]);
+        assert!(culled.is_empty(), "no editor window may ever be culled: {culled:?}");
     }
 
     #[test]
