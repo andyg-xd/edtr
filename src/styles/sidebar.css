@@ -33,3 +33,16 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .outline-item.is-active > .outline-select { font-weight: 600; }
+
+/* The shell holds one pane at a time. The switch borrows the segmented look
+   of `.view-toggle` in chrome.css so the two read as the same control. */
+.sidebar-shell { display: flex; flex-direction: column; min-width: 0; }
+.sidebar-switch {
+  display: inline-flex; margin: var(--space-3) var(--space-4) var(--space-2);
+  border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden;
+}
+.sidebar-switch button {
+  flex: 1; border: 0; background: var(--surface); color: var(--fg);
+  padding: var(--space-1) var(--space-4); font-size: var(--text-sm); cursor: pointer;
+}
+.sidebar-switch button.active { background: var(--seg-active-bg); color: var(--seg-active-fg); }
