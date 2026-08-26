@@ -18,3 +18,18 @@
 .sidebar-close:hover { color: var(--fg); }
 .sidebar-item.is-unopened .sidebar-name { color: var(--fg-faint); }
 .sidebar-empty { padding: var(--space-5) var(--space-5); color: var(--fg-faint); font-size: var(--text-base); }
+
+/* Outline — indentation is by nesting depth, set per row as --outline-depth,
+   so a document that skips a heading level shows no phantom gap. */
+.outline-item { display: flex; border-radius: var(--radius-md); transition: background var(--motion-fast) var(--ease); }
+.outline-item:hover { background: var(--btn-hover-bg); }
+.outline-item.is-active { background: var(--btn-active-bg); }
+.outline-select {
+  flex: 1; min-width: 0;
+  background: none; border: none; text-align: left;
+  padding: var(--space-2) var(--space-4);
+  padding-left: calc(var(--space-4) + var(--outline-depth, 0) * var(--space-4));
+  color: var(--fg); font-size: var(--text-base); cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.outline-item.is-active > .outline-select { font-weight: 600; }
