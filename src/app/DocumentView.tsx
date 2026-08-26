@@ -24,6 +24,11 @@ import { insertImage as htmlInsertImage, canInsertImage as htmlCanInsertImage } 
 import type { OpenDoc } from '../files/openDocuments';
 import { StatusBar } from './StatusBar';
 import { FindBar } from '../find/FindBar';
+import { buildOutline } from '../outline/outlineModel';
+import { activeEntryIndex } from '../outline/activeEntry';
+import { revealSourceInCode } from '../outline/codeReveal';
+import { revealSourceInPm, caretSourceOffsetInPm } from '../outline/pmReveal';
+import type { OutlineEntry } from '../outline/types';
 import { codeSurface } from '../find/codeSurface';
 import { pmSurface } from '../find/pmSurface';
 import { matchSegments, MATCH_CAP } from '../find/matchText';
@@ -72,6 +77,8 @@ export interface DocumentViewHandle {
   openReplace: () => void;
   findNext: () => void;
   findPrev: () => void;
+  /** Jump to an outline entry in whichever view is showing (6c-iv). */
+  revealOutlineEntry: (entry: OutlineEntry) => void;
 }
 
 /**
@@ -103,10 +110,17 @@ interface DocumentViewProps {
   onError: (msg: string | null) => void;
   /** A non-destructive, transient notice (e.g. D2's crossing-formatting heads-up, D6's atom disclosure). */
   onInfo: (msg: string) => void;
+  /**
+   * Report the document's outline and which entry the caret is in (6c-iv).
+   * DocumentView derives both — it is the only component that has the source
+   * AND the live views — but the panel lives in the window's sidebar, so the
+   * state is handed up rather than rendered here.
+   */
+  onOutlineChange?: (entries: OutlineEntry[], activeIndex: number | null) => void;
 }
 
 export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(function DocumentView(
-  { doc, effectiveTheme, modes, onSetWritingMode, onExport, onDirtyChange, onLiveAvailableChange, onError, onInfo }, ref,
+  { doc, effectiveTheme, modes, onSetWritingMode, onExport, onDirtyChange, onLiveAvailableChange, onError, onInfo, onOutlineChange }, ref,
 ) {
   const session = doc.session;
   const viewMode = doc.viewMode;
@@ -363,6 +377,35 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     [findEpoch, ribbonTick, codeCursor],
   );
   const counts = useWordCount(countSurface, countVersion);
+
+  // The outline, derived from the SOURCE so it is correct in every view
+  // (spec D2) — never from a live projection, which is only current while its
+  // view is showing. Plaintext has no headings; the panel shows its own empty
+  // state rather than being hidden.
+  const outlineEntries = useMemo(
+    () => (session.format === 'markdown' || session.format === 'html'
+      ? buildOutline(session.text, session.format)
+      : []),
+    // `countVersion` is the existing "something changed" signal -- it already
+    // covers a Code edit, a Live transaction and a find epoch. Riding it means
+    // no second subscription and no second definition of when to recompute.
+    [session, countVersion],
+  );
+
+  // Which entry the caret is in. Code view reports a real source offset;
+  // a Live view reports its top-level block's, which names the section
+  // without claiming to be a position (see `caretSourceOffsetInPm`).
+  const outlineActive = useMemo(() => {
+    if (outlineEntries.length === 0) return null;
+    const offset = showLive
+      ? (liveView ? caretSourceOffsetInPm(liveView) : null)
+      : (codeView ? codeView.state.selection.main.head : null);
+    return offset === null ? null : activeEntryIndex(outlineEntries, offset);
+  }, [outlineEntries, showLive, liveView, codeView, countVersion]);
+
+  useEffect(() => {
+    onOutlineChange?.(outlineEntries, outlineActive);
+  }, [onOutlineChange, outlineEntries, outlineActive]);
 
   // Live views have no `codeCursor`-shaped signal of their own — the caret
   // moving is just another transaction. `onStateChange` already fires on
@@ -702,6 +745,12 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   const cancelReplaceAll = useCallback(() => setPendingReplaceAll(null), []);
 
   useImperativeHandle(ref, () => ({
+    revealOutlineEntry(entry: OutlineEntry) {
+      // Whichever view is showing. Not routed through FindSurface: that
+      // interface is find's, and reveal here needs the raw view.
+      if (showLive) { if (liveView) revealSourceInPm(liveView, entry); }
+      else if (codeView) revealSourceInCode(codeView, entry);
+    },
     flushToSource, openFind, openReplace, findNext: goNext, findPrev: goPrev,
   }), [flushToSource, openFind, openReplace, goNext, goPrev]);
 

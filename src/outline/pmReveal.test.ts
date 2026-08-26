@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach } from 'vitest';
-import { EditorState } from 'prosemirror-state';
+import { EditorState, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { liveSchema } from '../views/liveSchema';
 import { htmlSchema } from '../views/htmlSchema';
-import { revealSourceInPm } from './pmReveal';
+import { revealSourceInPm, caretSourceOffsetInPm } from './pmReveal';
 import type { OutlineEntry } from './types';
 
 let view: EditorView | null = null;
@@ -83,5 +83,33 @@ describe('revealSourceInPm — headings nested in a container (HTML)', () => {
   it('does nothing when no block matches, without throwing', () => {
     const v = mount(sectionDoc() as never);
     expect(() => revealSourceInPm(v, entry({ blockFrom: 9999, blockTo: 10000 }))).not.toThrow();
+  });
+});
+
+describe('caretSourceOffsetInPm', () => {
+  it('reports the caret block’s own source offset at the top level', () => {
+    const s = liveSchema;
+    const doc = s.node('doc', null, [
+      s.node('heading', { level: 1, blockId: 'b0', srcFrom: 0, srcTo: 7 }, [s.text('Title')]),
+      s.node('paragraph', { blockId: 'b1', srcFrom: 9, srcTo: 13 }, [s.text('text')]),
+    ]);
+    const v = mount(doc as never);
+    // Caret in the paragraph.
+    v.dispatch(v.state.tr.setSelection(TextSelection.near(v.state.doc.resolve(10))));
+    expect(caretSourceOffsetInPm(v)).toBe(9);
+  });
+
+  it('falls back to the CONTAINING block for a caret with no range of its own', () => {
+    // The §4.2 constraint, from the other direction: a heading inside a
+    // <section> has no srcFrom, so the section's is the honest answer.
+    const h = htmlSchema;
+    const doc = h.node('doc', null, [
+      h.node('container', { tag: 'section', blockId: 'h0', srcFrom: 40, srcTo: 120 }, [
+        h.node('heading', { level: 2 }, [h.text('First')]),
+      ]),
+    ]);
+    const v = mount(doc as never);
+    v.dispatch(v.state.tr.setSelection(TextSelection.near(v.state.doc.resolve(3))));
+    expect(caretSourceOffsetInPm(v)).toBe(40);
   });
 });

@@ -13,6 +13,8 @@ interface WindowChromeProps {
   liveDisabled: boolean;
   themeMode: ThemeMode;
   onSetThemeMode: (mode: ThemeMode) => void;
+  sidebarOpen: boolean;
+  onToggleSidebar: () => void;
 }
 
 /** Top bar: filename + dirty dot + Live/Code toggle + theme control. Keeps the OS title in sync.
@@ -25,6 +27,8 @@ export function WindowChrome({
   liveDisabled,
   themeMode,
   onSetThemeMode,
+  sidebarOpen,
+  onToggleSidebar,
 }: WindowChromeProps) {
   useEffect(() => {
     const title = name ? `${dirty ? '• ' : ''}${name}` : 'Edtr';
@@ -33,6 +37,16 @@ export function WindowChrome({
 
   return (
     <header className="window-chrome">
+      <button
+        type="button"
+        className="sidebar-toggle"
+        aria-pressed={sidebarOpen}
+        aria-label={sidebarOpen ? 'Hide outline' : 'Show outline'}
+        title={sidebarOpen ? 'Hide outline' : 'Show outline'}
+        onClick={onToggleSidebar}
+      >
+        ☰
+      </button>
       <span className="doc-name">{name ?? 'No file open'}</span>
       {dirty && (
         <span className="dirty-dot" aria-label="Unsaved changes" title="Unsaved changes">

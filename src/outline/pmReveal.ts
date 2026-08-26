@@ -56,3 +56,24 @@ export function revealSourceInPm(view: EditorView, entry: OutlineEntry): void {
   const el = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
   el?.scrollIntoView?.({ block: 'center', inline: 'nearest' });
 }
+
+/**
+ * The source offset the caret is at, for marking the active outline entry.
+ *
+ * The inverse of the mapping above, and inexact by the same constraint: a
+ * caret inside a `<section>` sits in a node with no source range, so the best
+ * available answer is the containing TOP-LEVEL block's `srcFrom`. That is
+ * enough to name the section the caret is in, which is all the panel claims —
+ * it is not a position and must not be used as one.
+ *
+ * Null when nothing resolves, so a caller can leave the panel unmarked rather
+ * than mark the wrong entry.
+ */
+export function caretSourceOffsetInPm(view: EditorView): number | null {
+  const pos = view.state.selection.from;
+  const $pos = view.state.doc.resolve(pos);
+  // depth 1 is the top-level block; depth 0 is the doc itself.
+  const top = $pos.depth === 0 ? view.state.doc.nodeAt(pos) : $pos.node(1);
+  const from = top?.attrs?.srcFrom;
+  return typeof from === 'number' && from >= 0 ? from : null;
+}

@@ -8,6 +8,10 @@ import { WindowChrome } from './WindowChrome';
 import { CloseGuard } from './CloseGuard';
 import { Sidebar } from './Sidebar';
 import { FolderSidebar } from './FolderSidebar';
+import { SidebarShell } from './SidebarShell';
+import { OutlinePanel } from '../outline/OutlinePanel';
+import type { OutlineEntry } from '../outline/types';
+import type { SidebarMode } from './SidebarShell';
 import { useMenuAndCloseGuard } from './MenuBridge';
 import { quitVoteFor } from './quitVote';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
@@ -565,6 +569,24 @@ export function EditorWindow() {
     if (intent?.kind === 'quit') voteQuit(quitVoteFor('cancel', false));
   };
 
+  // Per-window and never persisted (spec D8) — the same shape as the writing
+  // modes after 6c-ii-b reversed 6c-ii's D5. No settings/ call belongs here.
+  // Multi-doc and folder windows start open so nothing disappears for someone
+  // who had a sidebar before this phase; a single document starts closed.
+  const hasFiles = Boolean(folderView) || docs.state.docs.length > 1;
+  const [sidebarOpen, setSidebarOpen] = useState(hasFiles);
+  const [sidebarMode, setSidebarMode] = useState<SidebarMode>('files');
+  // Reported up by the active DocumentView, which is the only component with
+  // both the source and the live views. Reset per active doc by the callback
+  // itself firing on mount.
+  const [outline, setOutline] = useState<{ entries: OutlineEntry[]; activeIndex: number | null }>(
+    { entries: [], activeIndex: null },
+  );
+  const handleOutlineChange = useCallback(
+    (entries: OutlineEntry[], activeIndex: number | null) => setOutline({ entries, activeIndex }),
+    [],
+  );
+
   const activeReload = active ? reloadState[active.id] : undefined;
   const activeNonce = active ? reloadNonce[active.id] ?? 0 : 0;
 
@@ -583,6 +605,8 @@ export function EditorWindow() {
         }}
         themeMode={themeMode}
         onSetThemeMode={setThemeMode}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((v) => !v)}
       />
       {degraded && (
         <div className="notice notice-info" role="status">
@@ -606,24 +630,36 @@ export function EditorWindow() {
         <div className="notice notice-info" role="status">{infoNotice}</div>
       )}
       <div className="editor-body">
-        {folderView ? (
-          <FolderSidebar
-            entries={folderView.entries}
-            activePath={activePath}
-            openPaths={openPaths}
-            dirtyForPath={dirtyForPath}
-            onOpen={openPath}
+        {sidebarOpen && (
+          <SidebarShell
+            hasFiles={hasFiles}
+            mode={sidebarMode}
+            onSetMode={setSidebarMode}
+            files={folderView ? (
+              <FolderSidebar
+                entries={folderView.entries}
+                activePath={activePath}
+                openPaths={openPaths}
+                dirtyForPath={dirtyForPath}
+                onOpen={openPath}
+              />
+            ) : (
+              <Sidebar
+                docs={docs.state.docs}
+                activeId={docs.state.activeId}
+                dirtyFor={dirtyFor}
+                onSelect={selectDoc}
+                onClose={closeDoc}
+              />
+            )}
+            outline={
+              <OutlinePanel
+                entries={outline.entries}
+                activeIndex={outline.activeIndex}
+                onSelect={(entry) => viewRef.current?.revealOutlineEntry(entry)}
+              />
+            }
           />
-        ) : (
-          docs.state.docs.length > 1 && (
-            <Sidebar
-              docs={docs.state.docs}
-              activeId={docs.state.activeId}
-              dirtyFor={dirtyFor}
-              onSelect={selectDoc}
-              onClose={closeDoc}
-            />
-          )
         )}
         <div className="doc-pane">
           {active ? (
@@ -640,6 +676,7 @@ export function EditorWindow() {
                 key={`${active.id}:${activeNonce}`}
                 ref={viewRef}
                 doc={active}
+                onOutlineChange={handleOutlineChange}
                 effectiveTheme={themeEffective}
                 modes={writingModes}
                 onSetWritingMode={setWritingMode}
