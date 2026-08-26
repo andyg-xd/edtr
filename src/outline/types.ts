@@ -22,3 +22,9 @@ export interface OutlineEntry {
   blockFrom: number;
   blockTo: number;
 }
+
+/** One entry plus whatever nests under it. */
+export interface OutlineNode {
+  entry: OutlineEntry;
+  children: OutlineNode[];
+}
