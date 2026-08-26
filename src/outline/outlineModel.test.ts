@@ -32,3 +32,41 @@ describe('buildOutline — Markdown', () => {
     expect(buildOutline('just a paragraph\n', 'markdown')).toEqual([]);
   });
 });
+
+describe('buildOutline — HTML', () => {
+  const page = (body: string) => `<!DOCTYPE html><html><head><title>t</title></head><body>${body}</body></html>`;
+
+  it('reads h1-h6 as levels 1-6', () => {
+    const src = page('<h1>One</h1><h3>Three</h3>');
+    expect(buildOutline(src, 'html').map((e) => e.level)).toEqual([1, 3]);
+  });
+
+  it('takes the heading text without its tags', () => {
+    const src = page('<h2>A <em>stressed</em> word</h2>');
+    expect(buildOutline(src, 'html')[0].text).toBe('A stressed word');
+  });
+
+  // THE case this phase is shaped around (spec §4.2): a heading inside a
+  // <section> is NOT a direct child of <body>, so it carries no source range
+  // in the live model. The outline must still find it, and must record the
+  // SECTION as its block plus its ordinal within that section.
+  it('finds headings nested inside a semantic container', () => {
+    const src = page('<section><h2>First</h2><p>x</p><h3>Second</h3></section>');
+    const entries = buildOutline(src, 'html');
+    expect(entries.map((e) => e.text)).toEqual(['First', 'Second']);
+    expect(entries.map((e) => e.ordinalInBlock)).toEqual([0, 1]);
+    // Both share one containing block — the <section>.
+    expect(entries[0].blockFrom).toBe(entries[1].blockFrom);
+    expect(src.slice(entries[0].blockFrom, entries[0].blockTo).startsWith('<section>')).toBe(true);
+  });
+
+  it('numbers ordinals per block, restarting in the next one', () => {
+    const src = page('<section><h2>A</h2><h2>B</h2></section><section><h2>C</h2></section>');
+    expect(buildOutline(src, 'html').map((e) => e.ordinalInBlock)).toEqual([0, 1, 0]);
+  });
+
+  it('ignores a heading in the head, which is not document structure', () => {
+    const src = '<!DOCTYPE html><html><head><title>t</title></head><body><h1>Real</h1></body></html>';
+    expect(buildOutline(src, 'html').map((e) => e.text)).toEqual(['Real']);
+  });
+});
