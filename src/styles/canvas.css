@@ -77,6 +77,33 @@
   background: var(--th-bg);
 }
 
+/* Focus mode: a table's CHROME fades with its text.
+ *
+ * Measured, not guessed (6c-iv, Task 12). The dim changes only `color`, and
+ * the decoration lands on the cell's paragraph — so without these rules a
+ * table's borders and header background stay at full strength while every
+ * word on the page fades. Against faded surroundings the grid becomes the
+ * loudest thing on screen, which is how this was reported: "focus mode
+ * highlights the whole table". The caret's cell was lit correctly all along;
+ * it just could not be seen next to a full-strength grid.
+ *
+ * `:has(> .edtr-dim)` keys off the SAME class the decoration already applies,
+ * so the two can never disagree about which cells are dimmed, and the caret's
+ * own cell keeps its full-strength grid — which is what makes it read as the
+ * focused one. Fixed in CSS rather than by decorating the cell node, because
+ * the decoration layer is correct and changing it would put the no-beautify
+ * path in the blast radius of a paint bug.
+ *
+ * `--dim-fade` is the fade the text uses, so grid and words recede together
+ * rather than at two visibly different rates. */
+.live-view td:has(> .edtr-dim),
+.live-view th:has(> .edtr-dim) {
+  border-color: color-mix(in srgb, var(--table-border), transparent var(--dim-fade));
+}
+.live-view th:has(> .edtr-dim) {
+  background: color-mix(in srgb, var(--th-bg), transparent var(--dim-fade));
+}
+
 /* Typewriter mode: room below the last line so it can reach the hold
    position (D8). Scroll padding, never text — nothing reaches the file. The
    variable is set from the live scroller height by codeTypewriter. */
