@@ -14,24 +14,34 @@
   --border: #e8e8ea;
   --border-subtle: #efeff1;
   --border-strong: #d3d3d8;
-  /* #a36415, not the brief's #c77a1a: c77a1a only reaches 3.37:1 against the
-     white --accent-fg text it sits under in .notice-action/.reload-banner
-     button (banners.css) -- fails AA 4.5:1. Darkened until it clears 4.5:1
-     (lands at 4.78:1); --seg-active-bg carries the same fix since it reused
-     the same failing value for the same white-text-on-fill usage. */
-  --accent: #a36415;
-  --accent-border: #a35f0d;
-  /* #87520d, not #a35f0d: the brief's hover value converged with the
-     contrast-adjusted --accent above (both pulled dark by the same
-     white-text constraint) to a 0.96% luminance delta -- imperceptible, so
-     hovering a filled button reads as dead. Darkened further (still passes
-     AA at 6.48:1 against --accent-fg) to a 5.74% delta, comfortably in the
-     perceptible band. --accent-border is left at #a35f0d -- it's a
-     boundary colour, not an interactive state, so its convergence with
-     --accent is harmless. */
-  --accent-hover: #87520d;
+  /* PURPLE, not the gold this shipped with (owner, 2026-08-27: gold fills
+     under white text read poorly in light mode).
+
+     This also settles a contradiction the palette had with itself: the header
+     above says "purple only on active states", and every active state was
+     gold. Light mode's active states are now the same family as its resting
+     ones (--btn-active-bg #efe9f5, --btn-active-border #ded2ea) and as dark
+     mode's purple chrome, all at hue ~270-277.
+
+     Chosen by measurement, against the bar the gold set in this very block:
+       #7d479e vs white  6.43:1  (AA needs 4.5; the gold managed 4.78)
+       #5c3474 vs white  9.55:1  hover
+       luminance delta   5.34%   -- the gold's first attempt was rejected at
+                                    0.96% as imperceptible, so >5% is the bar
+     Saturation is 38%, matching --ded2ea/--efe9f5, so the fills read as the
+     same purple as the tints rather than a second, louder one.
+
+     contrast.test.ts enforces all three of those numbers; it does not need to
+     be told about this change, and it will fail if anyone drifts them.
+
+     NOT changed: --find-match-bg / --find-current-bg keep their gold literals
+     below. A search hit is not an active state, and a colour that differs
+     from the UI accent is what makes matches findable. */
+  --accent: #7d479e;
+  --accent-border: #6c3e89;
+  --accent-hover: #5c3474;
   --accent-fg: #ffffff;
-  --seg-active-bg: #a36415;
+  --seg-active-bg: #7d479e;
   --seg-active-fg: #ffffff;
   --btn-hover-bg: rgba(0, 0, 0, 0.05);
   --btn-active-bg: #efe9f5;
