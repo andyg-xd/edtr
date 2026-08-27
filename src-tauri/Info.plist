@@ -13,6 +13,25 @@
 -->
 <plist version="1.0">
 <dict>
+	<!--
+	  Modern macOS apps carry CFBundleIconName alongside CFBundleIconFile;
+	  Tauri emits only the latter. Adding it here rather than in
+	  tauri.conf.json because this file is already the one place this project
+	  merges Info.plist keys, and splitting them across two mechanisms is how
+	  they drift.
+
+	  ⚠️ CFBundleIconName normally names an image set in an ASSET CATALOG, and
+	  Edtr has none — it ships icon.icns via CFBundleIconFile. This was tried
+	  during 6a and observed not to break anything, but "observed not to break"
+	  is weaker than proven. If the icon ever looks wrong in Finder, the Dock
+	  or About, THIS KEY IS THE FIRST SUSPECT and removing it is the first
+	  thing to try. It is on 6b's install walk for that reason.
+
+	  It does NOT fix the Finder list-view plate. That is timeboxed and closed
+	  with six refuted hypotheses in PLAN.md — do not reopen it here.
+	-->
+	<key>CFBundleIconName</key>
+	<string>icon</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>

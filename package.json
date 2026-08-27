@@ -10,7 +10,8 @@
     "tauri": "tauri",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "build:release": "tauri build --target universal-apple-darwin"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.4",

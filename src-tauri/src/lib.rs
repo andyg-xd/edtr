@@ -1,3 +1,4 @@
+mod distribution;
 mod sidebar_geometry;
 mod assets;
 mod devtools;
