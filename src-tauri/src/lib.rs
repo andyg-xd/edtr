@@ -1,3 +1,4 @@
+mod sidebar_geometry;
 mod assets;
 mod devtools;
 mod export;
