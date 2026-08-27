@@ -16,6 +16,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(sidebar_geometry::SidebarGrowthState::default())
         .manage(window::PendingOpen::default())
         .manage(window::WindowCounter::default())
         .manage(window::QuitPollState::default())
@@ -191,7 +192,8 @@ pub fn run() {
             settings::get_settings,
             settings::set_theme,
             menu::sync_view_menu,
-            export::print_html
+            export::print_html,
+            sidebar_geometry::set_sidebar_window_growth
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

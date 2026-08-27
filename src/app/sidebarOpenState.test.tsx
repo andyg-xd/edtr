@@ -1,8 +1,18 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
+
+// The window-growth call (6c-iv-b). Mocked rather than left to reject, so the
+// test can assert it FIRES — a `.catch(() => {})` swallowing a real rejection
+// looks identical to a call that was never wired at all.
+const invokeMock = vi.fn((_cmd: string, _args?: unknown) => Promise.resolve('grew-left'));
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: (cmd: string, args?: unknown) => invokeMock(cmd, args),
+}));
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import { useSidebarOpen } from './sidebarOpenState';
+
+beforeEach(() => { invokeMock.mockClear(); });
 
 let container: HTMLDivElement | null = null;
 let currentRoot: ReturnType<typeof createRoot> | null = null;
@@ -70,6 +80,39 @@ describe('useSidebarOpen', () => {
     await h.click();
     expect(h.isOpen()).toBe(true);
     await h.setHasFiles(true);
+    expect(h.isOpen()).toBe(true);
+  });
+  it('does NOT resize the window on mount', async () => {
+    // A window that starts with its sidebar open was built at that size. Growing
+    // it again here would widen every folder window by 200px on every open.
+    await render(true);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('asks the window to grow when the sidebar opens, and to shrink when it closes', async () => {
+    const h = await render(false);
+    await h.click();
+    expect(invokeMock).toHaveBeenCalledWith('set_sidebar_window_growth', { open: true });
+
+    invokeMock.mockClear();
+    await h.click();
+    expect(invokeMock).toHaveBeenCalledWith('set_sidebar_window_growth', { open: false });
+  });
+
+  it('resizes on the AUTOMATIC open too, not just a click', async () => {
+    // The folder-arrives path. Wiring the growth to the button instead of to
+    // this state would have left this case silently not growing.
+    const h = await render(false);
+    await h.setHasFiles(true);
+    expect(invokeMock).toHaveBeenCalledWith('set_sidebar_window_growth', { open: true });
+  });
+
+  it('still toggles when the window refuses to resize', async () => {
+    // Degrades to the pre-6c-iv-b behaviour: the pane absorbs the width. The
+    // sidebar must never be held hostage by a window operation.
+    invokeMock.mockImplementationOnce(() => Promise.reject(new Error('no monitor')));
+    const h = await render(false);
+    await h.click();
     expect(h.isOpen()).toBe(true);
   });
 });

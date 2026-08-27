@@ -167,3 +167,138 @@ mod tests {
         assert_eq!((closed.x, closed.w), (780, 800)); // delta reversed, drag kept
     }
 }
+
+// ---------------------------------------------------------------------------
+// Applying a plan to a real window (Task 2). Kept in this module so the
+// arithmetic and its single call site cannot drift apart.
+
+use std::collections::HashMap;
+use std::sync::Mutex;
+use tauri::{PhysicalPosition, PhysicalSize, WebviewWindow};
+
+/// What a window's open actually applied, so the close can reverse exactly it.
+///
+/// Per-window and never persisted, matching the writing modes and the sidebar's
+/// own open state. Keyed by window label.
+#[derive(Default)]
+pub struct SidebarGrowthState(pub Mutex<HashMap<String, (i32, u32)>>);
+
+/// Sidebar width in LOGICAL px. Must match `--sidebar-width` in sidebar.css;
+/// a test in this module asserts the two agree, the same way the min-width
+/// constants are held to `tauri.conf.json`.
+pub const SIDEBAR_WIDTH_LOGICAL: f64 = 200.0;
+
+fn work_area_of(win: &WebviewWindow) -> Result<(Rect, f64), String> {
+    let m = win
+        .current_monitor()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "no current monitor".to_string())?;
+    let wa = m.work_area();
+    Ok((
+        Rect { x: wa.position.x, y: wa.position.y, w: wa.size.width, h: wa.size.height },
+        // Read HERE, per operation, from the window's CURRENT monitor — never
+        // cached. See this module's header for the measurement that settled it.
+        m.scale_factor(),
+    ))
+}
+
+fn rect_of(win: &WebviewWindow) -> Result<Rect, String> {
+    let p = win.outer_position().map_err(|e| e.to_string())?;
+    let s = win.outer_size().map_err(|e| e.to_string())?;
+    Ok(Rect { x: p.x, y: p.y, w: s.width, h: s.height })
+}
+
+/// Grow the window to make room for the sidebar, or put it back.
+///
+/// Returns the strategy name so the caller can log it; the frontend ignores it.
+#[tauri::command]
+pub fn set_sidebar_window_growth(
+    window: WebviewWindow,
+    open: bool,
+    state: tauri::State<'_, SidebarGrowthState>,
+) -> Result<String, String> {
+    let label = window.label().to_string();
+
+    if !open {
+        // D1: reverse exactly what the open applied. Recomputing would derive a
+        // strategy from wherever the window is NOW, which is not necessarily
+        // where it opened — a window dragged while the sidebar was open would
+        // then close to the wrong place.
+        let applied = state.0.lock().map_err(|e| e.to_string())?.remove(&label);
+        let Some((dx, dw)) = applied else { return Ok("nothing-to-undo".into()) };
+        let now = rect_of(&window)?;
+        let back = plan_close(now, dx, dw);
+        // Lower the floor BEFORE shrinking: a constraint still holding the old
+        // wider minimum would clamp the very resize meant to undo it.
+        apply_min_width(&window, false)?;
+        window.set_position(PhysicalPosition::new(back.x, back.y)).map_err(|e| e.to_string())?;
+        window.set_size(PhysicalSize::new(back.w, back.h)).map_err(|e| e.to_string())?;
+        return Ok("closed".into());
+    }
+
+    let (work, scale) = work_area_of(&window)?;
+    let win_rect = rect_of(&window)?;
+    let maximized = window.is_maximized().map_err(|e| e.to_string())?;
+    let delta = (SIDEBAR_WIDTH_LOGICAL * scale).round() as i32;
+
+    let (target, strategy) = plan_open(win_rect, work, delta, maximized);
+    if matches!(strategy, GrowStrategy::Compressed) {
+        // D3 / no room: the pane absorbs it, exactly as before this phase.
+        return Ok("compressed".into());
+    }
+
+    window.set_position(PhysicalPosition::new(target.x, target.y)).map_err(|e| e.to_string())?;
+    window.set_size(PhysicalSize::new(target.w, target.h)).map_err(|e| e.to_string())?;
+    apply_min_width(&window, true)?;
+    state
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .insert(label, (target.x - win_rect.x, target.w - win_rect.w));
+
+    Ok(match strategy {
+        GrowStrategy::GrewLeft => "grew-left".into(),
+        GrowStrategy::GrewRight => "grew-right".into(),
+        GrowStrategy::Partial(g) => format!("partial-{g}"),
+        GrowStrategy::Compressed => unreachable!("handled above"),
+    })
+}
+
+/// D2: the window's minimum width moves with the sidebar.
+///
+/// The floor exists so the RIBBON stays usable. A sidebar takes 200 logical px
+/// the ribbon never gets, so while it is open the floor has to be that much
+/// higher — otherwise the pane can be dragged down to a width the ribbon
+/// cannot live in, which is the same clipping the floor was introduced to
+/// prevent.
+///
+/// Raised on open, lowered on close, never persisted. `set_min_size` takes a
+/// LOGICAL size, so no scale conversion belongs here.
+fn apply_min_width(win: &WebviewWindow, sidebar_open: bool) -> Result<(), String> {
+    let extra = if sidebar_open { SIDEBAR_WIDTH_LOGICAL } else { 0.0 };
+    win.set_min_size(Some(tauri::LogicalSize::new(
+        crate::window::MIN_WINDOW_WIDTH + extra,
+        crate::window::MIN_WINDOW_HEIGHT,
+    )))
+    .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod wiring_tests {
+    /// The Rust constant and the stylesheet must agree, the same way the
+    /// min-width constants are held to `tauri.conf.json`. Nothing else compares
+    /// them, and a sidebar that is 200px in CSS while Rust grows the window by
+    /// a different number is a silently wrong window.
+    #[test]
+    fn sidebar_width_matches_the_stylesheet() {
+        let css = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/styles/sidebar.css"),
+        )
+        .expect("sidebar.css must be readable from the Rust crate");
+        let needle = format!("flex: 0 0 {}px", super::SIDEBAR_WIDTH_LOGICAL as i64);
+        assert!(
+            css.contains(&needle),
+            "sidebar.css must size .sidebar-shell with `{needle}` to match SIDEBAR_WIDTH_LOGICAL"
+        );
+    }
+}
