@@ -35,8 +35,27 @@
 .outline-item.is-active > .outline-select { font-weight: 600; }
 
 /* The shell holds one pane at a time. The switch borrows the segmented look
-   of `.view-toggle` in chrome.css so the two read as the same control. */
-.sidebar-shell { display: flex; flex-direction: column; min-width: 0; }
+   of `.view-toggle` in chrome.css so the two read as the same control.
+
+   ⚠️ THE WIDTH LIVES HERE, NOT ON `.sidebar`, AND THAT IS LOAD-BEARING.
+   `.editor-body` is a flex ROW (chrome.css:47) and this shell is a flex
+   COLUMN, so a `flex` shorthand on this element sizes it on the ROW's axis
+   (width) while the same shorthand on its child sizes THAT on the COLUMN's
+   axis (height). 6c-iv shipped with the 200px still on `.sidebar` and no
+   width here, and both of the owner's layout reports came out of that one
+   omission — measured in a browser 2026-08-26: the shell content-sized to
+   449px and cut the document pane from 699px to 451px, while `.sidebar`'s
+   200px became a HEIGHT and clipped the list to a third of the window. The
+   fix measured back at 200x600 with the pane at 700px.
+
+   If you ever move the width off this rule, put it somewhere that is a child
+   of the row — never on an element inside the column. */
+.sidebar-shell { display: flex; flex-direction: column; flex: 0 0 200px; min-width: 0; min-height: 0; }
+
+/* Fill the column and scroll, rather than inheriting a 200px basis the column
+   would read as a height. Scoped to the shell so `.sidebar`'s own rule keeps
+   its meaning anywhere else it is used. */
+.sidebar-shell > .sidebar { flex: 1 1 auto; min-height: 0; }
 .sidebar-switch {
   display: inline-flex; margin: var(--space-3) var(--space-4) var(--space-2);
   border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden;
