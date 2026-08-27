@@ -1,3 +1,4 @@
+mod spike_window; // SPIKE 6c-iv-b Task 0 — throwaway
 mod assets;
 mod devtools;
 mod export;
@@ -29,6 +30,20 @@ pub fn run() {
             // sees it (see devtools.rs for why this is a preference).
             devtools::prefer_detached_inspector();
             let handle = app.handle();
+            // SPIKE 6c-iv-b Task 0 — throwaway. Reports real geometry and runs
+            // one grow, so the arithmetic is checked against what actually
+            // happened rather than what it was meant to do.
+            {
+                let h = handle.clone();
+                std::thread::spawn(move || {
+                    // 15s, not 1.5s: the owner saw flicker on the first 2-3 cycles only.
+                    // That is a warm-up shape, so this run starts well past startup to
+                    // tell a mechanism problem from a first-paint one.
+                    std::thread::sleep(std::time::Duration::from_secs(10));
+                    spike_window::log_at_startup(&h);
+                    spike_window::run_cycles(&h, 30);
+                });
+            }
             let loaded = recents::load(handle);
             if let Ok(mut l) = app.state::<recents::RecentsState>().0.lock() {
                 *l = loaded;
@@ -99,7 +114,10 @@ pub fn run() {
                 let _ = app.emit("menu://quit-poll", ());
                 let app_timer = app.clone();
                 std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(1500));
+                    // 15s, not 1.5s: the owner saw flicker on the first 2-3 cycles only.
+                    // That is a warm-up shape, so this run starts well past startup to
+                    // tell a mechanism problem from a first-paint one.
+                    std::thread::sleep(std::time::Duration::from_secs(10));
                     let outcome = match app_timer.state::<window::QuitPollState>().0.lock() {
                         Ok(mut p) => p.prune_if(generation),
                         Err(_) => return,
@@ -190,7 +208,8 @@ pub fn run() {
             settings::get_settings,
             settings::set_theme,
             menu::sync_view_menu,
-            export::print_html
+            export::print_html,
+            spike_window::spike_geometry
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
