@@ -12,6 +12,7 @@ import { SidebarShell } from './SidebarShell';
 import { OutlinePanel } from '../outline/OutlinePanel';
 import type { OutlineEntry } from '../outline/types';
 import type { SidebarMode } from './SidebarShell';
+import { useSidebarOpen } from './sidebarOpenState';
 import { useMenuAndCloseGuard } from './MenuBridge';
 import { quitVoteFor } from './quitVote';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
@@ -573,8 +574,13 @@ export function EditorWindow() {
   // modes after 6c-ii-b reversed 6c-ii's D5. No settings/ call belongs here.
   // Multi-doc and folder windows start open so nothing disappears for someone
   // who had a sidebar before this phase; a single document starts closed.
+  //
+  // The policy lives in `useSidebarOpen` rather than inline, because the
+  // inline `useState(hasFiles)` this replaces read `hasFiles` only on the
+  // first render — before `read_folder` had returned — so a folder window
+  // started closed and never reopened. See that hook for the full account.
   const hasFiles = Boolean(folderView) || docs.state.docs.length > 1;
-  const [sidebarOpen, setSidebarOpen] = useState(hasFiles);
+  const [sidebarOpen, toggleSidebar] = useSidebarOpen(hasFiles);
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('files');
   // Reported up by the active DocumentView, which is the only component with
   // both the source and the live views. Reset per active doc by the callback
@@ -606,7 +612,7 @@ export function EditorWindow() {
         themeMode={themeMode}
         onSetThemeMode={setThemeMode}
         sidebarOpen={sidebarOpen}
-        onToggleSidebar={() => setSidebarOpen((v) => !v)}
+        onToggleSidebar={toggleSidebar}
       />
       {degraded && (
         <div className="notice notice-info" role="status">
