@@ -24,24 +24,33 @@
      mode's purple chrome, all at hue ~270-277.
 
      Chosen by measurement, against the bar the gold set in this very block:
-       #7d479e vs white  6.43:1  (AA needs 4.5; the gold managed 4.78)
-       #5c3474 vs white  9.55:1  hover
+       #5c3474 vs white  9.55:1  (AA needs 4.5; the gold managed 4.78)
+       #7d479e vs white  6.43:1  hover
        luminance delta   5.34%   -- the gold's first attempt was rejected at
                                     0.96% as imperceptible, so >5% is the bar
      Saturation is 38%, matching --ded2ea/--efe9f5, so the fills read as the
      same purple as the tints rather than a second, louder one.
 
-     contrast.test.ts enforces all three of those numbers; it does not need to
-     be told about this change, and it will fail if anyone drifts them.
+     ⚠️ THE HOVER IS LIGHTER THAN THE REST STATE, WHICH INVERTS THE GOLD'S
+     DIRECTION, AND IT HAS TO BE. At 9.55:1 the fill has almost no luminance
+     left to give: measured, a darker hover reaches only a 2.07% delta at
+     #4a2a5e and needs to go to near-black #2a1836 before it clears the 3%
+     the test demands -- by which point it reads as a different colour, not a
+     hover. Lightening keeps the 5.34% delta and is what DARK mode already
+     does with its own fill (--accent #e4922e -> --accent-hover #f0a842).
+     Do not "fix" this back to a darker hover; the numbers are why.
+
+     contrast.test.ts enforces the AA floors and the delta; it does not care
+     which direction the delta runs, and it will fail if anyone drifts them.
 
      NOT changed: --find-match-bg / --find-current-bg keep their gold literals
      below. A search hit is not an active state, and a colour that differs
      from the UI accent is what makes matches findable. */
-  --accent: #7d479e;
-  --accent-border: #6c3e89;
-  --accent-hover: #5c3474;
+  --accent: #5c3474;
+  --accent-border: #4a2a5e;
+  --accent-hover: #7d479e;
   --accent-fg: #ffffff;
-  --seg-active-bg: #7d479e;
+  --seg-active-bg: #5c3474;
   --seg-active-fg: #ffffff;
   --btn-hover-bg: rgba(0, 0, 0, 0.05);
   --btn-active-bg: #efe9f5;
