@@ -3,33 +3,62 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
-/// The smallest a window may be dragged (6c-ii-b, F7).
+/// The smallest a window may be dragged (6c-ii-b F7; re-measured 6c-iv-b Task 4).
 ///
-/// **570, arrived at in two steps, and the second one corrected the first.**
-/// The owner set 480 provisionally ("then see how that works"). Rendering the
-/// real ribbon and status bar across a range of widths showed the RIBBON is the
-/// binding constraint at **553px**, so this was set to 560 — and the owner then
-/// found in the running app that the ribbon still clips below ~570, so 570 is
-/// the number that actually holds.
+/// **800, and the number moved a long way — 570 was measured before export and
+/// print joined the ribbon.**
 ///
-/// Worth knowing WHY the harness under-measured: it rendered the ribbon and the
-/// status bar in a bare container, without the surrounding window chrome the
-/// app puts around them. A component measured in isolation gives a floor, not
-/// the app's floor. The measurement was still what moved this off 480 — it was
-/// under-tight, not wrong — but the app is the authority on the final number.
+/// History, because two of the three earlier numbers were wrong and the reason
+/// matters more than the values. The owner set 480 provisionally. A harness
+/// then measured the ribbon binding at 553, so it went to 560 — but that
+/// harness rendered the ribbon in a bare container **without the window chrome
+/// the app wraps around it**, and a component measured in isolation gives a
+/// floor, not the app's floor. The owner found it still clipped below ~570 in
+/// the running app, and 570 held until 6c-iii put export and print on the
+/// toolbar row.
 ///
-/// The status bar is nowhere near binding: 317px with typical counts, and
-/// **416px** with the widest string it can ever show (a huge document, with the
-/// new "Selected:" label). That is why spec D3's "drop the characters figure
-/// when the bar does not fit at the minimum width" is NOT implemented — at any
-/// floor that leaves the ribbon usable, the bar always fits, so the rule could
-/// never fire.
+/// **Re-measured 2026-08-27 the way the earlier attempt should have been: in
+/// the real app, and SWEPT rather than sampled** — 53 widths from 900 down to
+/// 380, in a window with a document actually open.
+///
+/// ```text
+///   w=810  ribbon needs 568, has 568  -> clean
+///   w=800  ribbon needs 558, has 558  -> clean      <- the floor
+///   w=790  ribbon needs 550, has 548  -> CLIPS
+///   w=780  ribbon needs 550, has 538  -> CLIPS
+/// ```
+///
+/// The ribbon's intrinsic minimum is **550** (`.ribbon` is `display: flex` with
+/// no wrap, and `.ribbon-btn` has `min-width: 28px`, so the buttons cannot
+/// shrink past it). The rest of the toolbar row takes ~242px, so the ribbon
+/// gets `window - 242` and 550 needs ~792. 800 is the smallest clean sample at
+/// the sweep's 10px granularity.
+///
+/// **Measured for BOTH ribbons.** Markdown and HTML land on exactly the same
+/// threshold — the roadmap describes the HTML ribbon as the wider one, and at
+/// least by total width it is not. Measuring only Markdown would have set the
+/// same floor here, but by luck rather than by evidence.
+///
+/// **The status bar is further from binding than ever: its children need 250px
+/// and never truncate anywhere in the sweep, down to a 380px window.** That is
+/// why spec D3's "drop the characters figure when the bar does not fit" stays
+/// unbuilt — at any floor that keeps the ribbon usable the bar fits with room
+/// to spare, and raising the floor widened that margin rather than narrowing
+/// it. Note the FIRST attempt to measure this could not have detected
+/// truncation at all: it compared `.status-bar`'s own scrollWidth to its
+/// clientWidth, but the bar is a `flex: none` row whose text children shrink
+/// INSIDE it, so those two are always equal. The tell was `statusNeeds`
+/// tracking the window width exactly at all 53 samples. It asks the children
+/// now.
+///
+/// While the sidebar is open the effective floor is this plus the sidebar's
+/// 200px — see `sidebar_geometry::apply_min_width` (D2).
 ///
 /// These MUST stay in step with the `minWidth`/`minHeight` in
 /// `tauri.conf.json`: that file governs the first window, these govern every
 /// window opened afterwards, and nothing in the build compares them. A test
 /// below reads the config and asserts they agree, so the two cannot drift.
-pub const MIN_WINDOW_WIDTH: f64 = 570.0;
+pub const MIN_WINDOW_WIDTH: f64 = 800.0;
 pub const MIN_WINDOW_HEIGHT: f64 = 320.0;
 use tauri::Emitter;
 
