@@ -54,11 +54,23 @@
 
 /* Fill the column and scroll, rather than inheriting a 200px basis the column
    would read as a height. Scoped to the shell so `.sidebar`'s own rule keeps
-   its meaning anywhere else it is used. */
-.sidebar-shell > .sidebar { flex: 1 1 auto; min-height: 0; }
+   its meaning anywhere else it is used.
+
+   The basis is 0 rather than `auto` deliberately. With `auto` the pane's
+   CONTENT height enters flex sizing, so a long outline overflowed the column
+   and the shortfall was shared out across every item in it — squashing the
+   Files/Outline switch above. Measured 2026-08-26: the switch fell from its
+   natural 20px to 15.7px in a 420px-tall window, 13.6px at 360px and 9.6px at
+   240px, worsening continuously as the window shortened. A basis of 0 means
+   this pane takes exactly what is left over and its content never pushes back. */
+.sidebar-shell > .sidebar { flex: 1 1 0; min-height: 0; }
 .sidebar-switch {
   display: inline-flex; margin: var(--space-3) var(--space-4) var(--space-2);
   border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden;
+  /* Fixed chrome: never absorb a sibling's overflow. Independently correct
+     even with the pane's zero basis above — that rule removes the pressure,
+     this one refuses it — and either alone measured clean. */
+  flex: none;
 }
 .sidebar-switch button {
   flex: 1; border: 0; background: var(--surface); color: var(--fg);

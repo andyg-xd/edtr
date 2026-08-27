@@ -50,10 +50,28 @@ describe('sidebar layout — the shell owns the width, the pane fills the column
   it('makes the pane inside the shell fill the column instead of sizing to 200px', () => {
     // Without this the pane keeps a 200px flex-basis that the column reads as
     // a HEIGHT. This is the rule that unclips the list.
+    //
+    // The basis is ZERO, not `auto`, and that is the second half of the fix.
+    // With `auto` the pane's CONTENT height enters flex sizing, so a long
+    // outline overflowed the column and the shortfall was distributed across
+    // every item in it — including the Files/Outline switch, which visibly
+    // squashed. Measured across window heights: the switch fell from its
+    // natural 20px to 15.7px at 420px tall, 13.6px at 360px and 9.6px at
+    // 240px, degrading continuously as the window shortened. A basis of 0
+    // means the pane takes exactly the space left over and its content never
+    // pushes back.
     const decls = declarationsFor('.sidebar-shell > .sidebar');
     expect(decls).not.toBeNull();
-    expect(decls).toMatch(/flex:\s*1\s+1\s+auto/);
+    expect(decls).toMatch(/flex:\s*1\s+1\s+0/);
     expect(decls).toMatch(/min-height:\s*0/);
+  });
+
+  it('stops the Files/Outline switch from being squashed by the pane', () => {
+    // Independently correct regardless of the pane's basis: a segmented
+    // control is fixed chrome and must never absorb a sibling's overflow.
+    // Belt and braces on purpose — either rule alone measured clean, and they
+    // state two different things.
+    expect(declarationsFor('.sidebar-switch')).toMatch(/flex:\s*none/);
   });
 
   it('keeps the pane scrollable, which is what makes a clipped list reachable', () => {
