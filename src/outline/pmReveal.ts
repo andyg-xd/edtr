@@ -25,6 +25,26 @@ function topLevelBlockAt(doc: PMNode, offset: number): { node: PMNode; pos: numb
  * inside it by ordinal — both computed from the same source parse.
  */
 export function revealSourceInPm(view: EditorView, entry: OutlineEntry): void {
+  // A live-derived entry (`buildLiveOutline`) knows exactly where its heading
+  // is, because it was walked out of this very document — no block range, no
+  // ordinal, no inexactness. Its source fields are ZERO, so the two-step path
+  // below cannot resolve it at all: it would look for the block containing
+  // offset 0 and land on the first block every time. Checked first for that
+  // reason, not merely as an optimisation.
+  //
+  // Bounds-checked because a position from an earlier document version can
+  // outlive its document, and `resolve` throws past the end — the exact
+  // mechanism that blanked the window twice in 6c-i-a.
+  if (entry.pmPos !== undefined) {
+    if (entry.pmPos < 0 || entry.pmPos > view.state.doc.content.size) return;
+    const $exact = view.state.doc.resolve(
+      Math.min(entry.pmPos + 1, view.state.doc.content.size),
+    );
+    view.dispatch(view.state.tr.setSelection(TextSelection.near($exact)));
+    scrollSelectionIntoView(view);
+    return;
+  }
+
   const block = topLevelBlockAt(view.state.doc, entry.blockFrom);
   if (!block) return; // nothing to reveal; never throw out of a React effect
 
@@ -46,34 +66,20 @@ export function revealSourceInPm(view: EditorView, entry: OutlineEntry): void {
 
   const $pos = view.state.doc.resolve(Math.min(pos + 1, view.state.doc.content.size));
   view.dispatch(view.state.tr.setSelection(TextSelection.near($pos)));
-
-  // Scroll EXPLICITLY. ProseMirror's own scroll starts from the DOM
-  // selection's focusNode and silently does nothing when that node sits
-  // outside the editor -- which is ALWAYS true here, because the click that
-  // brought us in came from the outline panel. Same defect find hit; see
-  // pmSurface.ts:186-206.
-  const { node } = view.domAtPos(view.state.selection.from, 1);
-  const el = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
-  el?.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+  scrollSelectionIntoView(view);
 }
 
 /**
- * The source offset the caret is at, for marking the active outline entry.
+ * Scroll EXPLICITLY. ProseMirror's own scroll starts from the DOM selection's
+ * focusNode and silently does nothing when that node sits outside the editor —
+ * which is ALWAYS true here, because the click that brought us in came from the
+ * outline panel. Same defect find hit; see pmSurface.ts:186-206.
  *
- * The inverse of the mapping above, and inexact by the same constraint: a
- * caret inside a `<section>` sits in a node with no source range, so the best
- * available answer is the containing TOP-LEVEL block's `srcFrom`. That is
- * enough to name the section the caret is in, which is all the panel claims —
- * it is not a position and must not be used as one.
- *
- * Null when nothing resolves, so a caller can leave the panel unmarked rather
- * than mark the wrong entry.
+ * Shared by both resolution paths so they cannot drift into two different
+ * ideas of what "reveal" means.
  */
-export function caretSourceOffsetInPm(view: EditorView): number | null {
-  const pos = view.state.selection.from;
-  const $pos = view.state.doc.resolve(pos);
-  // depth 1 is the top-level block; depth 0 is the doc itself.
-  const top = $pos.depth === 0 ? view.state.doc.nodeAt(pos) : $pos.node(1);
-  const from = top?.attrs?.srcFrom;
-  return typeof from === 'number' && from >= 0 ? from : null;
+function scrollSelectionIntoView(view: EditorView): void {
+  const { node } = view.domAtPos(view.state.selection.from, 1);
+  const el = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+  el?.scrollIntoView?.({ block: 'center', inline: 'nearest' });
 }

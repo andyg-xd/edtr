@@ -151,4 +151,25 @@ describe('DocumentView — outline reporting', () => {
       expect(last().activeIndex).toBe(1);
     });
   }
+
+  // The defect found by Task 1's test on 2026-08-26 and deferred to Task 3,
+  // where the fix falls out of A5's live-derived entries.
+  //
+  // A source-derived entry cannot answer this: a caret inside a <section> has
+  // no source range of its own, so the best available offset is the
+  // CONTAINER's — which starts before the <h2> it holds, so `activeEntryIndex`
+  // marks the PREVIOUS heading. Invisible in Markdown, where every heading is
+  // top-level, which is why the GUI pass walked A4 and saw nothing wrong.
+  //
+  // Only live-derived entries can pass this, so it doubles as proof that
+  // DocumentView really is deriving from the live document in a Live view.
+  it('marks a heading nested inside a container, not the one before it', async () => {
+    const { ref, last } = await mount('/tmp/outline.html', HTML, 'live');
+    expect(last().entries.map((e) => e.text)).toEqual(['Title', 'Inside']);
+    expect(last().activeIndex).not.toBe(1);
+
+    await act(async () => { ref.current?.revealOutlineEntry(last().entries[1]); });
+
+    expect(last().activeIndex).toBe(1);
+  });
 });

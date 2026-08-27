@@ -21,6 +21,20 @@ export interface OutlineEntry {
   /** Source range of the containing top-level block — the anchor Live views resolve against. */
   blockFrom: number;
   blockTo: number;
+  /**
+   * ProseMirror position of the heading node, present ONLY on entries derived
+   * from a live document (`buildLiveOutline`).
+   *
+   * When it is here it is exact and it wins: it needs neither the block-range
+   * lookup nor the ordinal, because the heading node was walked directly. When
+   * it is absent the entry came from the source and the two-step resolution in
+   * `pmReveal` applies as before.
+   *
+   * On a live-derived entry the source fields above are NOT positions — they
+   * are zero. Nothing may read them for such an entry, which is why Code view
+   * always derives from the source instead.
+   */
+  pmPos?: number;
 }
 
 /** One entry plus whatever nests under it. */

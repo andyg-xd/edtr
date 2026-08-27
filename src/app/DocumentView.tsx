@@ -26,8 +26,9 @@ import { StatusBar } from './StatusBar';
 import { FindBar } from '../find/FindBar';
 import { buildOutline } from '../outline/outlineModel';
 import { activeEntryIndex } from '../outline/activeEntry';
+import { buildLiveOutline, activeLiveEntryIndex } from '../outline/liveOutline';
 import { revealSourceInCode } from '../outline/codeReveal';
-import { revealSourceInPm, caretSourceOffsetInPm } from '../outline/pmReveal';
+import { revealSourceInPm } from '../outline/pmReveal';
 import type { OutlineEntry } from '../outline/types';
 import { codeSurface } from '../find/codeSurface';
 import { pmSurface } from '../find/pmSurface';
@@ -383,24 +384,42 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   // view is showing. Plaintext has no headings; the panel shows its own empty
   // state rather than being hidden.
   const outlineEntries = useMemo(
-    () => (session.format === 'markdown' || session.format === 'html'
-      ? buildOutline(session.text, session.format)
-      : []),
+    () => {
+      // A Live view derives from the LIVE DOCUMENT, not the source (A5,
+      // 2026-08-26). `session.text` is only updated by `flushToSource`, on
+      // save or a view toggle — never per transaction — so a source-derived
+      // outline simply cannot see a heading you just typed. The memo was
+      // re-running correctly the whole time; its INPUT had not changed.
+      // Flushing per keystroke was rejected: it would put the no-beautify
+      // write-back path in the hot path of typing.
+      if (showLive && liveView) return buildLiveOutline(liveView);
+      return session.format === 'markdown' || session.format === 'html'
+        ? buildOutline(session.text, session.format)
+        : [];
+    },
     // `countVersion` is the existing "something changed" signal -- it already
     // covers a Code edit, a Live transaction and a find epoch. Riding it means
     // no second subscription and no second definition of when to recompute.
-    [session, countVersion],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [session, countVersion, showLive, liveView],
   );
 
-  // Which entry the caret is in. Code view reports a real source offset;
-  // a Live view reports its top-level block's, which names the section
-  // without claiming to be a position (see `caretSourceOffsetInPm`).
+  // Which entry the caret is in. Code view compares a real source offset;
+  // a Live view compares PM positions, which are exact.
   const outlineActive = useMemo(() => {
     if (outlineEntries.length === 0) return null;
-    const offset = showLive
-      ? (liveView ? caretSourceOffsetInPm(liveView) : null)
-      : (codeView ? codeView.state.selection.main.head : null);
+    // Live-derived entries carry an exact PM anchor, so the caret compares
+    // against it directly. The source-offset path below cannot answer for a
+    // caret inside a container — it has to fall back to the CONTAINER's
+    // offset, which starts before the heading it holds, so it marks the
+    // PREVIOUS heading. That defect is invisible in Markdown, where every
+    // heading is top-level, and was found by test rather than by the GUI pass.
+    if (showLive && liveView) {
+      return activeLiveEntryIndex(outlineEntries, liveView.state.selection.from);
+    }
+    const offset = codeView ? codeView.state.selection.main.head : null;
     return offset === null ? null : activeEntryIndex(outlineEntries, offset);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outlineEntries, showLive, liveView, codeView, countVersion]);
 
   useEffect(() => {
