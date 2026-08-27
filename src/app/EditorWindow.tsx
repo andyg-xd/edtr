@@ -188,7 +188,7 @@ export function EditorWindow() {
     } catch (e) {
       showError(`Could not open: ${String(e)}`);
     }
-  }, [docs, resetActiveFlags]);
+  }, [docs, resetActiveFlags, showError]);
 
   const appliedRef = useRef(false);
   // On mount: if this window was spawned with a payload, load it once. A useRef
@@ -310,7 +310,7 @@ export function EditorWindow() {
     } catch (e) {
       showError(`Could not open: ${String(e)}`);
     }
-  }, [thisWindowEmpty, applyPayload]);
+  }, [thisWindowEmpty, applyPayload, showError]);
 
   // ⌘O: fill this window if empty, else spawn a new window with the selection.
   const handleOpen = useCallback(async () => {
@@ -321,7 +321,7 @@ export function EditorWindow() {
     } catch (e) {
       showError(`Could not open file: ${String(e)}`);
     }
-  }, [handleOpenPayload]);
+  }, [handleOpenPayload, showError]);
 
   // ⇧⌘O: fill this window if empty, else spawn a new folder window.
   const handleOpenFolder = useCallback(async () => {
@@ -332,7 +332,7 @@ export function EditorWindow() {
     } catch (e) {
       showError(`Could not open folder: ${String(e)}`);
     }
-  }, [handleOpenPayload]);
+  }, [handleOpenPayload, showError]);
 
   const dirtyFor = useCallback(
     (doc: OpenDoc) => docIsDirty(doc, active?.id ?? null, activeDirty),
@@ -353,7 +353,7 @@ export function EditorWindow() {
     setActiveDirty(target ? target.session.isDirty() : false);
     setActiveLiveAvailable(false);
     docs.setActive(id);
-  }, [active, docs, flushActive, findDoc]);
+  }, [active, docs, flushActive, findDoc, showError]);
 
   // Folder-sidebar click: activate the doc if already open, else load + open it.
   const openPath = useCallback(async (path: string) => {
@@ -368,7 +368,7 @@ export function EditorWindow() {
     } catch (e) {
       showError(`Could not open file: ${String(e)}`);
     }
-  }, [docs, selectDoc, flushActive, resetActiveFlags]);
+  }, [docs, selectDoc, flushActive, resetActiveFlags, showError]);
 
   // Save one doc (flush first if it's the active/live doc). false = failure.
   const saveDoc = useCallback(async (id: string): Promise<boolean> => {
@@ -384,7 +384,7 @@ export function EditorWindow() {
       showError(`Could not save "${basename(doc.session.path)}" — your changes are safe in the editor. ${String(e)}`);
       return false;
     }
-  }, [active, flushActive, findDoc]);
+  }, [active, flushActive, findDoc, showError]);
 
   const saveAllDirty = useCallback(async (): Promise<boolean> => {
     if (!flushActive()) return false;
@@ -399,7 +399,7 @@ export function EditorWindow() {
     }
     setActiveDirty(false);
     return true;
-  }, [docs, flushActive]);
+  }, [docs, flushActive, showError]);
 
   // ⌘S / File → Save: active doc only.
   const handleSave = useCallback(async (): Promise<boolean> => {
@@ -453,7 +453,7 @@ export function EditorWindow() {
     } catch (e) {
       showError(`Could not reload the file. ${String(e)}`);
     }
-  }, [active]);
+  }, [active, showError]);
 
   // "Keep mine" / dismiss: clear the banner, keep the in-memory buffer as-is.
   const dismissReload = useCallback((id: string) => {

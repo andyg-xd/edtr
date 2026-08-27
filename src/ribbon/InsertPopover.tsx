@@ -43,7 +43,6 @@ export function InsertPopover({ kind, initialText = '', docPath = null, triggerR
     const box = el.getBoundingClientRect();
     setPos(anchorTo(triggerRect, { width: box.width, height: box.height }, { width: window.innerWidth, height: window.innerHeight }));
     setPhase('visible');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [triggerRect]);
 
   // Dismiss on a mousedown outside the popover (registered next tick so the

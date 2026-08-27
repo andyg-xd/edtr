@@ -32,7 +32,6 @@ export function TableSizePicker({ triggerRect, onSelect, onCancel }: TableSizePi
     const box = el.getBoundingClientRect();
     setPos(anchorTo(triggerRect, { width: box.width, height: box.height }, { width: window.innerWidth, height: window.innerHeight }));
     setPhase('visible');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [triggerRect]);
 
   useEffect(() => {

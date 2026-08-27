@@ -62,7 +62,6 @@ export function useTheme(): {
       disposed = true;
       unlisten?.();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const setMode = useCallback((m: ThemeMode) => setModeState(m), []);

@@ -529,6 +529,14 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     // be redundant. The user-visible guarantee is covered by the
     // 'closes on Escape and clears its highlights' test.
     surface.highlight(find.matches, find.current);
+    // FALSE POSITIVE, suppressed knowingly. `find` is useState, not a ref
+    // (`:149`), so these field deps are real and do re-render. The rule
+    // pattern-matches any `.current` as a ref, and `FindState` happens to name
+    // its match index `current`. Adding `find` itself, which is what the rule
+    // asks for, would re-run this on ANY find state change -- exactly what the
+    // comment above forbids. Renaming the field would make the rule truthful;
+    // logged as debt rather than churning the crash-prone find code today.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [surface, findFresh, find.matches, find.current]);
 
   // Reveal the current match — incremental search scrolls to it as the user types.
@@ -545,6 +553,14 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     if (match) surface.reveal(match);
     // Deps are the current match's identity, not `find` — revealing must not
     // re-run for an unrelated state change.
+    // FALSE POSITIVE, suppressed knowingly. `find` is useState, not a ref
+    // (`:149`), so these field deps are real and do re-render. The rule
+    // pattern-matches any `.current` as a ref, and `FindState` happens to name
+    // its match index `current`. Adding `find` itself, which is what the rule
+    // asks for, would re-run this on ANY find state change -- exactly what the
+    // comment above forbids. Renaming the field would make the rule truthful;
+    // logged as debt rather than churning the crash-prone find code today.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [findOpen, surface, findFresh, find.current, find.matches]);
 
   // Shared by openFind and openReplace -- the only difference between them is
