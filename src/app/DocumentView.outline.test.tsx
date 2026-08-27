@@ -96,8 +96,59 @@ describe('DocumentView — outline reporting', () => {
   it('exposes a reveal that does not throw on any surface', async () => {
     // The jump itself is covered exactly in codeReveal/pmReveal tests; what
     // this pins is that the handle reaches a live view at all.
+    //
+    // NOTE: `not.toThrow()` passes just as happily when the reveal silently
+    // does nothing, which is exactly how B2 escaped 1228 tests. The three
+    // tests below are the ones with teeth; this one is kept only because a
+    // throw and a no-op are different failures worth telling apart.
     const { ref, last } = await mount('/tmp/outline.md', MD, 'live');
     const entry = last().entries[1];
     expect(() => ref.current?.revealOutlineEntry(entry)).not.toThrow();
   });
+
+  // B2, found by the owner's GUI pass 2026-08-26. `useImperativeHandle` left
+  // `showLive`/`liveView`/`codeView` out of its dependency array while
+  // `revealOutlineEntry` closed over all three, so the handle captured
+  // `liveView === null` from the first render and the reveal hit a silent
+  // no-op guard. Any later re-render that changed one of the five listed
+  // callbacks refreshed the closure -- which is why closing and reopening the
+  // sidebar "fixed" it, and why it read as intermittent.
+  //
+  // The assertion is the MARKED ENTRY MOVING, not the absence of a throw: a
+  // reveal that no-ops leaves the caret where it was, so the active index
+  // never reaches the entry we asked for. Selection-only transactions already
+  // re-report the outline (`handleLiveStateChange` -> `bumpRibbon` ->
+  // `countVersion`), so this rides existing wiring rather than adding any.
+  // HTML with both headings at TOP level. `HTML` nests its second heading in a
+  // <section>, and a caret inside a container resolves to the CONTAINER's
+  // source offset (`caretSourceOffsetInPm` says so in its own doc comment) --
+  // which starts before the heading, so `activeEntryIndex` marks the previous
+  // entry. That is a real and separate defect, found by this test on
+  // 2026-08-26 and fixed in Task 3, where live-derived entries carry exact PM
+  // anchors instead of inexact source offsets. Using it here would conflate
+  // that defect with B2 and leave this test red for the wrong reason.
+  const HTML_TOP = '<!doctype html>\n<html><body><h1>Title</h1><p>a</p><h2>Second</h2><p>b</p></body></html>';
+
+  const FIRST_CALL_CASES = [
+    { label: 'Markdown Live', path: '/tmp/outline.md', text: MD, viewMode: 'live' as const },
+    { label: 'HTML Live', path: '/tmp/outline.html', text: HTML_TOP, viewMode: 'live' as const },
+    { label: 'Code view', path: '/tmp/outline.md', text: MD, viewMode: 'code' as const },
+  ];
+
+  for (const c of FIRST_CALL_CASES) {
+    it(`reveals on the FIRST call in ${c.label}, with no re-render to refresh the handle`, async () => {
+      const { ref, reports, last } = await mount(c.path, c.text, c.viewMode);
+      const target = last().entries[1];
+      expect(target).toBeDefined();
+      // Guard the assertion against passing for the wrong reason: if the
+      // caret already sat in the target section, "it moved" proves nothing.
+      expect(last().activeIndex).not.toBe(1);
+
+      const before = reports.length;
+      await act(async () => { ref.current?.revealOutlineEntry(target); });
+
+      expect(reports.length).toBeGreaterThan(before);
+      expect(last().activeIndex).toBe(1);
+    });
+  }
 });

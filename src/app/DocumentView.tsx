@@ -752,7 +752,17 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
       else if (codeView) revealSourceInCode(codeView, entry);
     },
     flushToSource, openFind, openReplace, findNext: goNext, findPrev: goPrev,
-  }), [flushToSource, openFind, openReplace, goNext, goPrev]);
+    // `showLive`/`liveView`/`codeView` are dependencies because
+    // `revealOutlineEntry` CLOSES OVER them (B2, 2026-08-26). Leaving them out
+    // pinned the handle to the first render, where `liveView` is still null --
+    // so the reveal hit its own `if (liveView)` guard and did nothing, silently.
+    // It appeared intermittent because any re-render that changed one of the
+    // five callbacks below rebuilt the closure with a live view.
+    //
+    // The four surface memos above (`surface`, `typewriter`, `focus`,
+    // `countSurface`) all declare exactly these three. This handle is the only
+    // consumer that did not.
+  }), [flushToSource, openFind, openReplace, goNext, goPrev, showLive, liveView, codeView]);
 
   const findBar = findOpen && surface ? (
     <FindBar
