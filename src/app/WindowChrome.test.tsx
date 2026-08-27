@@ -56,6 +56,24 @@ describe('WindowChrome — sidebar toggle', () => {
     expect(buttonNamed(r, 'Hide outline').getAttribute('aria-pressed')).toBe('true');
   });
 
+  // The toggle carried a ☰ glyph until 2026-08-27; it now carries an SVG, so
+  // the button has NO text content and its accessible name comes entirely from
+  // aria-label. Before, a dropped label still left a screen reader the glyph
+  // to announce — poor, but something. Now it would leave an unnamed button.
+  it('keeps an accessible name even though the icon carries no text', () => {
+    const r = render(<WindowChrome {...base} />);
+    const btn = buttonNamed(r, 'Show outline');
+    expect(btn.textContent?.trim()).toBe('');
+    expect(btn.getAttribute('aria-label')).toBe('Show outline');
+  });
+
+  it('marks the icon decorative, so it is not announced twice', () => {
+    const r = render(<WindowChrome {...base} />);
+    const svg = buttonNamed(r, 'Show outline').querySelector('svg');
+    expect(svg).not.toBeNull();
+    expect(svg!.getAttribute('aria-hidden')).toBe('true');
+  });
+
   it('asks the caller to toggle', () => {
     const onToggleSidebar = vi.fn();
     const r = render(<WindowChrome {...base} onToggleSidebar={onToggleSidebar} />);

@@ -59,6 +59,12 @@
   border: 0; background: none; color: var(--fg-muted);
   padding: 0 var(--space-3); font-size: var(--text-base); cursor: pointer;
   border-radius: var(--radius-md);
+  /* The icon is an SVG, not a glyph, so the button has to centre it itself —
+     line-height no longer does that job. */
+  display: inline-flex; align-items: center; justify-content: center;
 }
+/* Sized here rather than only on the element, so the icon cannot drift out of
+   step with the button's own metrics. */
+.sidebar-toggle-icon { display: block; width: 16px; height: 16px; }
 .sidebar-toggle:hover { background: var(--btn-hover-bg); color: var(--fg); }
 .sidebar-toggle[aria-pressed='true'] { color: var(--fg); }
