@@ -25,6 +25,103 @@ mod tests {
         .expect("Info.plist must be readable")
     }
 
+    /// The environment a signed release build needs, and the single source of
+    /// truth for it. D4 chose the app-specific-password credential over the
+    /// App Store Connect API key, so `APPLE_API_KEY`/`APPLE_API_ISSUER`/
+    /// `APPLE_API_KEY_PATH` are deliberately absent — the CLI reads them, but
+    /// documenting a path nobody uses is how a README starts lying.
+    ///
+    /// Verified against the shipped CLI binary
+    /// (`node_modules/@tauri-apps/cli-darwin-arm64/cli.darwin-arm64.node`),
+    /// which references every name below plus `notarytool` and `stapler` —
+    /// which is why this phase writes NO notarization script.
+    const RELEASE_ENV: [&str; 4] =
+        ["APPLE_SIGNING_IDENTITY", "APPLE_ID", "APPLE_PASSWORD", "APPLE_TEAM_ID"];
+
+    fn readme() -> String {
+        std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../README.md"),
+        )
+        .expect("README.md must be readable from the Rust crate")
+    }
+
+    /// Notarization REQUIRES the hardened runtime, and Tauri gives it to us by
+    /// default (`tauri-utils-2.9.3/src/config.rs:655` — `default = "default_true"`).
+    ///
+    /// Stated anyway, for the same reason `minimumSystemVersion` is: an
+    /// inherited default is not a decision, and this one is load-bearing in a
+    /// way the recipient feels. If a future edit or a Tauri release flips it,
+    /// the build still succeeds and notarization fails on ANOTHER machine —
+    /// the certificate machine, per D5 — which is the most expensive place in
+    /// this project to discover anything.
+    #[test]
+    fn hardened_runtime_is_stated_not_inherited() {
+        let c = conf();
+        let hr = &c["bundle"]["macOS"]["hardenedRuntime"];
+        assert!(
+            !hr.is_null(),
+            "bundle.macOS.hardenedRuntime is absent, so notarization depends on a Tauri default"
+        );
+        assert_eq!(hr.as_bool(), Some(true), "hardenedRuntime must be true for notarization");
+    }
+
+    /// The signing identity must NOT be committed. It names a specific
+    /// certificate in a specific keychain, and D5 puts that keychain on the
+    /// owner's other computer — so a value here is wrong on every machine but
+    /// one, and turns a missing certificate into a confusing build failure
+    /// rather than an obvious unsigned build.
+    ///
+    /// It is supplied as `APPLE_SIGNING_IDENTITY` at build time instead.
+    #[test]
+    fn the_signing_identity_is_supplied_by_the_environment_not_the_repo() {
+        let c = conf();
+        assert!(
+            c["bundle"]["macOS"]["signingIdentity"].is_null(),
+            "signingIdentity is committed; it belongs in APPLE_SIGNING_IDENTITY at build time"
+        );
+    }
+
+    /// "Start with none and prove it" (plan, Task 3). Edtr does its file I/O in
+    /// Rust and is not sandboxed for Developer ID distribution, so it should
+    /// need no entitlements — but that is a claim notarization tests, not one
+    /// this project asserts. If notarization rejects the build, its log names
+    /// exactly what is missing and an entitlements file is added THEN.
+    ///
+    /// This test exists so that adding one is a deliberate act with a reason,
+    /// rather than something copied from a tutorial.
+    #[test]
+    fn ships_without_entitlements_until_notarization_asks_for_them() {
+        let c = conf();
+        assert!(
+            c["bundle"]["macOS"]["entitlements"].is_null(),
+            "entitlements were added; record WHY in PLAN.md, since none were needed at v1"
+        );
+    }
+
+    /// ⚠️ THE RELEASE INSTRUCTIONS MUST LIVE IN THE REPO, AND THIS TEST IS WHY.
+    ///
+    /// `project-docs/` is deliberately never committed (global Rule 4), and D5
+    /// builds the release from a FRESH CLONE on the certificate machine. So
+    /// anything the build needs that lives only in `project-docs/` will simply
+    /// not be there — the one moment it is needed is the one moment it is
+    /// missing. The README is the only documentation that travels.
+    ///
+    /// Pinned to `RELEASE_ENV` rather than to prose, so adding a variable to
+    /// the wiring forces the README to grow with it. Same shape as
+    /// `menuCommands.contract.test.ts`, which is the only other test here that
+    /// can fail because two files disagree.
+    #[test]
+    fn the_readme_documents_every_variable_a_signed_build_needs() {
+        let r = readme();
+        for var in RELEASE_ENV {
+            assert!(
+                r.contains(var),
+                "README.md does not mention {var}, which a signed release build needs. \
+                 It will not be in project-docs/ on the certificate machine — that is never cloned."
+            );
+        }
+    }
+
     /// D3. Tauri's default is 10.13 — a 2017 OS the app has never been near.
     /// An unverifiable claim turns into a crash for the recipient instead of a
     /// clear "needs a newer macOS", so the floor must be stated deliberately.
