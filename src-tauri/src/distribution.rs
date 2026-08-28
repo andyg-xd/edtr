@@ -122,6 +122,46 @@ mod tests {
         }
     }
 
+    /// The crate version and the bundle version must agree.
+    ///
+    /// They diverged silently: D2 set `tauri.conf.json` to 1.0.0 and left
+    /// `Cargo.toml` at 0.1.0, so a release build logged `Compiling edtr
+    /// v0.1.0` for an app that ships as 1.0.0. That was inert — the bundle
+    /// reads its version from the config, verified in the built app's
+    /// Info.plist (`CFBundleShortVersionString` and `CFBundleVersion` both
+    /// 1.0.0), and nothing in this codebase reads `CARGO_PKG_VERSION`.
+    ///
+    /// Pinned anyway, because the divergence is only inert while the config
+    /// keeps its `version` key. Drop that key and the bundle silently falls
+    /// back to the crate version — a v1 release that calls itself 0.1.0 in
+    /// someone else's Applications folder.
+    #[test]
+    fn the_crate_version_matches_the_bundle_version() {
+        let toml = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"),
+        )
+        .expect("Cargo.toml must be readable");
+
+        // The FIRST `version =` after `[package]`, so a dependency's version
+        // can never be mistaken for the crate's.
+        let package = toml
+            .split_once("[package]")
+            .expect("Cargo.toml must have a [package] section")
+            .1;
+        let crate_version = package
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("version"))
+            .and_then(|l| l.split('"').nth(1))
+            .expect("[package] must declare a version");
+
+        let c = conf();
+        let bundle_version = c["version"].as_str().expect("version must be a string");
+        assert_eq!(
+            crate_version, bundle_version,
+            "Cargo.toml says {crate_version} while the bundle ships {bundle_version}"
+        );
+    }
+
     /// D3. Tauri's default is 10.13 — a 2017 OS the app has never been near.
     /// An unverifiable claim turns into a crash for the recipient instead of a
     /// clear "needs a newer macOS", so the floor must be stated deliberately.
