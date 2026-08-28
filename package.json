@@ -11,7 +11,8 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "build:release": "tauri build --target universal-apple-darwin"
+    "build:release": "tauri build --target universal-apple-darwin",
+    "verify:release": "bash scripts/verify-release.sh"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.4",

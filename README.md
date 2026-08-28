@@ -83,17 +83,37 @@ Nothing here is written to disk or committed. Set the variables in the shell you
 Signing, notarization and stapling all happen inside that one command. There is no separate
 script to run. Notarization adds a few minutes while Apple processes the upload.
 
-**4. Check the result.** Mount the DMG, then:
+**4. Check the result.**
 
 ```sh
-codesign --verify --deep --strict --verbose=2 /Volumes/Edtr/Edtr.app
-spctl -a -t exec -vv /Volumes/Edtr/Edtr.app
-xcrun stapler validate src-tauri/target/universal-apple-darwin/release/bundle/macos/Edtr.app
-xcrun stapler validate src-tauri/target/universal-apple-darwin/release/bundle/dmg/Edtr_1.0.0_universal.dmg
+npm run verify:release
 ```
 
-`spctl` is the one that matters. It must say **accepted**. Anything else means notarization did
-not take, and the people you send the file to will be told the app cannot be opened.
+This mounts the DMG and checks the app inside it, which is the copy a recipient actually
+receives rather than the one left in the build directory. It verifies the signature, confirms
+Apple's notarization was applied, confirms the notarization ticket is stapled to both the app
+and the DMG, and confirms the hardened runtime and team identifier are really present rather
+than merely configured. It exits non-zero if any of that is untrue.
+
+The check that matters most is `spctl`, which must report **accepted**. Anything else means
+notarization did not take, and the people you send the file to will be told the app cannot be
+opened.
+
+This script exists because the Rust tests in `src-tauri/src/distribution.rs` can only check the
+configuration. They cannot see the built artifact, so none of them would catch a toolchain
+upgrade that quietly stopped signing. That has happened here before: an ad-hoc signature shipped
+unnoticed for a month.
+
+To run the same checks by hand:
+
+```sh
+hdiutil attach src-tauri/target/universal-apple-darwin/release/bundle/dmg/Edtr_1.0.0_universal.dmg
+codesign --verify --deep --strict --verbose=2 /Volumes/Edtr/Edtr.app
+spctl -a -t exec -vv /Volumes/Edtr/Edtr.app
+xcrun stapler validate /Volumes/Edtr/Edtr.app
+xcrun stapler validate src-tauri/target/universal-apple-darwin/release/bundle/dmg/Edtr_1.0.0_universal.dmg
+hdiutil detach /Volumes/Edtr
+```
 
 The finished artifacts are:
 
