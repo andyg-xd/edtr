@@ -80,8 +80,29 @@ npm run build:release
 
 Nothing here is written to disk or committed. Set the variables in the shell you build from.
 
-Signing, notarization and stapling all happen inside that one command. There is no separate
-script to run. Notarization adds a few minutes while Apple processes the upload.
+That command signs the app, sends it to Apple, and staples the result to the app. Notarization
+takes anywhere from two minutes to about an hour, depending on how busy Apple's queue is. A long
+wait is not a sign of failure. To check on it from another shell:
+
+```sh
+xcrun notarytool history --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID"
+```
+
+**3b. Staple the disk image. This step is required and the build does not do it.**
+
+The build staples the app but not the DMG that carries it, so the disk image is left without a
+ticket. The app inside still works, but someone who mounts the image while offline can be told
+it cannot be verified. Submit the image on its own and staple it:
+
+```sh
+DMG=src-tauri/target/universal-apple-darwin/release/bundle/dmg/Edtr_1.0.0_universal.dmg
+
+xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+xcrun stapler staple "$DMG"
+```
+
+Do not skip this because the build reported success. It reports success either way. Step 4
+fails if you forget.
 
 **4. Check the result.**
 
