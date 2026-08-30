@@ -1,3 +1,5 @@
+import { ModalDialog } from './ModalDialog';
+
 interface ReplaceAllGuardProps {
   count: number;
   /**
@@ -22,18 +24,22 @@ interface ReplaceAllGuardProps {
  */
 export function ReplaceAllGuard({ count, atomSpans = 0, onConfirm, onCancel }: ReplaceAllGuardProps) {
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Replace all">
-      <div className="modal">
-        <p>Replace all {count} matches?</p>
-        <p>Undo may not fully reverse this.</p>
-        {atomSpans > 0 && (
-          <p>{atomSpans} of these run across pictures or embedded items.</p>
-        )}
-        <div className="modal-actions">
-          <button className="btn btn--primary" onClick={onConfirm}>Replace All</button>
-          <button className="btn btn--secondary" onClick={onCancel}>Cancel</button>
-        </div>
+    <ModalDialog label="Replace all">
+      <p>Replace all {count} matches?</p>
+      <p>Undo may not fully reverse this.</p>
+      {atomSpans > 0 && (
+        <p>{atomSpans} of these run across pictures or embedded items.</p>
+      )}
+      {/* B4, owner 2026-08-29. Conditional phrasing on purpose: counting the
+          affected tables would mean extending `inspectEdits`, and a flat claim
+          would be false whenever the document has no tables. Note the LIMIT --
+          this dialog only appears above the 10-match threshold, so a smaller
+          Replace All still re-pads without saying so. */}
+      <p>Any hand-aligned table holding a match will be re-spaced.</p>
+      <div className="modal-actions">
+        <button className="btn btn--primary" onClick={onConfirm}>Replace All</button>
+        <button className="btn btn--secondary" onClick={onCancel}>Cancel</button>
       </div>
-    </div>
+    </ModalDialog>
   );
 }
