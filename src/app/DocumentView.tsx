@@ -25,6 +25,11 @@ import type { OpenDoc } from '../files/openDocuments';
 import { StatusBar } from './StatusBar';
 import { FindBar } from '../find/FindBar';
 import { buildOutline } from '../outline/outlineModel';
+import { useOutlineTrigger } from '../outline/useOutlineTrigger';
+
+/** Stable empty outline. A fresh `[]` each render would defeat the memo it
+ * is returned from and re-run every consumer downstream. */
+const NO_OUTLINE: OutlineEntry[] = [];
 import { activeEntryIndex } from '../outline/activeEntry';
 import { buildLiveOutline, activeLiveEntryIndex } from '../outline/liveOutline';
 import { revealSourceInCode } from '../outline/codeReveal';
@@ -118,10 +123,14 @@ interface DocumentViewProps {
    * state is handed up rather than rendered here.
    */
   onOutlineChange?: (entries: OutlineEntry[], activeIndex: number | null) => void;
+  /** Whether the outline PANEL is on screen. When it is not, the outline is
+   * not computed at all — `buildOutline` is a full document parse and it used
+   * to run on every keystroke regardless of whether anyone could see it. */
+  outlineVisible?: boolean;
 }
 
 export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(function DocumentView(
-  { doc, effectiveTheme, modes, onSetWritingMode, onExport, onDirtyChange, onLiveAvailableChange, onError, onInfo, onOutlineChange }, ref,
+  { doc, effectiveTheme, modes, onSetWritingMode, onExport, onDirtyChange, onLiveAvailableChange, onError, onInfo, onOutlineChange, outlineVisible = false }, ref,
 ) {
   const session = doc.session;
   const viewMode = doc.viewMode;
@@ -414,8 +423,19 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   // (spec D2) — never from a live projection, which is only current while its
   // view is showing. Plaintext has no headings; the panel shows its own empty
   // state rather than being hidden.
+  // Gated on visibility AND debounced. `buildOutline` is a full document parse
+  // (758ms at 20 000 lines) and every keystroke bumps both halves of
+  // `outlineVersion`, so this used to re-parse the whole document synchronously
+  // per character -- for a panel that is usually closed. See
+  // `useOutlineTrigger` for the two guarantees and their measurements.
+  const outlineTrigger = useOutlineTrigger(outlineVisible, outlineVersion);
+
   const outlineEntries = useMemo(
     () => {
+      // `useOutlineTrigger` stops the RECOMPUTES; this stops the one a `useMemo`
+      // always performs on mount. Together they mean a closed panel costs zero
+      // parses rather than one per document opened.
+      if (!outlineVisible) return NO_OUTLINE;
       // A Live view derives from the LIVE DOCUMENT, not the source (A5,
       // 2026-08-26). `session.text` is only updated by `flushToSource`, on
       // save or a view toggle — never per transaction — so a source-derived
@@ -429,7 +449,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
         : [];
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [session, outlineVersion, showLive, liveView],
+    [session, outlineTrigger, showLive, liveView, outlineVisible],
   );
 
   // Which entry the caret is in. Code view compares a real source offset;

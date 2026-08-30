@@ -65,7 +65,7 @@ afterEach(async () => {
   root = null;
 });
 
-async function mountCodeView(text: string) {
+async function mountCodeView(text: string, outlineVisible = true) {
   container = document.createElement('div');
   document.body.appendChild(container);
   const path = '/tmp/outline-cost.md';
@@ -81,6 +81,7 @@ async function mountCodeView(text: string) {
       onSetWritingMode={() => {}} onExport={() => {}}
       onDirtyChange={() => {}} onLiveAvailableChange={() => {}}
       onError={() => {}} onInfo={() => {}}
+      outlineVisible={outlineVisible}
     />,
   ));
   const cm = EditorView.findFromDOM(container.querySelector('.cm-editor')!)!;
@@ -88,18 +89,39 @@ async function mountCodeView(text: string) {
 }
 
 describe('the outline does not re-parse on a caret move', () => {
-  it('re-parses when the TEXT changes', async () => {
+  it('re-parses when the TEXT changes, once the burst settles', async () => {
     const { cm } = await mountCodeView(SRC);
     const before = buildOutlineSpy.mock.calls.length;
+    expect(before).toBeGreaterThan(0); // opening the panel parses immediately
 
     // A real document change, the same shape CodeView reports upward.
     await act(async () => {
       cm.dispatch({ changes: { from: SRC.length, insert: '\n### Three\n' } });
     });
+    // Nothing yet: the parse waits for the typing burst to end. This is the
+    // whole point of the debounce -- a full parse per character is what made a
+    // large file unusable.
+    expect(buildOutlineSpy.mock.calls.length).toBe(before);
 
-    // The probe half: without this, the assertion below could pass simply
+    await act(async () => { await new Promise((r) => setTimeout(r, 260)); });
+
+    // The probe half: without this, the assertions above could pass simply
     // because nothing ever calls buildOutline in this harness.
     expect(buildOutlineSpy.mock.calls.length).toBeGreaterThan(before);
+  });
+
+  it('does not parse AT ALL while the outline panel is closed', async () => {
+    // The larger of the two wins: the panel is usually shut, and the parse ran
+    // regardless of whether anyone could see the result.
+    const { cm } = await mountCodeView(SRC, false);
+    expect(buildOutlineSpy.mock.calls.length).toBe(0);
+
+    await act(async () => {
+      cm.dispatch({ changes: { from: SRC.length, insert: '\n### Three\n' } });
+    });
+    await act(async () => { await new Promise((r) => setTimeout(r, 260)); });
+
+    expect(buildOutlineSpy.mock.calls.length).toBe(0);
   });
 
   it('does NOT re-parse when only the selection moves', async () => {

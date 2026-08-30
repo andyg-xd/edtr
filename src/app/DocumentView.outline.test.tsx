@@ -69,6 +69,11 @@ async function mount(path: string, text: string, viewMode: ViewMode) {
       onSetWritingMode={() => {}} onExport={() => {}}
       onDirtyChange={() => {}} onLiveAvailableChange={() => {}} onError={() => {}} onInfo={() => {}}
       onOutlineChange={(entries, activeIndex) => { reports.push({ entries, activeIndex }); }}
+      // Required as of 2026-08-29: a closed outline panel computes NOTHING,
+      // because `buildOutline` is a full document parse that used to run on
+      // every keystroke whether or not anyone could see the result. These
+      // tests are about what the outline reports, so its panel is open.
+      outlineVisible
     />,
   ));
   return { ref, reports, last: () => reports[reports.length - 1] };

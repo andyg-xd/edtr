@@ -144,7 +144,12 @@ export function FindBar({
           {/* Lives on the replace row, not with the find toggles, because it
               changes what is WRITTEN rather than what is found -- and because
               it is deliberately not part of FindQuery, so flipping it does not
-              invalidate the match set. */}
+              invalidate the match set.
+
+              The glyph is "AB", NOT "Aa": Match case above already uses "Aa",
+              and shipping two identical glyphs sent the owner to the wrong
+              button on the first try, which then narrowed the search and
+              looked like preserve-case being broken. Keep them distinct. */}
           <Tooltip label="Keep each match's capitalisation" id="tip-find-preserve-case">
             <button
               type="button"
@@ -155,7 +160,7 @@ export function FindBar({
               disabled={!canReplace}
               onClick={() => onPreserveCaseChange(!preserveCase)}
             >
-              Aa
+              AB
             </button>
           </Tooltip>
           <button type="button" className="btn btn--secondary find-replace" disabled={!canReplace} onClick={onReplace}>Replace</button>

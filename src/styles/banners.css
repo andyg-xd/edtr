@@ -34,6 +34,17 @@
   box-shadow: 0 8px 32px var(--shadow);
 }
 
+/* Focus inside a dialog is MANAGED BY SCRIPT — ModalDialog moves it on open
+   and again on every Tab. `:focus-visible` deliberately does NOT match
+   programmatic focus, so the ring never appeared and a working focus trap read
+   as "no focus whatsoever" (owner's GUI pass, 2026-08-29). Inside a modal the
+   indicator has to follow plain `:focus`. Scoped to `.modal` so ordinary
+   buttons keep the keyboard-only heuristic everywhere else. */
+.modal .btn:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .modal-actions {
   display: flex;
   gap: var(--space-4);

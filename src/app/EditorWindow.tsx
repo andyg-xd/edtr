@@ -693,6 +693,9 @@ export function EditorWindow() {
                 ref={viewRef}
                 doc={active}
                 onOutlineChange={handleOutlineChange}
+                // Skip the outline's full-document parse entirely when its
+                // panel is not on screen.
+                outlineVisible={sidebarOpen && sidebarMode === 'outline'}
                 effectiveTheme={themeEffective}
                 modes={writingModes}
                 onSetWritingMode={setWritingMode}
