@@ -67,7 +67,7 @@ App-Specific Passwords. This is not your Apple ID password. Your team identifier
 character code shown on the Membership page of your developer account, and it is the same code
 that appears in the identity above.
 
-**3. Set the environment, then build.**
+**3. Set the environment, then run the release.**
 
 ```sh
 export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (ABCDE12345)"
@@ -75,10 +75,26 @@ export APPLE_ID="you@example.com"
 export APPLE_PASSWORD="abcd-efgh-ijkl-mnop"
 export APPLE_TEAM_ID="ABCDE12345"
 
-npm run build:release
+npm run release
 ```
 
 Nothing here is written to disk or committed. Set the variables in the shell you build from.
+
+`npm run release` is the whole procedure: it checks the identity is in your keychain and the
+tree is clean before spending twenty minutes on a build, installs from the lockfile with
+`npm ci` so the gate is a statement about the repository rather than about your `node_modules`,
+runs typecheck, tests, lint and `cargo check`, builds and signs, **staples the disk image**, and
+verifies the finished artifact. It is safe to re-run; an image that already carries a ticket is
+not resubmitted.
+
+Steps 3a to 4 below describe what it does, and are what to run if you ever need to drive the
+process by hand.
+
+**3a. The build itself.**
+
+```sh
+npm run build:release
+```
 
 That command signs the app, sends it to Apple, and staples the result to the app. Notarization
 takes anywhere from two minutes to about an hour, depending on how busy Apple's queue is. A long
@@ -89,6 +105,9 @@ xcrun notarytool history --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --t
 ```
 
 **3b. Staple the disk image. This step is required and the build does not do it.**
+
+`npm run release` does this for you. It is written out here because the build reports success
+without it, so anyone driving the process by hand will otherwise ship an image with no ticket.
 
 The build staples the app but not the DMG that carries it, so the disk image is left without a
 ticket. The app inside still works, but someone who mounts the image while offline can be told
