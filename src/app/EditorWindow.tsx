@@ -61,7 +61,17 @@ export function EditorWindow() {
   const [folderView, setFolderView] = useState<FolderView | null>(null);
   const [watcherUnavailable, setWatcherUnavailable] = useState(false);
   const watcherAvailableRef = useRef(true);
-  const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme();
+  // A failed durable theme write is surfaced rather than swallowed. It is not
+  // fatal — the theme applies for this session — but staying silent cost the
+  // user their choice at the next launch with no explanation, because Rust
+  // broadcasts a correction only when the stored value actually changes.
+  // Phase 5f's pattern: a feature-disabling failure reaches the user through
+  // the existing notice.
+  const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme(
+    useCallback(() => {
+      setInfoNotice('Your theme choice could not be saved. It will apply until you quit Edtr.');
+    }, []),
+  );
   const { modes: writingModes, setMode: setWritingMode, toggleMode: toggleWritingMode } = useWindowWritingModes();
   const viewRef = useRef<DocumentViewHandle>(null);
   // Per-doc reload-banner state + a per-doc remount nonce. The nonce forces the

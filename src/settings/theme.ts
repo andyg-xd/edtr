@@ -16,18 +16,30 @@ export function getStoredMode(): ThemeMode {
   }
 }
 
-/** Persist the mode: localStorage (sync paint-cache) + the durable Tauri store
- * (async, fire-and-forget). Storage failures are non-fatal (theme still applies
- * in-session). */
-export function setStoredMode(mode: ThemeMode): void {
+/**
+ * Persist the mode: localStorage (sync paint-cache) + the durable Tauri store
+ * (async). The theme still applies in-session if either fails.
+ *
+ * `onPersistError` is how the durable failure reaches the user. Without it the
+ * rejection was swallowed, and the consequence was not merely a lost setting:
+ * Rust broadcasts `settings://changed` only when the stored value CHANGES, so
+ * a failed write produces no correcting broadcast either. The control kept
+ * showing the new theme until the next launch, when `reconcileMode` read the
+ * unwritten store and reverted it with no explanation.
+ *
+ * A callback rather than a returned promise, because every caller is
+ * synchronous — `applyMode` runs inside a render effect, and awaiting it would
+ * change when the theme paints. The localStorage failure stays silent by
+ * design: it costs the paint cache, not the setting, and the durable store is
+ * still the authority.
+ */
+export function setStoredMode(mode: ThemeMode, onPersistError?: (e: unknown) => void): void {
   try {
     localStorage.setItem(STORAGE_KEY, mode);
   } catch {
-    /* storage unavailable — non-fatal */
+    /* storage unavailable — non-fatal, the durable store is the authority */
   }
-  void saveTheme(mode).catch(() => {
-    /* durable persist failed — non-fatal, applied in-session + cached locally */
-  });
+  void saveTheme(mode).catch((e) => onPersistError?.(e));
 }
 
 /**
@@ -57,8 +69,12 @@ export function resolveEffective(mode: ThemeMode, systemPrefersDark: boolean): E
  * (the base :root IS light). `systemPrefersDark` is injected so this stays pure
  * (no matchMedia call here — the caller owns the OS query).
  */
-export function applyMode(mode: ThemeMode, systemPrefersDark: boolean): void {
-  setStoredMode(mode);
+export function applyMode(
+  mode: ThemeMode,
+  systemPrefersDark: boolean,
+  onPersistError?: (e: unknown) => void,
+): void {
+  setStoredMode(mode, onPersistError);
   const effective = resolveEffective(mode, systemPrefersDark);
   const root = document.documentElement;
   if (effective === 'dark') root.setAttribute('data-theme', 'dark');

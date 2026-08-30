@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   applyMode,
   getStoredMode,
@@ -18,8 +18,15 @@ const QUERY = '(prefers-color-scheme: dark)';
  * resolved theme onto <html> (via applyMode) whenever mode or OS preference
  * changes. One instance lives in EditorWindow; its `effective` feeds CodeView
  * and its `mode`/`setMode` feed the ThemeControl.
+ *
+ * `onPersistError` is called when the DURABLE write fails. The theme still
+ * applies for the session, so this is not fatal — but it must not stay silent
+ * either: Rust only broadcasts a change when the stored value actually
+ * changes, so nothing corrects the window, and the choice reverts unexplained
+ * on the next launch. EditorWindow surfaces it through the same notice Phase
+ * 5f uses for the rest of this class.
  */
-export function useTheme(): {
+export function useTheme(onPersistError?: (e: unknown) => void): {
   mode: ThemeMode;
   effective: EffectiveTheme;
   setMode: (mode: ThemeMode) => void;
@@ -37,8 +44,15 @@ export function useTheme(): {
     return () => mql.removeEventListener('change', onChange);
   }, []);
 
+  // `onPersistError` is deliberately NOT a dependency. It is a fresh closure on
+  // every render of the consumer, so listing it would re-run applyMode — and a
+  // durable write — on every render rather than on an actual theme change. The
+  // ref keeps the latest callback reachable without making identity a trigger.
+  const persistErrorRef = useRef(onPersistError);
+  persistErrorRef.current = onPersistError;
+
   useEffect(() => {
-    applyMode(mode, systemPrefersDark);
+    applyMode(mode, systemPrefersDark, (e) => persistErrorRef.current?.(e));
   }, [mode, systemPrefersDark]);
 
   // Reconcile this window's cached mode with the durable store, then live-sync.
@@ -49,7 +63,7 @@ export function useTheme(): {
       const stored = await loadSettings();
       if (disposed) return;
       const { seed, adopt } = reconcileMode(getStoredMode(), stored?.theme ?? null);
-      if (seed !== undefined) void saveTheme(seed).catch(() => {});
+      if (seed !== undefined) void saveTheme(seed).catch((e) => persistErrorRef.current?.(e));
       if (adopt !== undefined) setModeState(adopt);
       unlisten = await onSettingsChanged((s) => {
         if (!disposed) setModeState(s.theme);
