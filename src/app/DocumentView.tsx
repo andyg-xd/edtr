@@ -383,6 +383,33 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   );
   const counts = useWordCount(countSurface, countVersion);
 
+  // The outline's own version key. It is NOT `countVersion`, and the
+  // difference is the whole point: `countVersion` carries the Code caret's
+  // line and column, because the word count is selection-aware. The outline is
+  // not -- headings do not change when the caret moves.
+  //
+  // Riding `countVersion` therefore re-ran `buildOutline` -> `parse()` over
+  // the ENTIRE document on every arrow key. MEASURED 2026-08-29, against
+  // `countText` at the same sizes in the same run:
+  //
+  //     200 lines  ( 13k chars)   7.92 ms   vs  countText 0.03 ms   276x
+  //   5 000 lines  (344k chars) 185.77 ms   vs  countText 0.71 ms   263x
+  //  20 000 lines  (1.4M chars) 758.59 ms   vs  countText 2.57 ms   295x
+  //
+  // The debt entry that recorded this suspected it and guessed it might be
+  // free, because `parse()` "may be fast enough at real document sizes". It is
+  // not: it is an order of magnitude worse than the per-keystroke `dispatch`
+  // cost that had been named as the lag. Profiling before fixing is what
+  // separated them -- this project has named the wrong layer three times.
+  //
+  // `session.version` bumps on every `setCurrentText`, so a real edit still
+  // recomputes. `ribbonTick` covers a Live transaction. `findEpoch` is
+  // deliberately absent: find changes no headings.
+  const outlineVersion = useMemo(
+    () => `${ribbonTick}:${session.version}`,
+    [ribbonTick, session.version],
+  );
+
   // The outline, derived from the SOURCE so it is correct in every view
   // (spec D2) — never from a live projection, which is only current while its
   // view is showing. Plaintext has no headings; the panel shows its own empty
@@ -401,11 +428,8 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
         ? buildOutline(session.text, session.format)
         : [];
     },
-    // `countVersion` is the existing "something changed" signal -- it already
-    // covers a Code edit, a Live transaction and a find epoch. Riding it means
-    // no second subscription and no second definition of when to recompute.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [session, countVersion, showLive, liveView],
+    [session, outlineVersion, showLive, liveView],
   );
 
   // Which entry the caret is in. Code view compares a real source offset;
