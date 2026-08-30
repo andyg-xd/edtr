@@ -1,7 +1,7 @@
 {
   "name": "edtr",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "build:release": "tauri build --target universal-apple-darwin",
+    "release": "bash scripts/release.sh",
     "verify:release": "bash scripts/verify-release.sh"
   },
   "dependencies": {

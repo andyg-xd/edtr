@@ -162,6 +162,90 @@ mod tests {
         );
     }
 
+    /// `package.json` must agree with the other two as well.
+    ///
+    /// This project has THREE manifests carrying a version, and the guard
+    /// above only ever compared two of them. `package.json` sat outside the
+    /// very check that was written to end this drift, and stayed on 0.1.0
+    /// through the entire v1.0.0 release -- found by reading the npm banner
+    /// during a routine `npm run verify:release`, not by any test.
+    ///
+    /// Inert in the same way the Cargo.toml divergence was: nothing reads it
+    /// into the bundle. Pinned for the same reason -- "inert" is a property of
+    /// today's wiring, not a guarantee, and the whole point of the earlier fix
+    /// was that the two could never drift again. Three is the real number.
+    #[test]
+    fn the_npm_version_matches_the_bundle_version() {
+        let pkg = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("package.json"),
+        )
+        .expect("package.json must be readable");
+
+        let npm_version = pkg
+            .split_once("\"version\"")
+            .expect("package.json must declare a version")
+            .1
+            .split('"')
+            .nth(1)
+            .expect("version must be a string");
+
+        let c = conf();
+        let bundle_version = c["version"].as_str().expect("version must be a string");
+        assert_eq!(
+            npm_version, bundle_version,
+            "package.json says {npm_version} while the bundle ships {bundle_version}"
+        );
+    }
+
+    /// The release script must carry the step the BUILD does not do.
+    ///
+    /// Tauri notarizes and staples the .app, wraps it in a DMG, signs the DMG,
+    /// and stops -- reporting success either way. The disk image ships with no
+    /// ticket unless it is submitted and stapled separately. That lived only
+    /// as a prose step in README.md, which is the shape of instruction that
+    /// gets skipped once; `scripts/release.sh` now performs it.
+    ///
+    /// It must also gate against a CLEAN INSTALL: every gate on record read
+    /// "tsc silent" while main could not typecheck anywhere but one laptop,
+    /// because a type package existed only as a stray in that machine's
+    /// node_modules.
+    ///
+    /// HONEST LIMIT, stated rather than implied: this asserts the script
+    /// CONTAINS these steps. It does not run them -- doing so would need real
+    /// Apple credentials and twenty minutes. It therefore catches the failure
+    /// that actually happened (a required step being absent or deleted) and
+    /// would NOT catch a step that is present but broken. `npm run
+    /// verify:release`, which inspects the built artifact, is the backstop for
+    /// that, and the script calls it as its last act.
+    #[test]
+    fn the_release_script_staples_the_dmg_and_gates_on_a_clean_install() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+
+        let script = std::fs::read_to_string(root.join("scripts/release.sh"))
+            .expect("scripts/release.sh must exist — it is what `npm run release` runs");
+
+        for (needle, why) in [
+            ("stapler staple", "the DMG staple is the step the build does not perform"),
+            ("notarytool submit", "the DMG must be submitted before it can be stapled"),
+            ("npm ci", "the gate must run against a clean install, not a stray node_modules"),
+            ("verify-release.sh", "the artifact must be verified before it is called done"),
+        ] {
+            assert!(
+                script.contains(needle),
+                "scripts/release.sh no longer contains `{needle}` — {why}"
+            );
+        }
+
+        let pkg = std::fs::read_to_string(root.join("package.json"))
+            .expect("package.json must be readable");
+        assert!(
+            pkg.contains("\"release\""),
+            "package.json declares no `release` script, so `npm run release` does nothing"
+        );
+    }
+
     /// D3. Tauri's default is 10.13 — a 2017 OS the app has never been near.
     /// An unverifiable claim turns into a crash for the recipient instead of a
     /// clear "needs a newer macOS", so the floor must be stated deliberately.
