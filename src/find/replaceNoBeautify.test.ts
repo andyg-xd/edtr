@@ -77,7 +77,12 @@ const MD_FIXTURE = [
  * flushes through the exact call `DocumentView.flushToSource` makes to
  * `writeBack`.
  */
-function replaceThroughLiveView(source: string, query: string, replacement: string): ReplaceResult {
+function replaceThroughLiveView(
+  source: string,
+  query: string,
+  replacement: string,
+  opts: { preserveCase?: boolean } = {},
+): ReplaceResult {
   const result = toLive(source, null);
   if (!result.ok) throw new Error('fixture degraded — cannot exercise Live view');
   const baselineDoc = result.doc;
@@ -96,7 +101,7 @@ function replaceThroughLiveView(source: string, query: string, replacement: stri
       surface.getSegments(),
       { ...emptyQuery, text: query },
       replacement,
-      { multiline: surface.multiline },
+      { multiline: surface.multiline, preserveCase: opts.preserveCase },
     );
     surface.applyEdits(edits);
     const dirty = getDirtyBlockIds(view.state);
@@ -285,5 +290,69 @@ describe('replace is surgical (HTML)', () => {
     const second = replaceThroughLiveViewHtml(first.output, 'dog', 'cat');
     expect(second.dirty.size).toBeGreaterThan(0);
     expect(second.output).toBe(HTML_FIXTURE);
+  });
+});
+
+describe('preserve case is still surgical (B3)', () => {
+  // The whole point of the feature is that it writes something DIFFERENT from
+  // what the user typed, which is exactly the shape of change that could start
+  // rewriting bytes nobody asked about. The guarantee has to be re-proved with
+  // the toggle on, not assumed from the toggle-off case above.
+  // Nothing outside the middle paragraph may contain a match, or "untouched"
+  // would not mean untouched -- the first draft of this fixture put "Colour"
+  // in the heading, which matches case-insensitively, so the assertion failed
+  // for a reason that had nothing to do with the code.
+  const SRC = [
+    '# Palette notes',
+    '',
+    'A colour here, a Colour there, and a COLOUR shouting.',
+    '',
+    '| Name  | Hex     |',
+    '| ----- | ------- |',
+    '| red   | #ff0000 |',
+    '',
+    'Trailing paragraph left alone.',
+    '',
+  ].join('\n');
+
+  it('carries each match\'s capitalisation onto its replacement', () => {
+    const { output } = replaceThroughLiveView(SRC, 'colour', 'color', { preserveCase: true });
+    expect(output).toContain('A color here, a Color there, and a COLOR shouting.');
+  });
+
+  it('rewrites only the matched bytes, leaving every untouched block identical', () => {
+    const { output } = replaceThroughLiveView(SRC, 'colour', 'color', { preserveCase: true });
+    // The heading, the HAND-PADDED table (which contains no match, so it must
+    // not be re-serialized at all), the blank lines between blocks and the
+    // trailing newline all survive byte-for-byte.
+    expect(output.startsWith('# Palette notes\n\n')).toBe(true);
+    expect(output).toContain('| Name  | Hex     |\n| ----- | ------- |\n| red   | #ff0000 |');
+    expect(output.endsWith('Trailing paragraph left alone.\n')).toBe(true);
+    // Only the one paragraph changed: everything else is the source verbatim.
+    expect(output).toBe(
+      SRC.replace(
+        'A colour here, a Colour there, and a COLOUR shouting.',
+        'A color here, a Color there, and a COLOR shouting.',
+      ),
+    );
+  });
+
+  it('is byte-identical when every replacement happens to equal its match', () => {
+    // Two passes: the first proves the writer runs at all on this fixture, the
+    // second that a no-op through the SAME path changes nothing. Without the
+    // first, this would pass for a fixture that never reached a serializer --
+    // the vacuity that made 6c-i-b's version of this test worthless.
+    const changed = replaceThroughLiveView(SRC, 'colour', 'color', { preserveCase: true });
+    expect(changed.output).not.toBe(SRC);
+    expect(changed.dirty.size).toBeGreaterThan(0);
+
+    const noop = replaceThroughLiveView(SRC, 'colour', 'colour', { preserveCase: true });
+    expect(noop.output).toBe(SRC);
+  });
+
+  it('leaves a mixed-case match alone rather than rewriting it', () => {
+    const mixed = 'A cOlOuR to leave alone.\n';
+    const { output } = replaceThroughLiveView(mixed, 'colour', 'color', { preserveCase: true });
+    expect(output).toBe('A color to leave alone.\n');
   });
 });

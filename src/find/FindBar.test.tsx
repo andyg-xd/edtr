@@ -27,6 +27,8 @@ function props(over: Partial<Parameters<typeof FindBar>[0]> = {}) {
     onClose: vi.fn(),
     showReplace: false,
     replaceText: '',
+    preserveCase: false,
+    onPreserveCaseChange: vi.fn(),
     canReplace: true,
     onReplaceTextChange: vi.fn(),
     onReplace: vi.fn(),

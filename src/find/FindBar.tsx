@@ -26,8 +26,10 @@ interface FindBarProps {
   onClose: () => void;
   showReplace: boolean;
   replaceText: string;
+  preserveCase: boolean;
   canReplace: boolean;
   onReplaceTextChange: (text: string) => void;
+  onPreserveCaseChange: (on: boolean) => void;
   onReplace: () => void;
   onReplaceAll: () => void;
 }
@@ -45,6 +47,7 @@ interface FindBarProps {
 export function FindBar({
   query, count, focusToken, onQueryChange, onNext, onPrev, onClose,
   showReplace, replaceText, canReplace, onReplaceTextChange, onReplace, onReplaceAll,
+  preserveCase, onPreserveCaseChange,
 }: FindBarProps) {
   const fieldRef = useRef<HTMLInputElement>(null);
 
@@ -138,6 +141,23 @@ export function FindBar({
             value={replaceText}
             onChange={(e) => onReplaceTextChange(e.target.value)}
           />
+          {/* Lives on the replace row, not with the find toggles, because it
+              changes what is WRITTEN rather than what is found -- and because
+              it is deliberately not part of FindQuery, so flipping it does not
+              invalidate the match set. */}
+          <Tooltip label="Keep each match's capitalisation" id="tip-find-preserve-case">
+            <button
+              type="button"
+              data-toggle="preserveCase"
+              className={`btn btn--secondary find-toggle${preserveCase ? ' is-active' : ''}`}
+              aria-label="Keep each match's capitalisation"
+              aria-pressed={preserveCase}
+              disabled={!canReplace}
+              onClick={() => onPreserveCaseChange(!preserveCase)}
+            >
+              Aa
+            </button>
+          </Tooltip>
           <button type="button" className="btn btn--secondary find-replace" disabled={!canReplace} onClick={onReplace}>Replace</button>
           <button type="button" className="btn btn--secondary find-replace-all" disabled={!canReplace} onClick={onReplaceAll}>Replace all</button>
         </div>

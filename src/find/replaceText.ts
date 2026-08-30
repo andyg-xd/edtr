@@ -1,6 +1,7 @@
 import { compileQuery, type FindQuery } from './findQuery';
 import { execAll, MATCH_CAP } from './matchText';
 import { mapEnd, mapStart, type Segment } from './types';
+import { applyCase } from './preserveCase';
 
 /**
  * Expand `$`-substitutions in a replacement template against one match.
@@ -66,6 +67,10 @@ export interface ReplaceEdit {
  * Walks the same segments and uses the same offset map as `matchSegments`, so
  * replace can never disagree with the highlights the user is looking at.
  *
+ * `preserveCase` carries each match's capitalisation onto its replacement
+ * (B3) -- off by default, because a user replacing `cat` with `DOG` means
+ * `DOG`. See `preserveCase.ts` for the semantics.
+ *
  * Edits come back ascending and non-overlapping, which is the precondition
  * `spliceSource` validates and throws on (spec 6). Per-textblock segmentation
  * (2026-08-07 addendum) is what guarantees an edit never spans a block
@@ -75,7 +80,7 @@ export function computeReplacements(
   segments: Segment[],
   query: FindQuery,
   template: string,
-  opts: { multiline: boolean; cap?: number },
+  opts: { multiline: boolean; cap?: number; preserveCase?: boolean },
 ): ReplaceEdit[] {
   const cap = opts.cap ?? MATCH_CAP;
   const compiled = compileQuery(query, opts.multiline);
@@ -90,7 +95,10 @@ export function computeReplacements(
       // rather than guess a position and rewrite the wrong text.
       if (from === null || to === null) continue;
       // Literal when the regex toggle is off, so `$` is just a dollar sign.
-      const text = query.regex ? expandReplacement(m, template) : template;
+      const expanded = query.regex ? expandReplacement(m, template) : template;
+      // Preserve case runs AFTER `$`-expansion, so a group's own text is
+      // carried into the shape decision rather than the template's `$1`.
+      const text = opts.preserveCase ? applyCase(m[0], expanded) : expanded;
       edits.push({ from, to, text });
       if (edits.length >= cap) return edits;
     }

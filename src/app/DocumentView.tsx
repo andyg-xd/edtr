@@ -171,6 +171,10 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   // find-only (⌘F) must not lose a term the user already typed into replace.
   const [showReplace, setShowReplace] = useState(false);
   const [replaceText, setReplaceText] = useState('');
+  // B3. Deliberately NOT on FindQuery: it changes what is written, not what is
+  // matched, so flipping it must not invalidate the match set or bump the find
+  // epoch. Off by default -- someone replacing `cat` with `DOG` means `DOG`.
+  const [preserveCase, setPreserveCase] = useState(false);
   // The frozen edit set a big Replace All is asking about. Frozen, not
   // recomputed on confirm: what the guard disclosed (the count, the atom-span
   // count) is exactly what must happen -- recomputing against a document that
@@ -696,7 +700,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     // narrowed to the one edit under the current match by position --
     // `computeReplacements` walks the same segments/offset map `matchSegments`
     // used to produce `find.matches`, so the positions agree.
-    const edits = computeReplacements(s.getSegments(), find.query, replaceText, { multiline: s.multiline });
+    const edits = computeReplacements(s.getSegments(), find.query, replaceText, { multiline: s.multiline, preserveCase });
     const edit = edits.find((e) => e.from === match.from);
     if (!edit) return;
     // Anchor PAST the replacement, not at its start. This single line both
@@ -708,7 +712,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     // No count lead: a single Replace is one match by definition, and saying
     // so would be noise. Only the crossing/atom disclosures apply here.
     disclose(runEdits([edit]));
-  }, [find, findFresh, replaceText, runEdits, disclose]);
+  }, [find, findFresh, replaceText, preserveCase, runEdits, disclose]);
 
   // Both Replace All paths -- straight through, and via the confirmation --
   // apply and then report the count. D5 says it reports "either way", so the
@@ -738,7 +742,8 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     // overflow only becomes visible by requesting room for one extra and
     // checking whether it showed up.
     const probe = computeReplacements(
-      s.getSegments(), find.query, replaceText, { multiline: s.multiline, cap: MATCH_CAP + 1 },
+      s.getSegments(), find.query, replaceText,
+      { multiline: s.multiline, cap: MATCH_CAP + 1, preserveCase },
     );
     const capped = probe.length > MATCH_CAP;
     const edits = capped ? probe.slice(0, MATCH_CAP) : probe;
@@ -753,7 +758,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
       return;
     }
     runReplaceAll(edits, capped);
-  }, [find, replaceText, runReplaceAll, findEpoch]);
+  }, [find, replaceText, preserveCase, runReplaceAll, findEpoch]);
 
   const confirmReplaceAll = useCallback(() => {
     const pending = pendingReplaceAll;
@@ -819,6 +824,8 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
       onClose={closeFind}
       showReplace={showReplace}
       replaceText={replaceText}
+      preserveCase={preserveCase}
+      onPreserveCaseChange={setPreserveCase}
       canReplace={surface?.editable() ?? false}
       onReplaceTextChange={setReplaceText}
       onReplace={onReplace}
