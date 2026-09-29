@@ -4,6 +4,8 @@ import { EditorView } from '@codemirror/view';
 import { buildCodeViewExtensions, themeCompartment, themeExtensionFor } from './codeViewExtensions';
 import type { EditorFormat } from '../files/fileTypes';
 import type { EffectiveTheme } from '../settings/theme';
+import { codeLinkExtension } from '../links/codeLinks';
+import type { LinkHandlers } from '../links/linkPointer';
 
 interface CodeViewProps {
   initialText: string;
@@ -17,6 +19,12 @@ interface CodeViewProps {
   onCursorChange?: (line: number, column: number) => void;
   /** Reports the EditorView on mount, and null on unmount — lets the parent drive find. */
   onViewReady?: (view: EditorView | null) => void;
+  /** ⌘-click on a link, with its address as written in the text. */
+  onLinkOpen?: (href: string) => void;
+  /** The link under the pointer, or null once it leaves every link. */
+  onLinkHover?: (href: string | null) => void;
+  /** Whether a ⌘-click would really open `href`, so the hand shows only then. */
+  canOpenLink?: (href: string) => boolean;
 }
 
 /**
@@ -26,7 +34,9 @@ interface CodeViewProps {
  * place via themeCompartment.reconfigure when `effectiveTheme` changes — no
  * remount, so cursor/selection/history survive a theme toggle.
  */
-export function CodeView({ initialText, format, effectiveTheme, onChange, onCursorChange, onViewReady }: CodeViewProps) {
+export function CodeView({
+  initialText, format, effectiveTheme, onChange, onCursorChange, onViewReady, onLinkOpen, onLinkHover, canOpenLink,
+}: CodeViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
@@ -35,6 +45,8 @@ export function CodeView({ initialText, format, effectiveTheme, onChange, onCurs
   onCursorChangeRef.current = onCursorChange;
   const onViewReadyRef = useRef(onViewReady);
   onViewReadyRef.current = onViewReady;
+  const linkHandlers = useRef<LinkHandlers>({ onOpen: () => {}, onHover: () => {} });
+  linkHandlers.current = { onOpen: (h) => onLinkOpen?.(h), onHover: (h) => onLinkHover?.(h), canOpen: canOpenLink };
   // Read the latest theme inside the mount-once effect without re-running it.
   const themeRef = useRef(effectiveTheme);
   themeRef.current = effectiveTheme;
@@ -53,6 +65,8 @@ export function CodeView({ initialText, format, effectiveTheme, onChange, onCurs
         doc: initialText,
         extensions: [
           ...buildCodeViewExtensions(format, themeRef.current),
+          // ⌘-click follows a link; everywhere else it still adds a cursor.
+          codeLinkExtension(() => linkHandlers.current),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) onChangeRef.current(u.state.doc.toString());
             if (u.docChanged || u.selectionSet) reportCursor(u.state);

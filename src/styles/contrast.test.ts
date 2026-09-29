@@ -38,6 +38,10 @@ describe.each(['light', 'dark'] as const)('contrast — %s theme', (theme) => {
   it('muted text on surface meets AA (4.5:1)', () => {
     expect(ratio(t['--fg-muted'], t['--surface'])).toBeGreaterThanOrEqual(4.5);
   });
+  // The hovered-link hint in the status bar is small text in the accent.
+  it('accent text on surface meets AA (4.5:1)', () => {
+    expect(ratio(t['--accent'], t['--surface'])).toBeGreaterThanOrEqual(4.5);
+  });
   it('faint text on surface meets large-text AA (3:1)', () => {
     expect(ratio(t['--fg-faint'], t['--surface'])).toBeGreaterThanOrEqual(3);
   });

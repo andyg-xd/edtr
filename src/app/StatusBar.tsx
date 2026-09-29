@@ -1,4 +1,5 @@
 import type { EditorFormat } from '../files/fileTypes';
+import type { LinkHint } from '../links/useLinkHint';
 
 const FORMAT_LABELS: Record<EditorFormat, string> = {
   markdown: 'Markdown',
@@ -32,6 +33,11 @@ interface StatusBarProps {
    * way to tell a selection from a shorter document.
    */
   isSelection?: boolean;
+  /**
+   * The link under the pointer in a Live view, if any: its address and what a
+   * ⌘-click will do, the way a browser shows a hovered link's address.
+   */
+  linkHint?: LinkHint;
 }
 
 /**
@@ -40,7 +46,7 @@ interface StatusBarProps {
  * Purely presentational; every view decides for itself whether it has a real
  * position or count to report (DocumentView).
  */
-export function StatusBar({ format, line, column, words, characters, isSelection }: StatusBarProps) {
+export function StatusBar({ format, line, column, words, characters, isSelection, linkHint }: StatusBarProps) {
   const hasPosition = line !== undefined && column !== undefined;
   const hasCounts = words !== undefined && characters !== undefined;
   return (
@@ -48,6 +54,11 @@ export function StatusBar({ format, line, column, words, characters, isSelection
       <span className="status-bar-format">{FORMAT_LABELS[format]}</span>
       {hasPosition && (
         <span className="status-bar-position">Ln {line}, Col {column}</span>
+      )}
+      {linkHint !== undefined && (
+        <span className={`status-bar-link${linkHint.openable ? ' is-openable' : ''}`}>
+          <span className="status-bar-link-url">{linkHint.url}</span> · {linkHint.action}
+        </span>
       )}
       <span className="status-bar-counts">
         {hasCounts && `${isSelection ? 'Selected: ' : ''}${words!.toLocaleString()} words · ${characters!.toLocaleString()} characters`}

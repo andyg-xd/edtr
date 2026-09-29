@@ -45,6 +45,10 @@ import {
   next as nextMatch, prev as prevMatch, setResult, type FindState,
 } from '../find/findState';
 import type { FindSurface } from '../find/types';
+import { openLink } from '../links/openLink';
+import { classifyLink } from '../links/linkTarget';
+import { isOpenable } from '../links/linkHint';
+import { useLinkHint } from '../links/useLinkHint';
 import { ReplaceAllGuard } from './ReplaceAllGuard';
 import { codeTypewriter } from '../writingmodes/codeTypewriter';
 import { pmTypewriter } from '../writingmodes/pmTypewriter';
@@ -336,6 +340,21 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
       return false;
     }
   }, [session, onError]);
+
+  // The link under the pointer, for the status bar, in whichever view is
+  // showing. Cleared by the view itself when the pointer leaves the link or
+  // the view is torn down.
+  const [hoveredLink, setHoveredLink] = useState<string | null>(null);
+  // `session.path` is read when the link is followed, not captured, so a link
+  // clicked after Save As resolves against the new location.
+  const handleLinkOpen = useCallback((href: string) => {
+    void openLink(href, session.path ?? null).then((notice) => { if (notice) onInfo(notice); });
+  }, [session, onInfo]);
+  const canOpenLink = useCallback(
+    (href: string) => isOpenable(classifyLink(href, session.path ?? null)),
+    [session],
+  );
+  const linkHint = useLinkHint(hoveredLink, session.path ?? null);
 
   const surface = useMemo<FindSurface | null>(() => {
     if (showLive) return liveView ? pmSurface(liveView) : null;
@@ -919,9 +938,9 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
           key={`htmllive-${doc.id}`}
           doc={liveHtml.doc} styleText={liveHtml.styleText} bodyAttrs={liveHtml.bodyAttrs} rootAttrs={liveHtml.rootAttrs}
           editable docPath={session.path ?? null}
-          onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={handleLiveStateChange} onLinkShortcut={bumpLinkRequest} onError={onError}
+          onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={handleLiveStateChange} onLinkShortcut={bumpLinkRequest} onLinkOpen={handleLinkOpen} onLinkHover={setHoveredLink} canOpenLink={canOpenLink} onError={onError}
         />
-        <StatusBar format={session.format} line={pos?.line} column={pos?.column} words={counts?.words} characters={counts?.characters} isSelection={counts?.isSelection} />
+        <StatusBar format={session.format} line={pos?.line} column={pos?.column} words={counts?.words} characters={counts?.characters} isSelection={counts?.isSelection} linkHint={linkHint} />
       </>
     );
   }
@@ -945,9 +964,9 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
         <LiveView
           key={`live-${doc.id}`}
           doc={live.doc} editable
-          onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={handleLiveStateChange} onLinkShortcut={bumpLinkRequest} docPath={session.path ?? null} onError={onError}
+          onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={handleLiveStateChange} onLinkShortcut={bumpLinkRequest} onLinkOpen={handleLinkOpen} onLinkHover={setHoveredLink} canOpenLink={canOpenLink} docPath={session.path ?? null} onError={onError}
         />
-        <StatusBar format={session.format} line={pos?.line} column={pos?.column} words={counts?.words} characters={counts?.characters} isSelection={counts?.isSelection} />
+        <StatusBar format={session.format} line={pos?.line} column={pos?.column} words={counts?.words} characters={counts?.characters} isSelection={counts?.isSelection} linkHint={linkHint} />
       </>
     );
   }
@@ -960,8 +979,9 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
         key={`code-${doc.id}`} initialText={session.text} format={session.format} effectiveTheme={effectiveTheme}
         onChange={handleChange} onViewReady={setCodeView}
         onCursorChange={(line, column) => setCodeCursor({ line, column })}
+        onLinkOpen={handleLinkOpen} onLinkHover={setHoveredLink} canOpenLink={canOpenLink}
       />
-      <StatusBar format={session.format} line={codeCursor?.line} column={codeCursor?.column} words={counts?.words} characters={counts?.characters} isSelection={counts?.isSelection} />
+      <StatusBar format={session.format} line={codeCursor?.line} column={codeCursor?.column} words={counts?.words} characters={counts?.characters} isSelection={counts?.isSelection} linkHint={linkHint} />
     </>
   );
 });

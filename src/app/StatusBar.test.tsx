@@ -17,6 +17,28 @@ async function render(node: ReactElement) {
 }
 
 describe('StatusBar', () => {
+  it('shows a hovered link that will open as an invitation', async () => {
+    const c = await render(<StatusBar format="markdown" line={1} column={1}
+      linkHint={{ url: 'https://example.com/docs', action: '⌘-click to open', openable: true }} />);
+    const link = c.querySelector('.status-bar-link')!;
+    expect(c.querySelector('.status-bar-link-url')?.textContent).toBe('https://example.com/docs');
+    expect(link.textContent).toBe('https://example.com/docs · ⌘-click to open');
+    expect(link.classList.contains('is-openable')).toBe(true);
+  });
+
+  it('shows why a hovered link will not open, without the invitation styling', async () => {
+    const c = await render(<StatusBar format="markdown" line={1} column={1}
+      linkHint={{ url: '#top', action: "Edtr can't jump to sections yet", openable: false }} />);
+    const link = c.querySelector('.status-bar-link')!;
+    expect(link.textContent).toBe("#top · Edtr can't jump to sections yet");
+    expect(link.classList.contains('is-openable')).toBe(false);
+  });
+
+  it('shows no link slot when nothing is hovered', async () => {
+    const c = await render(<StatusBar format="markdown" line={1} column={1} />);
+    expect(c.querySelector('.status-bar-link')).toBeNull();
+  });
+
   it('renders the format label', async () => {
     const c = await render(<StatusBar format="markdown" />);
     expect(c.querySelector('.status-bar-format')?.textContent).toBe('Markdown');

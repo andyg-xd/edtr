@@ -413,3 +413,22 @@ it('a split assigns the second block a fresh id (blockIdentityPlugin)', () => {
   expect(id1.startsWith('new-')).toBe(true);
   expect(state.doc.child(1).attrs.srcFrom).toBe(0); // cleared range
 });
+
+describe('HtmlLiveView — ⌘ over a link', () => {
+  it('the injected hand-cursor rule matches the link once ⌘ is held over it', async () => {
+    // The rule and the class have to meet: the class goes on the editor's
+    // parent, which is the shadow <body> ProseMirror mounts into — not <html>.
+    const res = toLiveHtml('<html><body><p>Go <a href="https://example.com">there</a></p></body></html>');
+    if (!res.ok) throw new Error('fixture must be live-editable');
+    const c = await render(<HtmlLiveView doc={res.doc} styleText={res.styleText} editable canOpenLink={() => true} />);
+    const shadow = c.querySelector('.html-live-view')!.shadowRoot!;
+    const anchor = shadow.querySelector('a')!;
+    const rule = shadow.querySelector('style[data-edtr-links]')!.textContent!;
+    const selector = rule.slice(0, rule.indexOf('{'));
+    expect(anchor.matches(selector)).toBe(false);
+    await act(async () => {
+      anchor.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, metaKey: true }));
+    });
+    expect(anchor.matches(selector)).toBe(true);
+  });
+});

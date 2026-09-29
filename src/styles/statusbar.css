@@ -21,3 +21,27 @@
 .status-bar-counts {
   margin-left: auto;
 }
+
+/* A hovered link's address, then what a ⌘-click will do. The address gives way
+   first (ellipsis) so the hint and the counts stay whole at the minimum window
+   width. It must be noticed at the edge of the eye, hence full-strength text
+   rather than the bar's faint default, and the accent (purple in light, amber
+   in dark) only when the link will really open — a refusal is not an
+   invitation. */
+.status-bar-link {
+  display: flex;
+  min-width: 0;
+  white-space: pre;
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.status-bar-link.is-openable {
+  color: var(--accent);
+}
+
+.status-bar-link-url {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

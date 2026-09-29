@@ -15,6 +15,7 @@ import { writeImageIntoAssets, resolveImageDisplaySrc } from '../files/imageAsse
 import { insertImage, canInsertImage } from '../commands/markdownInlineCommands';
 import { findDecorationsPlugin } from '../find/pmSurface';
 import { focusDimPlugin } from '../writingmodes/pmFocus';
+import { linkClickPlugin, type LinkHandlers } from '../links/linkClickPlugin';
 
 interface LiveViewProps {
   doc: PMNode;
@@ -30,6 +31,12 @@ interface LiveViewProps {
   onStateChange?: (view: EditorView) => void;
   /** Called by ⌘K so the consumer can open the link popover. */
   onLinkShortcut?: () => void;
+  /** ⌘-click on a link, with its address as written in the document. */
+  onLinkOpen?: (href: string) => void;
+  /** The link under the pointer, or null once it leaves every link. */
+  onLinkHover?: (href: string | null) => void;
+  /** Whether a ⌘-click would really open `href`, so the hand shows only then. */
+  canOpenLink?: (href: string) => boolean;
   /** Absolute path of the document being edited; enables pasted-image insertion into <doc>.assets/. */
   docPath?: string | null;
   /** Surface a non-destructive error to the consumer (e.g. a pasted-image write failure). */
@@ -43,6 +50,9 @@ export function LiveView({
   onViewReady,
   onStateChange,
   onLinkShortcut,
+  onLinkOpen,
+  onLinkHover,
+  canOpenLink,
   docPath = null,
   onError,
 }: LiveViewProps) {
@@ -55,6 +65,8 @@ export function LiveView({
   onStateChangeRef.current = onStateChange;
   const onLinkShortcutRef = useRef(onLinkShortcut);
   onLinkShortcutRef.current = onLinkShortcut;
+  const linkHandlers = useRef<LinkHandlers>({ onOpen: () => {}, onHover: () => {} });
+  linkHandlers.current = { onOpen: (h) => onLinkOpen?.(h), onHover: (h) => onLinkHover?.(h), canOpen: canOpenLink };
 
   useEffect(() => {
     if (!host.current) return;
@@ -80,11 +92,13 @@ export function LiveView({
           findDecorationsPlugin(),
           // Focus-mode dimming. Also decoration only (6c-ii).
           focusDimPlugin(),
+          // ⌘-click follows a link. Changes nothing in the document.
+          linkClickPlugin(() => linkHandlers.current),
         ]
-      // Find and focus mode must work in a read-only view too, so both
-      // plugins are present here as well: an empty list means no decorations
-      // at all.
-      : [findDecorationsPlugin(), focusDimPlugin()];
+      // Find, focus mode and links must work in a read-only view too, so
+      // their plugins are present here as well: an empty list means no
+      // decorations and no link following at all.
+      : [findDecorationsPlugin(), focusDimPlugin(), linkClickPlugin(() => linkHandlers.current)];
     const view = new EditorView(host.current, {
       state: EditorState.create({ doc, schema: liveSchema, plugins }),
       editable: () => editable,

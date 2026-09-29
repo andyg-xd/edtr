@@ -45,6 +45,7 @@ Edtr is signed and checked by Apple, so it opens normally with no security warni
 
 - **Opening files.** Besides ⌘O, you can drag a file onto the window or the Dock icon, or right-click it in Finder and choose **Open With → Edtr**. Edtr opens web pages (`.html`, `.htm`), Markdown (`.md`, `.markdown`) and plain text, and can open a whole folder at once.
 - **Web pages stay safe to open.** In Live view a page's scripts (the code behind buttons and animations) are switched off, so nothing runs on your Mac. They stay in the file and work as normal in a browser. A page that builds most of its content with code as it loads will show less in Live view; use Code view for those.
+- **Links.** Hover over a link to see where it goes at the bottom of the window. ⌘-click it to open it. A plain click just puts the cursor there, so you can edit the link's text.
 - **Tables.** Click into a table to edit a cell. A small toolbar appears for adding and removing rows and columns and setting alignment.
 - **Pictures.** Insert them with the toolbar, by dragging them in, or by pasting. Edtr copies each picture into a folder next to your file, so they stay together.
 - **Find and replace.** Match upper and lower case exactly, match whole words only, or keep each match's capitalisation when replacing.
@@ -67,6 +68,7 @@ Edtr is signed and checked by Apple, so it opens normally with no security warni
 | ⌘I | Italic |
 | ⌘U | Underline (web pages only) |
 | ⌘K | Add a link |
+| ⌘-click a link | Open it: web links in your browser, links to other files in a new Edtr window |
 | ⌘F | Find |
 | ⌥⌘F | Find and replace |
 | ⌘G | Next match |

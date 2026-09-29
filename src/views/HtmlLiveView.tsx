@@ -18,6 +18,7 @@ import {
 import { writeImageIntoAssets, resolveImageDisplaySrc } from '../files/imageAssets';
 import { findDecorationsPlugin } from '../find/pmSurface';
 import { focusDimPlugin } from '../writingmodes/pmFocus';
+import { linkClickPlugin, LINKS_ARMED_CLASS, type LinkHandlers } from '../links/linkClickPlugin';
 
 /**
  * Edit-only fallback so an UNSTYLED table (e.g. one the user just inserted) is
@@ -98,6 +99,16 @@ const FIND_HIGHLIGHT_CSS =
  * stylesheet last does not change that — source order only breaks ties at
  * equal specificity.
  */
+/**
+ * The hand over links while ⌘ is held (see `LINKS_ARMED_CLASS`). The class
+ * lands on the editor's parent, which is this shadow tree's `<body>` —
+ * ProseMirror mounts its own element INSIDE the node it is given — so
+ * canvas.css cannot reach it. Keyed on the class alone rather than a tag, so
+ * it cannot miss again if the mount point moves. `!important` because the
+ * file's own CSS may well style `a { cursor }`.
+ */
+const LINKS_ARMED_CSS = `.${LINKS_ARMED_CLASS} a{cursor:pointer!important}`;
+
 export const FOCUS_DIM_CSS =
   // Rule 1 — dim the block RELATIVELY, never to a fixed colour (6c-ii-b, F3).
   //
@@ -245,6 +256,12 @@ interface HtmlLiveViewProps {
   onViewReady?: (view: EditorView | null) => void;
   onStateChange?: (view: EditorView) => void;
   onLinkShortcut?: () => void;
+  /** ⌘-click on a link, with its address as written in the document. */
+  onLinkOpen?: (href: string) => void;
+  /** The link under the pointer, or null once it leaves every link. */
+  onLinkHover?: (href: string | null) => void;
+  /** Whether a ⌘-click would really open `href`, so the hand shows only then. */
+  canOpenLink?: (href: string) => boolean;
   /** Surface a non-destructive error to the consumer (e.g. a pasted-image write failure). */
   onError?: (message: string) => void;
 }
@@ -260,13 +277,15 @@ interface HtmlLiveViewProps {
  */
 export function HtmlLiveView({
   doc, styleText, bodyAttrs = {}, rootAttrs = {},
-  editable = false, docPath = null, onEdit, onViewReady, onStateChange, onLinkShortcut, onError,
+  editable = false, docPath = null, onEdit, onViewReady, onStateChange, onLinkShortcut, onLinkOpen, onLinkHover, canOpenLink, onError,
 }: HtmlLiveViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const onEditRef = useRef(onEdit); onEditRef.current = onEdit;
   const onViewReadyRef = useRef(onViewReady); onViewReadyRef.current = onViewReady;
   const onStateChangeRef = useRef(onStateChange); onStateChangeRef.current = onStateChange;
   const onLinkShortcutRef = useRef(onLinkShortcut); onLinkShortcutRef.current = onLinkShortcut;
+  const linkHandlers = useRef<LinkHandlers>({ onOpen: () => {}, onHover: () => {} });
+  linkHandlers.current = { onOpen: (h) => onLinkOpen?.(h), onHover: (h) => onLinkHover?.(h), canOpen: canOpenLink };
   const docPathRef = useRef(docPath); docPathRef.current = docPath;
   const onErrorRef = useRef(onError); onErrorRef.current = onError;
 
@@ -311,6 +330,11 @@ export function HtmlLiveView({
     // Typewriter end padding. See TYPEWRITER_PAD_CSS for why this can't just
     // be canvas.css's `.live-view.edtr-typewriter .ProseMirror` rule reused —
     // the class lives outside this shadow tree entirely.
+    const linkStyle = document.createElement('style');
+    linkStyle.setAttribute('data-edtr-links', '');
+    linkStyle.textContent = LINKS_ARMED_CSS;
+    shadow.appendChild(linkStyle);
+
     const typewriterStyle = document.createElement('style');
     typewriterStyle.setAttribute('data-edtr-typewriter', '');
     typewriterStyle.textContent = TYPEWRITER_PAD_CSS;
@@ -354,11 +378,13 @@ export function HtmlLiveView({
           findDecorationsPlugin(),
           // Focus-mode dimming. Also decoration only (6c-ii).
           focusDimPlugin(),
+          // ⌘-click follows a link. Changes nothing in the document.
+          linkClickPlugin(() => linkHandlers.current),
         ]
-      // Find and focus mode must work in a read-only view too, so both
-      // plugins are present here as well: an empty list means no decorations
-      // at all.
-      : [findDecorationsPlugin(), focusDimPlugin()];
+      // Find, focus mode and links must work in a read-only view too, so
+      // their plugins are present here as well: an empty list means no
+      // decorations and no link following at all.
+      : [findDecorationsPlugin(), focusDimPlugin(), linkClickPlugin(() => linkHandlers.current)];
 
     const view = new EditorView(bodyEl, {
       state: EditorState.create({ doc, schema: htmlSchema, plugins }),

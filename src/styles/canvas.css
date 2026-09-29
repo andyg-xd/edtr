@@ -8,6 +8,13 @@
 }
 .live-view { flex: 1; overflow: auto; padding: var(--space-6) var(--space-7); }
 .live-view .ProseMirror { outline: none; max-width: 60rem; }
+/* A hand over links only while ⌘ is held over one that will open — a plain
+   click edits the link text (see linkPointer). HTML Live carries its own copy
+   inside its shadow root. In Code view a link is text, not an element, so the
+   whole content area takes the hand; the class is only set while the pointer
+   is on a link, so in practice that is the link. */
+.live-view.edtr-links-armed a,
+.code-view.edtr-links-armed .cm-content { cursor: pointer; }
 
 /* Typewriter mode in Markdown Live (D8). Same scroll-padding-not-text rule as
    Code view below, and now the SAME shape too: the class stays on the
