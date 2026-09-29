@@ -3,6 +3,8 @@ name = "edtr"
 version = "1.0.0"
 description = "A lean macOS editor for Markdown and HTML files."
 authors = ["Andy Garcia <andres@callmeandy.co>"]
+license = "GPL-3.0-or-later"
+repository = "https://github.com/andyg-xd/edtr"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
