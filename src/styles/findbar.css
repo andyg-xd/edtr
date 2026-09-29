@@ -11,7 +11,8 @@
   flex: none;
 }
 
-.find-input {
+.find-input,
+.find-replace-input {
   flex: 1;
   min-width: 0;
   max-width: 22rem;
@@ -24,9 +25,17 @@
   font-size: var(--text-base);
 }
 
-.find-input:focus-visible {
+.find-input:focus-visible,
+.find-replace-input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+/* Replace is disabled while there is no match to replace. Same signal as
+   `.btn:disabled`, so the field and the buttons beside it read as one state. */
+.find-replace-input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* Fixed width so the bar's controls don't shuffle sideways as the count
@@ -85,4 +94,3 @@
   align-items: center;
   gap: var(--space-3);
 }
-.find-replace-input { flex: 1; min-width: 0; }

@@ -530,6 +530,14 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     focus?.setFocusEnabled(modes.focus);
   }, [focus, modes.focus]);
 
+  // `onError` is only reached from the recompute's catch path, and EditorWindow
+  // passes it as an inline arrow — a new identity on every window render, and
+  // the window re-renders on every caret move the outline reports. As a
+  // dependency it restarted the recompute, whose `setResult` re-anchors on
+  // `findAnchorRef` and so undid every next/prev ~120ms later. The ref keeps
+  // the latest callback reachable without making its identity a trigger.
+  const onErrorRef = useRef(onError); onErrorRef.current = onError;
+
   // Recompute matches — debounced, and safe to re-run.
   useEffect(() => {
     if (!findOpen || !surface) return;
@@ -547,7 +555,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
         // leaves find silently, permanently dead. Surface it through the
         // banner instead of swallowing it (5f's lesson).
         run = { matches: [], capped: false, invalid: false };
-        onError(`Edtr couldn't search this document—try switching to Code view, which always works for searching. ${String(e)}`);
+        onErrorRef.current(`Edtr couldn't search this document—try switching to Code view, which always works for searching. ${String(e)}`);
       }
       setFind((prev) => setResult(prev.query, run, findAnchorRef.current));
       setFindFor(surface);
@@ -556,7 +564,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     return () => clearTimeout(timer);
     // `find.query` is compared by reference and setResult carries the same
     // object through, so this cannot re-trigger itself.
-  }, [findOpen, surface, find.query, findEpoch, onError]);
+  }, [findOpen, surface, find.query, findEpoch]);
 
   // Matches describe one projection at one document version. Consuming them
   // against any other is how reveal() resolves a position that no longer

@@ -398,6 +398,31 @@ describe('DocumentView find — incremental search does not oscillate on its own
   });
 });
 
+describe.each(CASES)('DocumentView find — navigation survives the recompute — $label', ({ path, text, viewMode }) => {
+  it('stays on the next match after the debounce and a parent re-render', async () => {
+    // EditorWindow passes `onError` as an inline arrow, and re-renders on
+    // every caret move while the outline reports its active heading -- which
+    // `reveal()` causes. A recompute keyed on that callback re-anchored the
+    // current match ~120ms after every step, so next/prev visibly jumped and
+    // snapped back. `rerender` passes fresh callbacks, the same shape.
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    const ref = createRef<DocumentViewHandle>();
+    const doc = makeDoc(path, text, viewMode);
+    const root = createRoot(container);
+    currentRoot = root;
+    await rerender(root, ref, doc);
+    await act(async () => { ref.current!.openFind(); });
+    await type(container, 'hello');
+    await act(async () => { ref.current!.findNext(); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 200)); });
+    expect(container.querySelector('.find-count')?.textContent).toBe('2/2');
+    await rerender(root, ref, doc);
+    await act(async () => { await new Promise((r) => setTimeout(r, 200)); });
+    expect(container.querySelector('.find-count')?.textContent).toBe('2/2');
+  });
+});
+
 /**
  * Regression for design §7.3: a surface driver meeting a node it doesn't
  * understand must degrade to "no matches" and surface through the banner,
