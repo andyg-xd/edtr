@@ -39,10 +39,26 @@ export async function markFrontendReady(): Promise<OpenPayload | null> {
   return (await invoke<OpenPayload | null>('mark_frontend_ready')) ?? null;
 }
 
-/** Persist the session's current text, then mark it clean. */
-export async function saveSession(session: DocumentSession): Promise<void> {
+/** Persist the session's current text, then mark it clean. Returns false, having
+ * written nothing, when the person declines to overwrite.
+ *
+ * The file is re-read first: if it no longer holds what this session last
+ * loaded or saved, another app or window wrote it, and saving would destroy
+ * that work unseen — the reload banner alone could not prevent it, since it is
+ * shown only for the active document and can be dismissed. A file that cannot
+ * be read is written as before: a deleted one has nothing to lose, and an
+ * unreadable one fails at the write with its own error. */
+export async function saveSession(
+  session: DocumentSession,
+  confirmOverwrite: (path: string) => Promise<boolean>,
+): Promise<boolean> {
+  const onDisk = await readFile(session.path).then((f) => f.text, () => null);
+  if (onDisk !== null && onDisk !== session.savedText && !(await confirmOverwrite(session.path))) {
+    return false;
+  }
   await writeFile(session.path, session.text, session.meta);
   session.markSaved();
+  return true;
 }
 
 /** Show the native folder picker; return the chosen folder path, or null if cancelled. */

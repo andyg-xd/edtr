@@ -6,6 +6,7 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { invoke } from '@tauri-apps/api/core';
 import { WindowChrome } from './WindowChrome';
 import { CloseGuard } from './CloseGuard';
+import { OverwriteGuard } from './OverwriteGuard';
 import { Sidebar } from './Sidebar';
 import { FolderSidebar } from './FolderSidebar';
 import { SidebarShell } from './SidebarShell';
@@ -79,6 +80,9 @@ export function EditorWindow() {
   // the freshly-adopted session text.
   const [reloadState, setReloadState] = useState<Record<string, ReloadState>>({});
   const [reloadNonce, setReloadNonce] = useState<Record<string, number>>({});
+  // A save waiting on the person: the file changed elsewhere since this window
+  // last read or wrote it (`saveSession`). Resolved by the OverwriteGuard.
+  const [overwritePrompt, setOverwritePrompt] = useState<{ path: string; resolve: (ok: boolean) => void } | null>(null);
   // Fresh view of the store for the empty-dep fs://changed listener + reload.
   const docsRef = useRef(docs.state);
   docsRef.current = docs.state;
@@ -380,6 +384,16 @@ export function EditorWindow() {
     }
   }, [docs, selectDoc, flushActive, resetActiveFlags, showError]);
 
+  const confirmOverwrite = useCallback(
+    (path: string) => new Promise<boolean>((resolve) => setOverwritePrompt({ path, resolve })),
+    [],
+  );
+  // Declining leaves the buffer unsaved, so the conflict banner comes back for
+  // that doc — even one the banner was dismissed for — with Reload on it.
+  const keepConflict = useCallback((id: string) => {
+    setReloadState((prev) => ({ ...prev, [id]: 'conflict' }));
+  }, []);
+
   // Save one doc (flush first if it's the active/live doc). false = failure.
   const saveDoc = useCallback(async (id: string): Promise<boolean> => {
     const doc = findDoc(id);
@@ -387,21 +401,21 @@ export function EditorWindow() {
     if (id === active?.id && !flushActive()) return false;
     if (!doc.session.isDirty()) { if (id === active?.id) setActiveDirty(false); return true; }
     try {
-      await saveSession(doc.session);
+      if (!(await saveSession(doc.session, confirmOverwrite))) { keepConflict(id); return false; }
       if (id === active?.id) setActiveDirty(false);
       return true;
     } catch (e) {
       showError(`Could not save "${basename(doc.session.path)}" — your changes are safe in the editor. ${String(e)}`);
       return false;
     }
-  }, [active, flushActive, findDoc, showError]);
+  }, [active, flushActive, findDoc, showError, confirmOverwrite, keepConflict]);
 
   const saveAllDirty = useCallback(async (): Promise<boolean> => {
     if (!flushActive()) return false;
     for (const doc of docs.state.docs) {
       if (!doc.session.isDirty()) continue;
       try {
-        await saveSession(doc.session);
+        if (!(await saveSession(doc.session, confirmOverwrite))) { keepConflict(doc.id); return false; }
       } catch (e) {
         showError(`Could not save "${basename(doc.session.path)}" — your changes are safe in the editor. ${String(e)}`);
         return false;
@@ -409,7 +423,7 @@ export function EditorWindow() {
     }
     setActiveDirty(false);
     return true;
-  }, [docs, flushActive, showError]);
+  }, [docs, flushActive, showError, confirmOverwrite, keepConflict]);
 
   // ⌘S / File → Save: active doc only.
   const handleSave = useCallback(async (): Promise<boolean> => {
@@ -722,8 +736,16 @@ export function EditorWindow() {
           )}
         </div>
       </div>
-      {pendingIntent && (
+      {/* One dialog at a time: each traps Tab at the document, so two would fight. */}
+      {pendingIntent && !overwritePrompt && (
         <CloseGuard onSave={onGuardSave} onDiscard={onGuardDiscard} onCancel={onGuardCancel} />
+      )}
+      {overwritePrompt && (
+        <OverwriteGuard
+          path={overwritePrompt.path}
+          onOverwrite={() => { overwritePrompt.resolve(true); setOverwritePrompt(null); }}
+          onCancel={() => { overwritePrompt.resolve(false); setOverwritePrompt(null); }}
+        />
       )}
     </div>
   );
