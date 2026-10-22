@@ -82,3 +82,27 @@ describe('buildExport — plaintext', () => {
     expect(html).toContain('content here');
   });
 });
+
+describe('buildExport — the print copy runs nothing', () => {
+  const PAGE = '<!doctype html><html><head><style>h1{color:teal}</style></head><body>'
+    + '<h1 class="t" style="font-size:40px">Title</h1>'
+    + '<p><img src="https://example.com/a.png" onerror="steal()"> <a href="javascript:steal()">bad</a> <a href="https://example.com">good</a></p>'
+    + '</body></html>';
+  const input = { format: 'html' as const, doc: null, source: PAGE, title: 'Page', resolve: () => null };
+
+  it('drops handlers and script links from the copy handed to the print window, and keeps its look', async () => {
+    const { html } = await buildExport(input, { inert: true });
+    expect(html).not.toMatch(/onerror/i);
+    expect(html).not.toMatch(/javascript:/i);
+    expect(html).toContain('h1{color:teal}');
+    expect(html).toContain('<h1 class="t" style="font-size:40px">Title</h1>');
+    expect(html).toContain('href="https://example.com"');
+    expect(html).toContain('src="https://example.com/a.png"');
+  });
+
+  it('leaves the exported file exactly as the author wrote it', async () => {
+    const { html } = await buildExport(input);
+    expect(html).toContain('onerror="steal()"');
+    expect(html).toContain('href="javascript:steal()"');
+  });
+});

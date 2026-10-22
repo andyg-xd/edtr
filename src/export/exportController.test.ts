@@ -74,6 +74,12 @@ describe('exportAsPdf', () => {
     expect(result).toEqual({ failures: [] });
   });
 
+  it('asks for the copy with the page\'s code removed, since the print window renders it', async () => {
+    mockBuildExport.mockResolvedValue({ html: '<html>printable</html>', failures: [] });
+    await exportAsPdf(INPUT);
+    expect(mockBuildExport).toHaveBeenCalledWith(INPUT, { inert: true });
+  });
+
   it('never opens a save panel', async () => {
     // The distinction between the two kinds. macOS's print panel is where the
     // user chooses "Save as PDF" and picks a location, so a save panel here

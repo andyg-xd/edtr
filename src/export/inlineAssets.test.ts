@@ -90,3 +90,45 @@ describe('inlineAssets', () => {
     expect(failures).toEqual(['pics/bad.png']);
   });
 });
+
+describe('inlineAssets — a page cannot run code inside Edtr', () => {
+  it('never parses the page into the app\'s own document, where its handlers would run', async () => {
+    // An <img onerror> assigned through innerHTML on an element of a LIVE
+    // document fires its handler even while detached — that ran page code in
+    // the app, with its IPC, on every export and print. jsdom loads no images,
+    // so the handler cannot be observed firing here; which document the markup
+    // is parsed into is the property that decides it, and that is observable.
+    const setter = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML')!.set!;
+    const intoLiveDocument: string[] = [];
+    const spy = vi.spyOn(Element.prototype, 'innerHTML', 'set').mockImplementation(function (this: Element, value: string) {
+      if (this.ownerDocument === document) intoLiveDocument.push(value);
+      setter.call(this, value);
+    });
+    try {
+      await inlineAssets('<p><img src="x" onerror="window.__edtrRan = true"></p>', (src) => `asset://${src}`);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(intoLiveDocument).toEqual([]);
+  });
+
+  it('leaves the page\'s own markup as the author wrote it', async () => {
+    const { html } = await inlineAssets('<style>p{color:red}</style><p onclick="go()">Hi</p>', () => null);
+    expect(html).toBe('<style>p{color:red}</style><p onclick="go()">Hi</p>');
+  });
+});
+
+describe('inlineAssets — only pictures are embedded', () => {
+  it('never reads a file that is not an image, whatever the page calls it', async () => {
+    const fetchSpy = vi.mocked(fetch);
+    const { html, failures } = await inlineAssets(
+      '<img src="../.ssh/id_rsa"><img src="notes.txt"><img src="Photo.PNG">',
+      (src) => `asset://${src}`,
+    );
+    expect(fetchSpy.mock.calls.map((c) => String(c[0]))).toEqual(['asset://Photo.PNG']);
+    expect(html).toContain('src="../.ssh/id_rsa"');
+    expect(html).toContain('src="notes.txt"');
+    expect(html).not.toContain('Photo.PNG');
+    expect(failures).toEqual(['../.ssh/id_rsa', 'notes.txt']);
+  });
+});

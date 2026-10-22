@@ -4,6 +4,7 @@ import { htmlSourceToBody } from './htmlSourceToBody';
 import { inlineAssets } from './inlineAssets';
 import { documentShell } from './documentShell';
 import { plaintextToBody } from './plaintextToBody';
+import { sanitizeHtml } from '../views/htmlSanitize';
 
 export interface ExportInput {
   format: 'markdown' | 'html' | 'plaintext';
@@ -18,7 +19,8 @@ export interface ExportInput {
 
 /**
  * The single artifact both outputs are made of (6c-iii): "Export as HTML"
- * writes this string, and "Export as PDF" prints it. They cannot drift.
+ * writes this string, and "Export as PDF" prints it. They cannot drift, except
+ * that the printed copy is built `inert` (see below).
  *
  * Pure by construction — no file path in, no Tauri import anywhere in this
  * module, so there is no way for it to reach a write command even by
@@ -27,8 +29,9 @@ export interface ExportInput {
  */
 export async function buildExport(
   input: ExportInput,
+  { inert = false }: { inert?: boolean } = {},
 ): Promise<{ html: string; failures: string[] }> {
-  const { body, head } = input.format === 'html'
+  const { body: authored, head } = input.format === 'html'
     ? htmlSourceToBody(input.source)
     : input.format === 'plaintext'
       // No projection to read: a .txt has no Live view, and its text is not
@@ -36,6 +39,12 @@ export async function buildExport(
       ? { body: plaintextToBody(input.source), head: '' }
       : { body: input.doc ? pmToHtml(input.doc) : '', head: '' };
 
+  // `inert` is for the print window, which renders this inside Edtr. The
+  // exported FILE keeps the author's markup as written — it runs in whoever
+  // opens it, like any page — but a copy Edtr itself renders has no reason to
+  // carry a page's handlers or `javascript:` links, so it goes through the same
+  // sanitizer HTML Live uses. The one respect in which the two outputs differ.
+  const body = inert ? sanitizeHtml(authored) : authored;
   const inlined = await inlineAssets(body, input.resolve);
   return {
     html: documentShell({ title: input.title, body: inlined.html, extraHead: head }),

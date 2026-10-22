@@ -1,7 +1,7 @@
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 
 /** Extensions we treat as insertable images (picker filter + drop/paste guards). */
-export const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif'] as const;
+export { IMAGE_EXTS } from './imageTypes';
 
 /** Schemes that are already WebView-loadable and must not be path-resolved. */
 const REMOTE = /^(https?:|data:|blob:|asset:|tauri:|file:)/i;

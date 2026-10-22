@@ -1,4 +1,5 @@
 mod distribution;
+mod security_config;
 mod sidebar_geometry;
 mod assets;
 mod devtools;

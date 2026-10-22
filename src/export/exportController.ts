@@ -46,7 +46,7 @@ export async function exportAsHtml(
  * images it names were already missing when the document was built.
  */
 export async function exportAsPdf(input: ExportInput): Promise<{ failures: string[] }> {
-  const { html, failures } = await buildExport(input);
+  const { html, failures } = await buildExport(input, { inert: true });
   await invoke('print_html', { html });
   return { failures };
 }
