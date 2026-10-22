@@ -64,6 +64,8 @@ Edtr is signed and checked by Apple, so it opens normally with no security warni
 | ⌘S | Save |
 | ⇧⌘S | Save a copy under a new name |
 | ⌘W | Close the window (Edtr asks first if there are unsaved changes) |
+| ⌘Z | Undo |
+| ⇧⌘Z | Redo |
 | ⌘B | Bold |
 | ⌘I | Italic |
 | ⌘U | Underline (web pages only) |
