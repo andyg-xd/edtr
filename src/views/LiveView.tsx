@@ -16,6 +16,8 @@ import { insertImage, canInsertImage } from '../commands/markdownInlineCommands'
 import { findDecorationsPlugin } from '../find/pmSurface';
 import { focusDimPlugin } from '../writingmodes/pmFocus';
 import { linkClickPlugin, type LinkHandlers } from '../links/linkClickPlugin';
+import { pmHistoryEdgePlugin } from '../undo/pmHistoryEdge';
+import type { HistoryEdge } from '../undo/historyEdge';
 
 interface LiveViewProps {
   doc: PMNode;
@@ -37,6 +39,8 @@ interface LiveViewProps {
   onLinkHover?: (href: string | null) => void;
   /** Whether a ⌘-click would really open `href`, so the hand shows only then. */
   canOpenLink?: (href: string) => boolean;
+  /** Asked when the editor's own undo history is used up — see `HistoryEdge`. */
+  onHistoryEdge?: HistoryEdge;
   /** Absolute path of the document being edited; enables pasted-image insertion into <doc>.assets/. */
   docPath?: string | null;
   /** Surface a non-destructive error to the consumer (e.g. a pasted-image write failure). */
@@ -53,6 +57,7 @@ export function LiveView({
   onLinkOpen,
   onLinkHover,
   canOpenLink,
+  onHistoryEdge,
   docPath = null,
   onError,
 }: LiveViewProps) {
@@ -67,12 +72,16 @@ export function LiveView({
   onLinkShortcutRef.current = onLinkShortcut;
   const linkHandlers = useRef<LinkHandlers>({ onOpen: () => {}, onHover: () => {} });
   linkHandlers.current = { onOpen: (h) => onLinkOpen?.(h), onHover: (h) => onLinkHover?.(h), canOpen: canOpenLink };
+  const historyEdgeRef = useRef(onHistoryEdge);
+  historyEdgeRef.current = onHistoryEdge;
 
   useEffect(() => {
     if (!host.current) return;
     const linkShortcut: Command = () => { onLinkShortcutRef.current?.(); return true; };
     const plugins = editable
       ? [
+          // Ahead of history() and the ⌘Z keymap, so it sees ⌘Z first.
+          pmHistoryEdgePlugin(() => historyEdgeRef.current),
           history(),
           keymap({ Enter: splitCommand, 'Shift-Enter': softBreakCommand }),
           keymap({ Tab: goToNextCell(1), 'Shift-Tab': goToNextCell(-1) }),

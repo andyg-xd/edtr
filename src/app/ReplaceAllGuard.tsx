@@ -18,15 +18,16 @@ interface ReplaceAllGuardProps {
 /**
  * Shown before a Replace All large enough to be hard to walk back (D5).
  *
- * It exists because undo is not dependable in Live view (spec 7.1), so the
- * cheapest protection against a one-letter query matching hundreds of places is
- * to say how many and ask first.
+ * A one-letter query can match hundreds of places, so the count is shown and
+ * confirmed first. The undo line is backed by a test: a Replace All is one step
+ * in either editor, and Live view un-marks the blocks it undoes, so nothing is
+ * re-written on save (`DocumentView.undo.test.tsx`).
  */
 export function ReplaceAllGuard({ count, atomSpans = 0, onConfirm, onCancel }: ReplaceAllGuardProps) {
   return (
     <ModalDialog label="Replace all">
       <p>Replace all {count} matches?</p>
-      <p>Undo may not fully reverse this.</p>
+      <p>You can undo this with ⌘Z.</p>
       {atomSpans > 0 && (
         <p>{atomSpans} of these run across pictures or embedded items.</p>
       )}

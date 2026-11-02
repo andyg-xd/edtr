@@ -95,3 +95,25 @@ describe('DocumentSession.rebind', () => {
     expect(s.version).toBeGreaterThan(v);
   });
 });
+
+describe('DocumentSession.history', () => {
+  it('belongs to the session, so it outlives any one editor', () => {
+    const s = new DocumentSession(loaded);
+    s.history.endSession('hello\n', 'edited\n', 'Live', s.history.epoch);
+    expect(s.history.canUndo).toBe(true);
+  });
+
+  it('is cleared by a reload: the file no longer holds the text it would restore', () => {
+    const s = new DocumentSession(loaded);
+    s.history.endSession('hello\n', 'edited\n', 'Live', s.history.epoch);
+    s.reload({ ...loaded, text: 'from disk\n' });
+    expect(s.history.canUndo).toBe(false);
+  });
+
+  it('survives Save As', () => {
+    const s = new DocumentSession(loaded);
+    s.history.endSession('hello\n', 'edited\n', 'Live', s.history.epoch);
+    s.rebind('/x/b.md');
+    expect(s.history.canUndo).toBe(true);
+  });
+});

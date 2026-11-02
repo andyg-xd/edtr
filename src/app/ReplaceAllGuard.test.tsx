@@ -11,12 +11,13 @@ async function render(node: React.ReactElement) {
 }
 
 describe('ReplaceAllGuard', () => {
-  it('names the exact number of matches and warns about undo', async () => {
+  it('names the exact number of matches and says it can be undone', async () => {
     const c = await render(<ReplaceAllGuard count={47} onConfirm={vi.fn()} onCancel={vi.fn()} />);
     expect(c.textContent).toContain('Replace all 47 matches?');
     // Undo is known-unreliable in Live view, which is the whole reason this
     // dialog exists (spec 7.1).
-    expect(c.textContent).toContain('Undo may not fully reverse this.');
+    expect(c.textContent).toContain('You can undo this with ⌘Z.');
+    expect(c.textContent).not.toContain('may not fully reverse');
   });
 
   it('confirms and cancels through its buttons', async () => {

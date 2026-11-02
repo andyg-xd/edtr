@@ -153,6 +153,8 @@ pub fn menu_event_name(id: &str) -> Option<&'static str> {
         // 6c-ii they were intercepted in lib.rs and never reached here at all.
         "toggle-typewriter" => "menu://toggle-typewriter",
         "toggle-focus" => "menu://toggle-focus",
+        "undo" => "menu://undo",
+        "redo" => "menu://redo",
         _ => return None,
     })
 }
@@ -165,8 +167,8 @@ pub fn menu_event_name(id: &str) -> Option<&'static str> {
 /// process. ⌘Q in particular is a special Apple event Tauri does not otherwise
 /// deliver to window/exit events, so owning the menu item is the only robust
 /// interception (see the design spec). The Edit submenu keeps the PREDEFINED
-/// editing items (copy/paste/cut/undo/redo/select-all) and adds our custom Find
-/// and Replace items that need `on_menu_event` delivery, for the same reason:
+/// clipboard items (cut/copy/paste/select-all), owns Undo / Redo (see the
+/// comment at the Edit submenu), and adds our custom Find and Replace items that need `on_menu_event` delivery, for the same reason:
 /// macOS offers a key equivalent to the menu before the webview, so ⌘F must be owned
 /// by a native menu item rather than a webview keymap binding.
 /// Where a menu command should go, given who holds focus.
@@ -248,6 +250,8 @@ pub fn build_menu<R: Runtime>(
     let find_next = MenuItem::with_id(app, "find-next", "Find Next", true, Some("Cmd+G"))?;
     let find_prev = MenuItem::with_id(app, "find-prev", "Find Previous", true, Some("Cmd+Shift+G"))?;
     let replace = MenuItem::with_id(app, "replace", "Replace…", true, Some("Alt+Cmd+F"))?;
+    let undo = MenuItem::with_id(app, "undo", "Undo", true, Some("Cmd+Z"))?;
+    let redo = MenuItem::with_id(app, "redo", "Redo", true, Some("Cmd+Shift+Z"))?;
     let recent_menu = build_recent_submenu(app, recents)?;
 
     let app_menu = SubmenuBuilder::new(app, "Edtr")
@@ -274,14 +278,17 @@ pub fn build_menu<R: Runtime>(
         .item(&close)
         .build()?;
 
-    // The Edit submenu keeps the PREDEFINED items so the editors keep
-    // copy/paste/cut/undo/redo/select-all, then gains our custom Find and
-    // Replace items. The native menu must own ⌘F: macOS offers a key equivalent
+    // Undo and Redo are CUSTOM items: the predefined ones run WebKit's own undo
+    // stack, which fills only from native typing and which both editors cancel
+    // in favour of their own, so from the menu they often did nothing (Redo
+    // never could). The frontend routes them (`runMenuHistory`). Cut, copy,
+    // paste and select-all stay PREDEFINED, then our custom Find and Replace
+    // items. The native menu must own ⌘F: macOS offers a key equivalent
     // to the menu before the webview, so a webview binding would never fire
     // (the same reason ⌘Q needed a custom item in Phase 5).
     let edit_menu = SubmenuBuilder::new(app, "Edit")
-        .undo()
-        .redo()
+        .item(&undo)
+        .item(&redo)
         .separator()
         .cut()
         .copy()
@@ -402,7 +409,7 @@ mod view_menu_tests {
         for id in [
             "open", "open-folder", "save", "save-as", "close", "print",
             "find", "find-next", "find-prev", "replace",
-            "toggle-typewriter", "toggle-focus",
+            "toggle-typewriter", "toggle-focus", "undo", "redo",
         ] {
             assert_eq!(
                 menu_event_name(id),
@@ -518,6 +525,8 @@ mod menu_event_name_tests {
             ("find-next", "menu://find-next"),
             ("find-prev", "menu://find-prev"),
             ("replace", "menu://replace"),
+            ("undo", "menu://undo"),
+            ("redo", "menu://redo"),
         ] {
             assert_eq!(menu_event_name(id), Some(event), "id {id}");
         }

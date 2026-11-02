@@ -1,4 +1,5 @@
 import { formatForPath, type EditorFormat, type FileMeta, type LoadedFile } from './fileTypes';
+import { DocHistory } from './docHistory';
 
 /**
  * The state of one open document. Framework-agnostic and pure — no React, no
@@ -11,6 +12,10 @@ export class DocumentSession {
   private _savedText: string;
   private currentText: string;
   private _version = 0;
+  /** Undo across view switches. Held here rather than in a view, because the
+   * views are rebuilt on every switch and the document view on every
+   * document switch. */
+  readonly history = new DocHistory();
 
   constructor(loaded: LoadedFile) {
     this._path = loaded.path;
@@ -66,6 +71,9 @@ export class DocumentSession {
     this._meta = loaded.meta;
     this._savedText = loaded.text;
     this.currentText = loaded.text;
+    // Undoing back to text the file no longer holds would quietly bring back
+    // what the reload discarded.
+    this.history.clear();
     this._version++;
   }
 

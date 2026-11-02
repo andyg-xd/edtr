@@ -19,6 +19,8 @@ import { writeImageIntoAssets, resolveImageDisplaySrc } from '../files/imageAsse
 import { findDecorationsPlugin } from '../find/pmSurface';
 import { focusDimPlugin } from '../writingmodes/pmFocus';
 import { linkClickPlugin, LINKS_ARMED_CLASS, type LinkHandlers } from '../links/linkClickPlugin';
+import { pmHistoryEdgePlugin } from '../undo/pmHistoryEdge';
+import type { HistoryEdge } from '../undo/historyEdge';
 
 /**
  * Edit-only fallback so an UNSTYLED table (e.g. one the user just inserted) is
@@ -262,6 +264,8 @@ interface HtmlLiveViewProps {
   onLinkHover?: (href: string | null) => void;
   /** Whether a ⌘-click would really open `href`, so the hand shows only then. */
   canOpenLink?: (href: string) => boolean;
+  /** Asked when the editor's own undo history is used up — see `HistoryEdge`. */
+  onHistoryEdge?: HistoryEdge;
   /** Surface a non-destructive error to the consumer (e.g. a pasted-image write failure). */
   onError?: (message: string) => void;
 }
@@ -277,7 +281,7 @@ interface HtmlLiveViewProps {
  */
 export function HtmlLiveView({
   doc, styleText, bodyAttrs = {}, rootAttrs = {},
-  editable = false, docPath = null, onEdit, onViewReady, onStateChange, onLinkShortcut, onLinkOpen, onLinkHover, canOpenLink, onError,
+  editable = false, docPath = null, onEdit, onViewReady, onStateChange, onLinkShortcut, onLinkOpen, onLinkHover, canOpenLink, onHistoryEdge, onError,
 }: HtmlLiveViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const onEditRef = useRef(onEdit); onEditRef.current = onEdit;
@@ -286,6 +290,7 @@ export function HtmlLiveView({
   const onLinkShortcutRef = useRef(onLinkShortcut); onLinkShortcutRef.current = onLinkShortcut;
   const linkHandlers = useRef<LinkHandlers>({ onOpen: () => {}, onHover: () => {} });
   linkHandlers.current = { onOpen: (h) => onLinkOpen?.(h), onHover: (h) => onLinkHover?.(h), canOpen: canOpenLink };
+  const historyEdgeRef = useRef(onHistoryEdge); historyEdgeRef.current = onHistoryEdge;
   const docPathRef = useRef(docPath); docPathRef.current = docPath;
   const onErrorRef = useRef(onError); onErrorRef.current = onError;
 
@@ -355,6 +360,8 @@ export function HtmlLiveView({
     const linkShortcut: Command = () => { onLinkShortcutRef.current?.(); return true; };
     const plugins = editable
       ? [
+          // Ahead of history() and the ⌘Z keymap, so it sees ⌘Z first.
+          pmHistoryEdgePlugin(() => historyEdgeRef.current),
           history(),
           keymap({
             Enter: splitCommand,

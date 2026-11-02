@@ -4,6 +4,8 @@ import {
 import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
 import type { EditorView as CMEditorView } from '@codemirror/view';
+import { undo as cmUndo, redo as cmRedo } from '@codemirror/commands';
+import { undo as pmUndo, redo as pmRedo } from 'prosemirror-history';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { CodeView } from '../views/CodeView';
 import { LiveView } from '../views/LiveView';
@@ -49,6 +51,7 @@ import { openLink } from '../links/openLink';
 import { classifyLink } from '../links/linkTarget';
 import { isOpenable } from '../links/linkHint';
 import { useLinkHint } from '../links/useLinkHint';
+import type { HistoryEdge } from '../undo/historyEdge';
 import { ReplaceAllGuard } from './ReplaceAllGuard';
 import { codeTypewriter } from '../writingmodes/codeTypewriter';
 import { pmTypewriter } from '../writingmodes/pmTypewriter';
@@ -89,6 +92,8 @@ export interface DocumentViewHandle {
   findPrev: () => void;
   /** Jump to an outline entry in whichever view is showing (6c-iv). */
   revealOutlineEntry: (entry: OutlineEntry) => void;
+  /** Edit → Undo / Redo: the showing editor's own step, else the whole-view step. */
+  historyStep: (direction: 'undo' | 'redo') => void;
 }
 
 /**
@@ -139,6 +144,9 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   const session = doc.session;
   const viewMode = doc.viewMode;
   const [, tick] = useReducer((x: number) => x + 1, 0);
+  // Bumped by a whole-view undo or redo: part of each editor's key, so the
+  // editor is rebuilt from the restored text with a fresh history of its own.
+  const [restoreGen, bumpRestore] = useReducer((x: number) => x + 1, 0);
 
   const liveBaselineRef = useRef<string>('');
   const liveBaselineDocRef = useRef<PMNode | null>(null);
@@ -231,6 +239,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
 
   const handleChange = useCallback((text: string) => {
     session.setCurrentText(text);
+    session.history.noteEdit();
     bumpFindEpoch(); // a real document change — find must re-scan
     tick();
   }, [session]);
@@ -270,7 +279,49 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
       setLiveHasEdits(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showLive]);
+  }, [showLive, restoreGen]);
+
+  // One view session: the life of the editor now showing. When it ends (a
+  // Code<->Live switch, or this document being switched away from, both of
+  // which flush first), record it for undo across the switch. A whole-view step
+  // clears the ref first, because the step is not an edit to record.
+  const viewStartRef = useRef<{ text: string; epoch: number } | null>(null);
+  useEffect(() => {
+    const label = showLive ? 'Live' : 'Code';
+    viewStartRef.current = { text: session.text, epoch: session.history.epoch };
+    return () => {
+      const start = viewStartRef.current;
+      if (start) session.history.endSession(start.text, session.text, label, start.epoch);
+    };
+  }, [showLive, restoreGen, session]);
+
+  // A newly built editor takes the keyboard when nothing else has it. Removing
+  // the focused editor (a Code<->Live switch, a whole-view undo) drops focus to
+  // the page, and from there ⌘Z reaches the menu instead of any editor. Only
+  // from the page, so an open find field keeps its focus.
+  useEffect(() => {
+    const view = showLive ? liveView : codeView;
+    if (!view || ('isDestroyed' in view && view.isDestroyed)) return;
+    const active = document.activeElement;
+    if (active === null || active === document.body) view.focus();
+  }, [showLive, liveView, codeView]);
+
+  const handleHistoryEdge = useCallback<HistoryEdge>((direction) => {
+    const start = viewStartRef.current;
+    if (!start) return false;
+    // `start.text`, not the editor's current text: the editor has nothing left
+    // to undo, so its text IS the start, and these are the stored bytes.
+    const step = direction === 'undo' ? session.history.undo(start.text) : session.history.redo(start.text);
+    if (!step) return false;
+    viewStartRef.current = null;
+    session.setCurrentText(step.text);
+    bumpFindEpoch();
+    bumpRestore();
+    onInfo(direction === 'undo'
+      ? `Undid everything you changed in ${step.label} view.`
+      : `Redid your changes from ${step.label} view.`);
+    return true;
+  }, [session, onInfo]);
 
   useEffect(() => { setCodeCursor(null); }, [showLive]);
 
@@ -322,7 +373,10 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     liveDirtyRef.current = dirtyIds;
     setLiveHasEdits(dirtyIds.size > 0);
     if (docChanged) bumpFindEpoch();
-  }, []);
+    // Only an edit that marked something changed counts: an editor being
+    // rebuilt after a whole-view undo must not clear the redo it just made.
+    if (docChanged && dirtyIds.size > 0) session.history.noteEdit();
+  }, [session]);
 
   const flushToSource = useCallback((): boolean => {
     if (!liveDocRef.current || liveDirtyRef.current.size === 0) return true;
@@ -862,6 +916,21 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
       if (showLive) { if (liveView) revealSourceInPm(liveView, entry); }
       else if (codeView) revealSourceInCode(codeView, entry);
     },
+    historyStep(direction) {
+      // The same order as ⌘Z inside an editor: its own history first, and the
+      // whole-view step only once that is used up. Focus goes back to the
+      // editor, since the menu leaves it wherever it was.
+      if (showLive) {
+        if (!liveView || liveView.isDestroyed) return;
+        const own = direction === 'undo' ? pmUndo : pmRedo;
+        if (!own(liveView.state, liveView.dispatch)) handleHistoryEdge(direction);
+        liveView.focus();
+      } else if (codeView) {
+        const own = direction === 'undo' ? cmUndo : cmRedo;
+        if (!own(codeView)) handleHistoryEdge(direction);
+        codeView.focus();
+      }
+    },
     flushToSource, openFind, openReplace, findNext: goNext, findPrev: goPrev,
     // `showLive`/`liveView`/`codeView` are dependencies because
     // `revealOutlineEntry` CLOSES OVER them (B2, 2026-08-26). Leaving them out
@@ -873,7 +942,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     // The four surface memos above (`surface`, `typewriter`, `focus`,
     // `countSurface`) all declare exactly these three. This handle is the only
     // consumer that did not.
-  }), [flushToSource, openFind, openReplace, goNext, goPrev, showLive, liveView, codeView]);
+  }), [flushToSource, openFind, openReplace, goNext, goPrev, showLive, liveView, codeView, handleHistoryEdge]);
 
   const findBar = findOpen && surface ? (
     <FindBar
@@ -935,10 +1004,10 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
         {findBar}
         {replaceGuard}
         <HtmlLiveView
-          key={`htmllive-${doc.id}`}
+          key={`htmllive-${doc.id}-${restoreGen}`}
           doc={liveHtml.doc} styleText={liveHtml.styleText} bodyAttrs={liveHtml.bodyAttrs} rootAttrs={liveHtml.rootAttrs}
           editable docPath={session.path ?? null}
-          onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={handleLiveStateChange} onLinkShortcut={bumpLinkRequest} onLinkOpen={handleLinkOpen} onLinkHover={setHoveredLink} canOpenLink={canOpenLink} onError={onError}
+          onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={handleLiveStateChange} onLinkShortcut={bumpLinkRequest} onLinkOpen={handleLinkOpen} onHistoryEdge={handleHistoryEdge} onLinkHover={setHoveredLink} canOpenLink={canOpenLink} onError={onError}
         />
         <StatusBar format={session.format} line={pos?.line} column={pos?.column} words={counts?.words} characters={counts?.characters} isSelection={counts?.isSelection} linkHint={linkHint} />
       </>
@@ -962,9 +1031,9 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
         {findBar}
         {replaceGuard}
         <LiveView
-          key={`live-${doc.id}`}
+          key={`live-${doc.id}-${restoreGen}`}
           doc={live.doc} editable
-          onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={handleLiveStateChange} onLinkShortcut={bumpLinkRequest} onLinkOpen={handleLinkOpen} onLinkHover={setHoveredLink} canOpenLink={canOpenLink} docPath={session.path ?? null} onError={onError}
+          onEdit={handleLiveEdit} onViewReady={setLiveView} onStateChange={handleLiveStateChange} onLinkShortcut={bumpLinkRequest} onLinkOpen={handleLinkOpen} onHistoryEdge={handleHistoryEdge} onLinkHover={setHoveredLink} canOpenLink={canOpenLink} docPath={session.path ?? null} onError={onError}
         />
         <StatusBar format={session.format} line={pos?.line} column={pos?.column} words={counts?.words} characters={counts?.characters} isSelection={counts?.isSelection} linkHint={linkHint} />
       </>
@@ -976,10 +1045,10 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
       {findBar}
       {replaceGuard}
       <CodeView
-        key={`code-${doc.id}`} initialText={session.text} format={session.format} effectiveTheme={effectiveTheme}
+        key={`code-${doc.id}-${restoreGen}`} initialText={session.text} format={session.format} effectiveTheme={effectiveTheme}
         onChange={handleChange} onViewReady={setCodeView}
         onCursorChange={(line, column) => setCodeCursor({ line, column })}
-        onLinkOpen={handleLinkOpen} onLinkHover={setHoveredLink} canOpenLink={canOpenLink}
+        onLinkOpen={handleLinkOpen} onHistoryEdge={handleHistoryEdge} onLinkHover={setHoveredLink} canOpenLink={canOpenLink}
       />
       <StatusBar format={session.format} line={codeCursor?.line} column={codeCursor?.column} words={counts?.words} characters={counts?.characters} isSelection={counts?.isSelection} linkHint={linkHint} />
     </>

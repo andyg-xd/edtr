@@ -22,6 +22,7 @@ import { toLive } from '../views/ViewSync';
 import { resolveExportAsset } from '../export/exportResolve';
 import { exportTitle } from '../export/exportTitle';
 import { ReloadBanner } from './ReloadBanner';
+import { runMenuHistory } from '../undo/menuHistory';
 import { pickFiles, pickFolder, pickSavePath, openInNewWindow, takePendingOpen, takeLaunchOpen, saveSession, readFolder, readSession, routeOpenPayload, registerOpenPath, releaseOpenPath } from '../files/fileController';
 import { openPayload, docToShow } from '../files/openRouting';
 import { basename } from '../files/fileTypes';
@@ -559,6 +560,8 @@ export function EditorWindow() {
     // window's mode, and the checkmark follows from the resulting state.
     onToggleTypewriter: () => toggleWritingMode('typewriter'),
     onToggleFocus: () => toggleWritingMode('focus'),
+    onUndo: () => runMenuHistory('undo', viewRef.current),
+    onRedo: () => runMenuHistory('redo', viewRef.current),
   });
 
   const effectiveViewMode: ViewMode = active && active.viewMode === 'live' && activeLiveAvailable ? 'live' : 'code';

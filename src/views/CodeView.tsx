@@ -6,6 +6,8 @@ import type { EditorFormat } from '../files/fileTypes';
 import type { EffectiveTheme } from '../settings/theme';
 import { codeLinkExtension } from '../links/codeLinks';
 import type { LinkHandlers } from '../links/linkPointer';
+import { codeHistoryEdge } from '../undo/codeHistoryEdge';
+import type { HistoryEdge } from '../undo/historyEdge';
 
 interface CodeViewProps {
   initialText: string;
@@ -25,6 +27,8 @@ interface CodeViewProps {
   onLinkHover?: (href: string | null) => void;
   /** Whether a ⌘-click would really open `href`, so the hand shows only then. */
   canOpenLink?: (href: string) => boolean;
+  /** Asked when the editor's own undo history is used up — see `HistoryEdge`. */
+  onHistoryEdge?: HistoryEdge;
 }
 
 /**
@@ -35,7 +39,7 @@ interface CodeViewProps {
  * remount, so cursor/selection/history survive a theme toggle.
  */
 export function CodeView({
-  initialText, format, effectiveTheme, onChange, onCursorChange, onViewReady, onLinkOpen, onLinkHover, canOpenLink,
+  initialText, format, effectiveTheme, onChange, onCursorChange, onViewReady, onLinkOpen, onLinkHover, canOpenLink, onHistoryEdge,
 }: CodeViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -47,6 +51,8 @@ export function CodeView({
   onViewReadyRef.current = onViewReady;
   const linkHandlers = useRef<LinkHandlers>({ onOpen: () => {}, onHover: () => {} });
   linkHandlers.current = { onOpen: (h) => onLinkOpen?.(h), onHover: (h) => onLinkHover?.(h), canOpen: canOpenLink };
+  const historyEdgeRef = useRef(onHistoryEdge);
+  historyEdgeRef.current = onHistoryEdge;
   // Read the latest theme inside the mount-once effect without re-running it.
   const themeRef = useRef(effectiveTheme);
   themeRef.current = effectiveTheme;
@@ -67,6 +73,8 @@ export function CodeView({
           ...buildCodeViewExtensions(format, themeRef.current),
           // ⌘-click follows a link; everywhere else it still adds a cursor.
           codeLinkExtension(() => linkHandlers.current),
+          // ⌘Z past the start of this view steps back across a view switch.
+          codeHistoryEdge(() => historyEdgeRef.current),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) onChangeRef.current(u.state.doc.toString());
             if (u.docChanged || u.selectionSet) reportCursor(u.state);

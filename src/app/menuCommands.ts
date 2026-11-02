@@ -11,6 +11,7 @@ export const MENU_COMMANDS = [
   'quit-poll', 'quit-abort',
   'find', 'find-next', 'find-prev', 'replace',
   'toggle-typewriter', 'toggle-focus',
+  'undo', 'redo',
 ] as const;
 
 /** The native-menu commands the Rust side emits as `menu://<command>` events. */
@@ -43,6 +44,10 @@ export interface MenuHandlers {
   onToggleTypewriter: () => void;
   /** View → Focus Mode — flip THIS window's focus mode (6c-ii-b, D-A). */
   onToggleFocus: () => void;
+  /** Edit → Undo (⌘Z) — see `runMenuHistory`. */
+  onUndo: () => void;
+  /** Edit → Redo (⇧⌘Z). */
+  onRedo: () => void;
 }
 
 /**
@@ -66,5 +71,7 @@ export function dispatchMenuCommand(command: MenuCommand, handlers: MenuHandlers
     case 'replace': handlers.onReplace(); break;
     case 'toggle-typewriter': handlers.onToggleTypewriter(); break;
     case 'toggle-focus': handlers.onToggleFocus(); break;
+    case 'undo': handlers.onUndo(); break;
+    case 'redo': handlers.onRedo(); break;
   }
 }
