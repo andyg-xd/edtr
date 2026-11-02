@@ -103,6 +103,11 @@
   --space-6: 16px;
   --space-7: 24px;
 
+  /* Every dialog's widest. With --space-7 padding either side it leaves about
+     60 characters of --text-base per line; uncapped, a dialog grew to the
+     length of its longest sentence, up to the full window. */
+  --dialog-width: 420px;
+
   /* Radius scale — replaces the five values previously in use (3/4/5/6/8px). */
   --radius-sm: 4px;
   --radius-md: 6px;

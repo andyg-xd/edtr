@@ -31,6 +31,7 @@
   border-radius: var(--radius-lg);
   padding: var(--space-7);
   min-width: 320px;
+  max-width: min(var(--dialog-width), calc(100vw - 2 * var(--space-6)));
   box-shadow: 0 8px 32px var(--shadow);
 }
 
