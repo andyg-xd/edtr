@@ -71,14 +71,32 @@ fn store_asset(doc_path: &str, desired_name: &str, bytes: &[u8]) -> Result<Strin
     }
 }
 
-/// Copy an existing file into <doc>.assets/. For the file picker + drag-drop.
+/// The picture types Edtr inserts. Mirrors `IMAGE_EXTS` in
+/// `src/files/imageTypes.ts`; `imageTypes.contract.test.ts` holds the two equal.
+pub const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"];
+
+fn is_image_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| IMAGE_EXTS.contains(&e.to_lowercase().as_str()))
+}
+
+/// Copy an existing picture into <doc>.assets/. For the file picker + drag-drop.
+///
+/// Pictures only, checked here as well as in the frontend's filters: this
+/// command can read any file the app can, and copying a key or a script next
+/// to a document would put it wherever that document is shared.
 #[tauri::command]
 pub fn copy_image_into_assets(doc_path: String, source_path: String) -> Result<String, String> {
-    let bytes = fs::read(&source_path).map_err(|e| e.to_string())?;
-    let name = Path::new(&source_path)
+    let source = Path::new(&source_path);
+    let name = source
         .file_name()
         .and_then(|s| s.to_str())
         .ok_or("source path has no file name")?;
+    if !is_image_file(source) {
+        return Err(format!("{name} is not a picture, so it was not added."));
+    }
+    let bytes = fs::read(source).map_err(|e| e.to_string())?;
     store_asset(&doc_path, name, &bytes)
 }
 
@@ -113,6 +131,31 @@ mod tests {
         .unwrap();
         assert_eq!(rel, "notes.assets/pic.png");
         assert_eq!(fs::read(dir.path().join("notes.assets/pic.png")).unwrap(), b"\x89PNGDATA");
+    }
+
+    fn copy_from(dir: &Path, name: &str) -> Result<String, String> {
+        let doc = dir.join("notes.md");
+        fs::write(&doc, b"# hi\n").unwrap();
+        let src = dir.join(name);
+        fs::write(&src, b"bytes").unwrap();
+        copy_image_into_assets(doc.to_string_lossy().into_owned(), src.to_string_lossy().into_owned())
+    }
+
+    #[test]
+    fn copy_accepts_every_picture_type_in_any_letter_case() {
+        for name in ["a.png", "b.JPG", "c.jpeg", "d.gif", "e.webp", "f.svg", "g.bmp", "h.avif"] {
+            let dir = tempfile::tempdir().unwrap();
+            assert!(copy_from(dir.path(), name).is_ok(), "{name} should be accepted");
+        }
+    }
+
+    #[test]
+    fn copy_refuses_anything_that_is_not_a_picture_and_writes_nothing() {
+        for name in ["notes.txt", "id_rsa", "run.command", "setup.sh", "page.html", "photo.png.app", ".png"] {
+            let dir = tempfile::tempdir().unwrap();
+            assert!(copy_from(dir.path(), name).is_err(), "{name} should be refused");
+            assert!(!dir.path().join("notes.assets").exists(), "{name}: nothing may be written");
+        }
     }
 
     #[test]
