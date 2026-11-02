@@ -22,7 +22,8 @@ import { toLive } from '../views/ViewSync';
 import { resolveExportAsset } from '../export/exportResolve';
 import { exportTitle } from '../export/exportTitle';
 import { ReloadBanner } from './ReloadBanner';
-import { pickFiles, pickFolder, pickSavePath, openInNewWindow, takePendingOpen, takeLaunchOpen, saveSession, readFolder, readSession } from '../files/fileController';
+import { pickFiles, pickFolder, pickSavePath, openInNewWindow, takePendingOpen, takeLaunchOpen, saveSession, readFolder, readSession, routeOpenPayload, registerOpenPath, releaseOpenPath } from '../files/fileController';
+import { openPayload, docToShow } from '../files/openRouting';
 import { basename } from '../files/fileTypes';
 import { recordRecent } from '../files/recents';
 import { useTheme } from '../settings/useTheme';
@@ -241,10 +242,14 @@ export function EditorWindow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keep the Rust file-watcher subscribed to exactly this window's open docs.
-  // One place covers every open/close/append/folder-open path.
+  // Keep the Rust file-watcher subscribed to exactly this window's open docs,
+  // and the open-file registry told which ones this window has (so no other
+  // window opens them again). One place covers every open/close/append/
+  // folder-open/Save As path.
   useEffect(() => {
     const current = new Set(docs.state.docs.map((d) => d.session.path));
+    for (const p of current) if (!watchedRef.current.has(p)) registerOpenPath(p).catch(() => {});
+    for (const p of watchedRef.current) if (!current.has(p)) releaseOpenPath(p).catch(() => {});
     for (const p of current) if (!watchedRef.current.has(p)) watchPath(p).catch(() => {
       // Item 3(b): this file won't get change/conflict banners. If the watcher
       // is globally down, (a)'s banner already says so — suppress the duplicate.
@@ -319,8 +324,7 @@ export function EditorWindow() {
   // new window. The single fill-or-spawn choke point.
   const handleOpenPayload = useCallback(async (payload: OpenPayload) => {
     try {
-      if (thisWindowEmpty) await applyPayload(payload);
-      else await openInNewWindow(payload);
+      await openPayload(payload, thisWindowEmpty, { route: routeOpenPayload, apply: applyPayload, spawn: openInNewWindow });
     } catch (e) {
       showError(`Could not open: ${String(e)}`);
     }
@@ -369,12 +373,26 @@ export function EditorWindow() {
     docs.setActive(id);
   }, [active, docs, flushActive, findDoc, showError]);
 
+  // Rust asks this window to show a file it already has, because some gesture
+  // tried to open it again. Select only — never route — so it cannot loop.
+  const selectDocRef = useRef(selectDoc);
+  selectDocRef.current = selectDoc;
+  useEffect(() => {
+    const un = getCurrentWebviewWindow().listen<{ path: string }>('open://show', (e) => {
+      const id = docToShow(docsRef.current.docs, e.payload.path);
+      if (id) selectDocRef.current(id);
+    });
+    return () => { un.then((f) => f()); };
+  }, []);
+
   // Folder-sidebar click: activate the doc if already open, else load + open it.
   const openPath = useCallback(async (path: string) => {
     const existing = docs.state.docs.find((d) => d.session.path === path);
     if (existing) { selectDoc(existing.id); return; }
     if (!flushActive()) return;
     try {
+      // Another window may already have it: that window is shown instead.
+      if (!(await routeOpenPayload({ kind: 'files', paths: [path] }))) return;
       const session = await readSession(path);
       resetActiveFlags();
       docs.open(session);

@@ -22,6 +22,22 @@ export async function openInNewWindow(payload: OpenPayload): Promise<void> {
   await invoke('open_in_new_window', { payload });
 }
 
+/** Show every file of `payload` that another window already has, in that
+ * window; return what is left to open here, or null if nothing is. */
+export async function routeOpenPayload(payload: OpenPayload): Promise<OpenPayload | null> {
+  return (await invoke<OpenPayload | null>('route_open_payload', { payload })) ?? null;
+}
+
+/** Tell Rust this window has `path` open, so no other window opens it again. */
+export async function registerOpenPath(path: string): Promise<void> {
+  await invoke('register_open_path', { path });
+}
+
+/** Release this window's claim on `path`. */
+export async function releaseOpenPath(path: string): Promise<void> {
+  await invoke('release_open_path', { path });
+}
+
 /** Claim this window's pending open payload (set when it was spawned), if any. */
 export async function takePendingOpen(): Promise<OpenPayload | null> {
   return (await invoke<OpenPayload | null>('take_pending_open')) ?? null;

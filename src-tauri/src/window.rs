@@ -120,6 +120,10 @@ pub fn open_in_new_window(
     pending: State<PendingOpen>,
     counter: State<WindowCounter>,
 ) -> Result<(), String> {
+    // A file some window already has is shown there, never opened twice.
+    let Some(payload) = crate::open_registry::route_open(&app, payload) else {
+        return Ok(());
+    };
     let label = {
         let mut c = counter.0.lock().map_err(|_| "counter lock poisoned")?;
         *c += 1;

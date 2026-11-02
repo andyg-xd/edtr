@@ -1,5 +1,6 @@
 mod distribution;
 mod security_config;
+mod open_registry;
 mod sidebar_geometry;
 mod assets;
 mod devtools;
@@ -24,6 +25,7 @@ pub fn run() {
         .manage(window::QuitPollState::default())
         .manage(window::ReadyState::default())
         .manage(window::LaunchOpen::default())
+        .manage(open_registry::OpenRegistry::default())
         .manage(recents::RecentsState::default())
         .manage(settings::SettingsState::default())
         .manage(menu::MenuModeState::default())
@@ -187,6 +189,9 @@ pub fn run() {
             window::quit_ack,
             window::take_launch_open,
             window::mark_frontend_ready,
+            open_registry::route_open_payload,
+            open_registry::register_open_path,
+            open_registry::release_open_path,
             recents::record_recent,
             watcher::watch_path,
             watcher::unwatch_path,
@@ -229,6 +234,9 @@ pub fn run() {
                 ..
             } = &event
             {
+                if let Ok(mut e) = app_handle.state::<open_registry::OpenRegistry>().0.lock() {
+                    open_registry::release_window(&mut e, label);
+                }
                 // If a quit poll is active, a window that just closed can no
                 // longer vote — drop it and re-check (may complete the poll).
                 let dropped = app_handle
