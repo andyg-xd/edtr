@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { buildCodeViewExtensions, themeCompartment, themeExtensionFor } from './codeViewExtensions';
+import { buildCodeViewExtensions, themeCompartment, themeExtensionFor, wrapCompartment, wrapExtensionFor } from './codeViewExtensions';
 import type { EditorFormat } from '../files/fileTypes';
 import type { EffectiveTheme } from '../settings/theme';
 import { codeLinkExtension } from '../links/codeLinks';
@@ -13,6 +13,8 @@ interface CodeViewProps {
   initialText: string;
   format: EditorFormat;
   effectiveTheme: EffectiveTheme;
+  /** Soft-wrap long lines. Display only; defaults to the app default (on). */
+  wrapLines?: boolean;
   onChange: (text: string) => void;
   /**
    * Fires with the caret's 1-based line/column on mount, and again after every
@@ -39,7 +41,7 @@ interface CodeViewProps {
  * remount, so cursor/selection/history survive a theme toggle.
  */
 export function CodeView({
-  initialText, format, effectiveTheme, onChange, onCursorChange, onViewReady, onLinkOpen, onLinkHover, canOpenLink, onHistoryEdge,
+  initialText, format, effectiveTheme, wrapLines = true, onChange, onCursorChange, onViewReady, onLinkOpen, onLinkHover, canOpenLink, onHistoryEdge,
 }: CodeViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -56,6 +58,8 @@ export function CodeView({
   // Read the latest theme inside the mount-once effect without re-running it.
   const themeRef = useRef(effectiveTheme);
   themeRef.current = effectiveTheme;
+  const wrapRef = useRef(wrapLines);
+  wrapRef.current = wrapLines;
 
   useEffect(() => {
     if (!host.current) return;
@@ -70,7 +74,7 @@ export function CodeView({
       state: EditorState.create({
         doc: initialText,
         extensions: [
-          ...buildCodeViewExtensions(format, themeRef.current),
+          ...buildCodeViewExtensions(format, themeRef.current, wrapRef.current),
           // ⌘-click follows a link; everywhere else it still adds a cursor.
           codeLinkExtension(() => linkHandlers.current),
           // ⌘Z past the start of this view steps back across a view switch.
@@ -100,6 +104,13 @@ export function CodeView({
       effects: themeCompartment.reconfigure(themeExtensionFor(effectiveTheme)),
     });
   }, [effectiveTheme]);
+
+  // Swap wrapping in place when it changes (no remount).
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: wrapCompartment.reconfigure(wrapExtensionFor(wrapLines)),
+    });
+  }, [wrapLines]);
 
   return <div ref={host} className="code-view" />;
 }

@@ -5,6 +5,7 @@ import {
   highlightActiveLineGutter,
   drawSelection,
   keymap,
+  EditorView,
 } from '@codemirror/view';
 import { history, historyKeymap, defaultKeymap } from '@codemirror/commands';
 import { bracketMatching, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
@@ -42,6 +43,17 @@ export function themeExtensionFor(effective: EffectiveTheme): Extension {
 }
 
 /**
+ * Soft line wrapping lives in its own Compartment for the same reason as the
+ * theme: reconfiguring in place keeps cursor, selection and undo history.
+ * Wrapping is display-only — it never touches the document's bytes.
+ */
+export const wrapCompartment = new Compartment();
+
+export function wrapExtensionFor(enabled: boolean): Extension {
+  return enabled ? EditorView.lineWrapping : [];
+}
+
+/**
  * The Code view extension set. NO-BEAUTIFY: this deliberately omits
  * indentOnInput, closeBrackets, and autocompletion — nothing here inserts or
  * rewrites bytes the user didn't type. lineSeparator is pinned to '\n' so the
@@ -60,6 +72,7 @@ export function themeExtensionFor(effective: EffectiveTheme): Extension {
 export function buildCodeViewExtensions(
   format: EditorFormat,
   effective: EffectiveTheme = 'light',
+  wrap = true,
 ): Extension[] {
   return [
     lineNumbers(),
@@ -70,6 +83,7 @@ export function buildCodeViewExtensions(
     bracketMatching(),
     highlightSelectionMatches(),
     themeCompartment.of(themeExtensionFor(effective)),
+    wrapCompartment.of(wrapExtensionFor(wrap)),
     EditorState.lineSeparator.of('\n'),
     languageExtension(format),
     // Find highlighting, installed at construction: a StateField cannot join a

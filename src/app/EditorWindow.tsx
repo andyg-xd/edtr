@@ -28,6 +28,7 @@ import { openPayload, docToShow } from '../files/openRouting';
 import { basename } from '../files/fileTypes';
 import { recordRecent } from '../files/recents';
 import { useTheme } from '../settings/useTheme';
+import { useCodeWrap } from '../settings/useCodeWrap';
 import { useWindowWritingModes } from '../settings/useWindowWritingModes';
 import { useOpenDocuments } from './useOpenDocuments';
 import { docIsDirty, windowIsDirty, type OpenDoc, type ViewMode } from '../files/openDocuments';
@@ -73,6 +74,11 @@ export function EditorWindow() {
   const { mode: themeMode, effective: themeEffective, setMode: setThemeMode } = useTheme(
     useCallback(() => {
       setInfoNotice('Your theme choice could not be saved. It will apply until you quit Edtr.');
+    }, []),
+  );
+  const { codeWrap } = useCodeWrap(
+    useCallback(() => {
+      setInfoNotice('Your line-wrapping choice could not be saved. It will apply until you quit Edtr.');
     }, []),
   );
   const { modes: writingModes, setMode: setWritingMode, toggleMode: toggleWritingMode } = useWindowWritingModes();
@@ -732,6 +738,7 @@ export function EditorWindow() {
                 // panel is not on screen.
                 outlineVisible={sidebarOpen && sidebarMode === 'outline'}
                 effectiveTheme={themeEffective}
+                codeWrap={codeWrap}
                 modes={writingModes}
                 onSetWritingMode={setWritingMode}
                 onExport={handleExport}

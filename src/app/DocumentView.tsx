@@ -114,6 +114,8 @@ function livePosition(view: EditorView | null): { line: number; column: number }
 interface DocumentViewProps {
   doc: OpenDoc;
   effectiveTheme: 'light' | 'dark';
+  /** Whether Code view wraps long lines. Defaults to the app default (on). */
+  codeWrap?: boolean;
   /** Writing-mode toggles (typewriter/focus), one subscription per window, shared by every DocumentView in it. */
   modes: WritingModes;
   /** Flips one writing mode on/off — the persistent toolbar's controls call this in every view (6c-iii, Task 6). */
@@ -139,7 +141,7 @@ interface DocumentViewProps {
 }
 
 export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(function DocumentView(
-  { doc, effectiveTheme, modes, onSetWritingMode, onExport, onDirtyChange, onLiveAvailableChange, onError, onInfo, onOutlineChange, outlineVisible = false }, ref,
+  { doc, effectiveTheme, codeWrap = true, modes, onSetWritingMode, onExport, onDirtyChange, onLiveAvailableChange, onError, onInfo, onOutlineChange, outlineVisible = false }, ref,
 ) {
   const session = doc.session;
   const viewMode = doc.viewMode;
@@ -1057,6 +1059,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
       {replaceGuard}
       <CodeView
         key={`code-${doc.id}-${restoreGen}`} initialText={session.text} format={session.format} effectiveTheme={effectiveTheme}
+        wrapLines={codeWrap}
         onChange={handleChange} onViewReady={setCodeView}
         onCursorChange={(line, column) => setCodeCursor({ line, column })}
         onLinkOpen={handleLinkOpen} onHistoryEdge={handleHistoryEdge} onLinkHover={setHoveredLink} canOpenLink={canOpenLink}
