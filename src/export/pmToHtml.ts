@@ -1,5 +1,6 @@
 import { DOMSerializer, type Node as PMNode } from 'prosemirror-model';
 import { liveSchema } from '../views/liveSchema';
+import { isTextDiagram } from '../codewrap/textDiagram';
 
 /**
  * A Markdown document, rendered to an HTML body fragment (6c-iii, D3).
@@ -17,11 +18,27 @@ import { liveSchema } from '../views/liveSchema';
  * cleared before serializing, which puts the real relative path back.
  */
 export function pmToHtml(doc: PMNode): string {
-  const serializer = DOMSerializer.fromSchema(liveSchema);
+  const serializer = exportSerializer();
   const fragment = serializer.serializeFragment(withRealImageSrcs(doc).content, { document });
   const host = document.createElement('div');
   host.appendChild(fragment);
   return host.innerHTML;
+}
+
+/**
+ * The schema's own serializer, except that a code block carries the class the
+ * export stylesheet wraps it by (a text diagram is marked to stay unwrapped).
+ * `data-lang` is emitted exactly as the editor does.
+ */
+function exportSerializer(): DOMSerializer {
+  const base = DOMSerializer.fromSchema(liveSchema);
+  return new DOMSerializer({
+    ...base.nodes,
+    codeBlock: (node) => ['pre', {
+      ...(node.attrs.lang ? { 'data-lang': node.attrs.lang } : {}),
+      class: isTextDiagram(node.textContent) ? 'md-code md-diagram' : 'md-code',
+    }, ['code', 0]],
+  }, base.marks);
 }
 
 /** A copy of `doc` with every `displaySrc` cleared, so `toDOM` emits `src`. */

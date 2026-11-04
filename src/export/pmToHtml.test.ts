@@ -76,7 +76,16 @@ describe('pmToHtml', () => {
   });
 
   it('renders a code block', () => {
-    expect(html('```\ncode\n```\n')).toContain('<pre><code>code</code></pre>');
+    expect(html('```\ncode\n```\n')).toContain('<pre class="md-code"><code>code</code></pre>');
+  });
+
+  it('keeps the language on a code block alongside its wrap class', () => {
+    expect(html('```js\nlet a;\n```\n')).toContain('<pre data-lang="js" class="md-code"><code>let a;</code></pre>');
+  });
+
+  it('marks a text diagram so it keeps its lines unwrapped', () => {
+    const out = html('```\n┌──┐\n└──┘\n```\n');
+    expect(out).toContain('<pre class="md-code md-diagram">');
   });
 
   it('renders a horizontal rule', () => {

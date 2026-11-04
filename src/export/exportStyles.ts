@@ -25,6 +25,10 @@ pre { padding: 12px 14px; background: #f5f5f5; border-radius: 6px; overflow-x: a
    screen, but useless on paper -- a scrollbar cannot be scrolled, so the line
    is simply cut off at the page edge. */
 pre.plaintext { white-space: pre-wrap; overflow-wrap: break-word; background: none; padding: 0; }
+/* Scoped to Markdown code blocks: the bare pre rule above must keep serving an
+   HTML export's own <pre>. A text diagram keeps its lines and scrolls instead. */
+pre.md-code { white-space: pre-wrap; overflow-wrap: anywhere; }
+pre.md-code.md-diagram { white-space: pre; overflow-x: auto; }
 pre code { font-size: 0.88em; }
 blockquote { padding-left: 1em; border-left: 3px solid #d4d4d4; color: #444; }
 table { border-collapse: collapse; width: 100%; }

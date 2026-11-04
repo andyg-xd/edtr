@@ -83,6 +83,27 @@ describe('buildExport — plaintext', () => {
   });
 });
 
+describe('buildExport — code wrapping', () => {
+  it('wraps Markdown code in the exported stylesheet', async () => {
+    const r = toLive('```\ncode\n```\n', null);
+    if (!r.ok) throw new Error('fixture failed');
+    const { html } = await buildExport({
+      format: 'markdown', doc: r.doc, source: '', title: 'N', resolve: () => null,
+    });
+    expect(html).toContain('pre.md-code { white-space: pre-wrap; overflow-wrap: anywhere; }');
+    expect(html).toContain('pre.md-code.md-diagram { white-space: pre; overflow-x: auto; }');
+  });
+
+  it('leaves an HTML export\'s <pre> exactly as written', async () => {
+    const { html } = await buildExport({
+      format: 'html', doc: null,
+      source: '<html><body><pre>a  b</pre></body></html>', title: 'P', resolve: () => null,
+    });
+    expect(html).toContain('<pre>a  b</pre>');
+    expect(html).not.toContain('<pre class=');
+  });
+});
+
 describe('buildExport — the print copy runs nothing', () => {
   const PAGE = '<!doctype html><html><head><style>h1{color:teal}</style></head><body>'
     + '<h1 class="t" style="font-size:40px">Title</h1>'
