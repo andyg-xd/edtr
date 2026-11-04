@@ -137,6 +137,23 @@ pub fn sync_view_menu(app: AppHandle, typewriter: bool, focus: bool) {
 pub const CHECK_UPDATES_ID: &str = "check-updates";
 pub const RELEASES_URL: &str = "https://github.com/andyg-xd/edtr/releases/latest";
 
+/// Point the View menu's Wrap Lines checkmark at `checked`. Same tree walk as
+/// [`set_mode_checks`], and ignores a missing item for the same reason.
+pub fn set_wrap_check<R: Runtime>(app: &AppHandle<R>, checked: bool) {
+    let Some(menu) = app.menu() else { return };
+    let Ok(items) = menu.items() else { return };
+    for kind in items {
+        let Some(submenu) = kind.as_submenu() else { continue };
+        let Ok(children) = submenu.items() else { continue };
+        for child in children {
+            let Some(check) = child.as_check_menuitem() else { continue };
+            if check.id().0.as_str() == "toggle-wrap" {
+                let _ = check.set_checked(checked);
+            }
+        }
+    }
+}
+
 /// Map a custom menu item's id to the `menu://` event the frontend listens for.
 ///
 /// Extracted from `lib.rs`'s `on_menu_event` closure so the mapping is unit
@@ -159,6 +176,7 @@ pub fn menu_event_name(id: &str) -> Option<&'static str> {
         // 6c-ii they were intercepted in lib.rs and never reached here at all.
         "toggle-typewriter" => "menu://toggle-typewriter",
         "toggle-focus" => "menu://toggle-focus",
+        "toggle-wrap" => "menu://toggle-wrap",
         "undo" => "menu://undo",
         "redo" => "menu://redo",
         _ => return None,
@@ -244,6 +262,7 @@ pub fn build_menu<R: Runtime>(
     app: &AppHandle<R>,
     recents: &[RecentEntry],
     modes: MenuModes,
+    code_wrap: bool,
 ) -> tauri::Result<Menu<R>> {
     let quit = MenuItem::with_id(app, "quit", "Quit Edtr", true, Some("Cmd+Q"))?;
     let check_updates = MenuItem::with_id(app, CHECK_UPDATES_ID, "Check for Updates…", true, None::<&str>)?;
@@ -322,7 +341,17 @@ pub fn build_menu<R: Runtime>(
     let focus = CheckMenuItem::with_id(
         app, "toggle-focus", "Focus Mode", true, modes.focus, None::<&str>,
     )?;
-    let view_menu = SubmenuBuilder::new(app, "View").item(&typewriter).item(&focus).build()?;
+    // Unlike the two modes above this one is a persisted app-wide setting, so
+    // the mark is drawn from `SettingsState`, not the per-window cache.
+    let wrap = CheckMenuItem::with_id(
+        app, "toggle-wrap", "Wrap Lines", true, code_wrap, Some("Alt+Z"),
+    )?;
+    let view_menu = SubmenuBuilder::new(app, "View")
+        .item(&wrap)
+        .separator()
+        .item(&typewriter)
+        .item(&focus)
+        .build()?;
 
     let window_menu = SubmenuBuilder::new(app, "Window")
         .minimize()
@@ -354,7 +383,8 @@ pub fn rebuild<R: Runtime>(app: &AppHandle<R>) {
             .lock()
             .map(|m| *m)
             .unwrap_or_default();
-        if let Ok(menu) = build_menu(&app2, &recents, modes) {
+        let code_wrap = crate::settings::stored_code_wrap(&app2.state::<crate::settings::SettingsState>());
+        if let Ok(menu) = build_menu(&app2, &recents, modes, code_wrap) {
             let _ = app2.set_menu(menu);
         }
     });
@@ -417,7 +447,7 @@ mod view_menu_tests {
         for id in [
             "open", "open-folder", "save", "save-as", "close", "print",
             "find", "find-next", "find-prev", "replace",
-            "toggle-typewriter", "toggle-focus", "undo", "redo",
+            "toggle-typewriter", "toggle-focus", "toggle-wrap", "undo", "redo",
         ] {
             assert_eq!(
                 menu_event_name(id),

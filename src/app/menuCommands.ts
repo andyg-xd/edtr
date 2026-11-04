@@ -10,7 +10,7 @@ export const MENU_COMMANDS = [
   'open', 'open-folder', 'save', 'save-as', 'close', 'print',
   'quit-poll', 'quit-abort',
   'find', 'find-next', 'find-prev', 'replace',
-  'toggle-typewriter', 'toggle-focus',
+  'toggle-typewriter', 'toggle-focus', 'toggle-wrap',
   'undo', 'redo',
 ] as const;
 
@@ -44,6 +44,8 @@ export interface MenuHandlers {
   onToggleTypewriter: () => void;
   /** View → Focus Mode — flip THIS window's focus mode (6c-ii-b, D-A). */
   onToggleFocus: () => void;
+  /** View → Wrap Lines (⌥Z). */
+  onToggleWrap: () => void;
   /** Edit → Undo (⌘Z) — see `runMenuHistory`. */
   onUndo: () => void;
   /** Edit → Redo (⇧⌘Z). */
@@ -71,6 +73,7 @@ export function dispatchMenuCommand(command: MenuCommand, handlers: MenuHandlers
     case 'replace': handlers.onReplace(); break;
     case 'toggle-typewriter': handlers.onToggleTypewriter(); break;
     case 'toggle-focus': handlers.onToggleFocus(); break;
+    case 'toggle-wrap': handlers.onToggleWrap(); break;
     case 'undo': handlers.onUndo(); break;
     case 'redo': handlers.onRedo(); break;
   }

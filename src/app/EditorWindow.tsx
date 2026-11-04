@@ -76,7 +76,7 @@ export function EditorWindow() {
       setInfoNotice('Your theme choice could not be saved. It will apply until you quit Edtr.');
     }, []),
   );
-  const { codeWrap } = useCodeWrap(
+  const { codeWrap, toggleCodeWrap } = useCodeWrap(
     useCallback(() => {
       setInfoNotice('Your line-wrapping choice could not be saved. It will apply until you quit Edtr.');
     }, []),
@@ -566,6 +566,7 @@ export function EditorWindow() {
     // window's mode, and the checkmark follows from the resulting state.
     onToggleTypewriter: () => toggleWritingMode('typewriter'),
     onToggleFocus: () => toggleWritingMode('focus'),
+    onToggleWrap: () => toggleCodeWrap(),
     onUndo: () => runMenuHistory('undo', viewRef.current),
     onRedo: () => runMenuHistory('redo', viewRef.current),
   });

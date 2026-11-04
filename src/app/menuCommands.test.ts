@@ -20,6 +20,7 @@ function tracked(): MenuHandlers & { calls: string[] } {
     onReplace: () => calls.push('replace'),
     onToggleTypewriter: () => calls.push('toggle-typewriter'),
     onToggleFocus: () => calls.push('toggle-focus'),
+    onToggleWrap: () => calls.push('toggle-wrap'),
     onUndo: () => calls.push('undo'),
     onRedo: () => calls.push('redo'),
   };
@@ -43,6 +44,7 @@ function makeHandlers(): MenuHandlers {
     onReplace: vi.fn(),
     onToggleTypewriter: vi.fn(),
     onToggleFocus: vi.fn(),
+    onToggleWrap: vi.fn(),
     onUndo: vi.fn(),
     onRedo: vi.fn(),
   };
@@ -52,7 +54,7 @@ describe('dispatchMenuCommand', () => {
   it('routes each command to exactly its own handler', () => {
     const all = [
       'open', 'open-folder', 'save', 'save-as', 'close', 'print', 'quit-poll', 'quit-abort',
-      'find', 'find-next', 'find-prev', 'replace', 'undo', 'redo',
+      'find', 'find-next', 'find-prev', 'replace', 'toggle-wrap', 'undo', 'redo',
     ] as const satisfies readonly MenuCommand[];
     for (const cmd of all) {
       const h = tracked();

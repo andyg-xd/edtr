@@ -172,6 +172,16 @@ pub fn set_theme<R: Runtime>(
     Ok(())
 }
 
+/// The stored `code_wrap`, or the default when nothing has been saved yet.
+pub fn stored_code_wrap(state: &SettingsState) -> bool {
+    state
+        .0
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|s| s.code_wrap))
+        .unwrap_or_else(default_code_wrap)
+}
+
 /// Persist whether the Code view wraps lines + broadcast settings://changed,
 /// only when the value actually changed.
 #[tauri::command]
@@ -180,7 +190,9 @@ pub fn set_code_wrap<R: Runtime>(
     state: State<SettingsState>,
     enabled: bool,
 ) -> Result<(), String> {
-    apply_if_changed(&app, &state, |current| Ok(with_code_wrap(current, enabled)))?;
+    if apply_if_changed(&app, &state, |current| Ok(with_code_wrap(current, enabled)))? {
+        crate::menu::set_wrap_check(&app, enabled);
+    }
     Ok(())
 }
 
@@ -283,6 +295,14 @@ mod store_tests {
         let current = Settings { theme: "dark".into(), code_wrap: true };
         let merged = with_theme(&current, "light".into());
         assert_eq!(merged.theme, "light");
+    }
+
+    #[test]
+    fn stored_code_wrap_defaults_on_until_something_is_saved() {
+        let state = SettingsState::default();
+        assert!(stored_code_wrap(&state));
+        *state.0.lock().unwrap() = Some(Settings { theme: "dark".into(), code_wrap: false });
+        assert!(!stored_code_wrap(&state));
     }
 
     #[test]

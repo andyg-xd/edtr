@@ -29,7 +29,7 @@ pub fn run() {
         .manage(recents::RecentsState::default())
         .manage(settings::SettingsState::default())
         .manage(menu::MenuModeState::default())
-        .menu(|handle| menu::build_menu(handle, &[], menu::MenuModes::default()))
+        .menu(|handle| menu::build_menu(handle, &[], menu::MenuModes::default(), true))
         .setup(|app| {
             // Before any window exists, so the first inspector opened already
             // sees it (see devtools.rs for why this is a preference).
@@ -124,6 +124,16 @@ pub fn run() {
                 return;
             }
             let Some(event_name) = menu::menu_event_name(id.as_str()) else { return };
+            // macOS flips a check item's mark itself on click. Whether the
+            // setting changes is the window's call (Live view toggles a block,
+            // not the setting), so put the stored value back first;
+            // `set_code_wrap` moves the mark if the setting really changed.
+            if id == "toggle-wrap" {
+                menu::set_wrap_check(
+                    app,
+                    settings::stored_code_wrap(&app.state::<settings::SettingsState>()),
+                );
+            }
             // Delivery is by LABEL, never a broadcast: `emit_to(<label>, …)`
             // fires only that window's window-scoped listener (see MenuBridge).
             // Plain `.emit()` is global — do not use it here.
