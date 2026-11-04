@@ -131,6 +131,12 @@ pub fn sync_view_menu(app: AppHandle, typewriter: bool, focus: bool) {
     set_mode_checks(&app, MenuModes { typewriter, focus });
 }
 
+/// Edtr never checks for updates itself (no network access); this item only
+/// opens the newest release in the browser, where the version can be compared
+/// with the one in About Edtr. Intercepted in `lib.rs`, so it needs no window.
+pub const CHECK_UPDATES_ID: &str = "check-updates";
+pub const RELEASES_URL: &str = "https://github.com/andyg-xd/edtr/releases/latest";
+
 /// Map a custom menu item's id to the `menu://` event the frontend listens for.
 ///
 /// Extracted from `lib.rs`'s `on_menu_event` closure so the mapping is unit
@@ -240,6 +246,7 @@ pub fn build_menu<R: Runtime>(
     modes: MenuModes,
 ) -> tauri::Result<Menu<R>> {
     let quit = MenuItem::with_id(app, "quit", "Quit Edtr", true, Some("Cmd+Q"))?;
+    let check_updates = MenuItem::with_id(app, CHECK_UPDATES_ID, "Check for Updates…", true, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", "Open…", true, Some("Cmd+O"))?;
     let open_folder = MenuItem::with_id(app, "open-folder", "Open Folder…", true, Some("Cmd+Shift+O"))?;
     let save = MenuItem::with_id(app, "save", "Save", true, Some("Cmd+S"))?;
@@ -256,6 +263,7 @@ pub fn build_menu<R: Runtime>(
 
     let app_menu = SubmenuBuilder::new(app, "Edtr")
         .about(None)
+        .item(&check_updates)
         .separator()
         .services()
         .separator()
@@ -421,9 +429,10 @@ mod view_menu_tests {
 
     #[test]
     fn ids_handled_elsewhere_emit_nothing() {
-        // `quit` and `recent:*` are intercepted before this mapping is reached;
-        // returning an event for them would double-handle the click.
-        for id in ["quit", "recent:clear", "recent:file:/tmp/a.md", "nonsense"] {
+        // `quit`, `check-updates` and `recent:*` are intercepted before this
+        // mapping is reached; returning an event for them would double-handle
+        // the click.
+        for id in ["quit", "check-updates", "recent:clear", "recent:file:/tmp/a.md", "nonsense"] {
             assert_eq!(menu_event_name(id), None, "{id} must not emit a menu:// event");
         }
     }
@@ -538,5 +547,20 @@ mod menu_event_name_tests {
         assert_eq!(menu_event_name("quit"), None);
         assert_eq!(menu_event_name("recent:clear"), None);
         assert_eq!(menu_event_name("nonsense"), None);
+    }
+}
+
+#[cfg(test)]
+mod check_updates_tests {
+    use super::*;
+
+    #[test]
+    fn check_for_updates_opens_this_repos_latest_release() {
+        assert_eq!(RELEASES_URL, "https://github.com/andyg-xd/edtr/releases/latest");
+    }
+
+    #[test]
+    fn check_for_updates_has_its_own_menu_id() {
+        assert_eq!(CHECK_UPDATES_ID, "check-updates");
     }
 }

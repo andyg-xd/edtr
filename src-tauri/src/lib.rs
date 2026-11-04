@@ -83,6 +83,13 @@ pub fn run() {
                 }
                 return;
             }
+            if id == menu::CHECK_UPDATES_ID {
+                use tauri_plugin_opener::OpenerExt;
+                if let Err(e) = app.opener().open_url(menu::RELEASES_URL, None::<&str>) {
+                    eprintln!("[menu] could not open the releases page: {e}");
+                }
+                return;
+            }
             if id == "quit" {
                 // Atomic quit (5b-iii-b) + crash safety net (5f, Item 2):
                 // snapshot the windows, start the poll, broadcast the request.
