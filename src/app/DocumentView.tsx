@@ -236,10 +236,16 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   // and eventually wraps instead of staying still. Do not "simplify" this
   // back to a live read.
   const findAnchorRef = useRef(0);
+  // True once the person has edited the document since they last navigated
+  // find (typed a query, ⌘G / ⇧⌘G, opened find, replaced). Their edit re-scans
+  // the matches, and revealing the current one then would pull the caret away
+  // from where they are typing, so the next keystrokes land on the match.
+  const editedSinceFindRef = useRef(false);
 
   const handleChange = useCallback((text: string) => {
     session.setCurrentText(text);
     session.history.noteEdit();
+    editedSinceFindRef.current = true;
     bumpFindEpoch(); // a real document change — find must re-scan
     tick();
   }, [session]);
@@ -315,6 +321,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     if (!step) return false;
     viewStartRef.current = null;
     session.setCurrentText(step.text);
+    editedSinceFindRef.current = true;
     bumpFindEpoch();
     bumpRestore();
     onInfo(direction === 'undo'
@@ -372,7 +379,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     liveDocRef.current = d;
     liveDirtyRef.current = dirtyIds;
     setLiveHasEdits(dirtyIds.size > 0);
-    if (docChanged) bumpFindEpoch();
+    if (docChanged) { editedSinceFindRef.current = true; bumpFindEpoch(); }
     // Only an edit that marked something changed counts: an editor being
     // rebuilt after a whole-view undo must not clear the redo it just made.
     if (docChanged && dirtyIds.size > 0) session.history.noteEdit();
@@ -677,7 +684,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     // tests below reproduce. `reveal()` itself also bounds-checks (defense in
     // depth, see pmSurface.ts/codeSurface.ts) — this guard is what keeps a
     // stale match from being shown at all, not just from crashing.
-    if (!findOpen || !surface || !findFresh) return;
+    if (!findOpen || !surface || !findFresh || editedSinceFindRef.current) return;
     const match = currentMatch(find);
     if (match) surface.reveal(match);
     // Deps are the current match's identity, not `find` — revealing must not
@@ -699,6 +706,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     // Capture site 1/2 for findAnchorRef: the caret as it is the moment find
     // opens, before anything below can move it.
     findAnchorRef.current = surfaceRef.current?.cursorPos() ?? 0;
+    editedSinceFindRef.current = false;
     const selected = surfaceRef.current?.selectedText() ?? '';
     // Seed from the selection when there is one; otherwise keep the last term.
     if (selected !== '' && !selected.includes('\n')) {
@@ -733,8 +741,8 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     surfaceRef.current && (showLive ? liveView?.focus() : codeView?.focus());
   }, [showLive, liveView, codeView, findEpoch]);
 
-  const goNext = useCallback(() => setFind((prev) => nextMatch(prev)), []);
-  const goPrev = useCallback(() => setFind((prev) => prevMatch(prev)), []);
+  const goNext = useCallback(() => { editedSinceFindRef.current = false; setFind((prev) => nextMatch(prev)); }, []);
+  const goPrev = useCallback(() => { editedSinceFindRef.current = false; setFind((prev) => prevMatch(prev)); }, []);
 
   // The one place that applies edits, raises the crossing/atom notices and
   // recomputes -- Replace and Replace All both go through this, so they
@@ -750,7 +758,9 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     if (!s || !s.editable() || edits.length === 0) return null;
     const outcome = s.applyEdits(edits);
     // The document changed, so matches must re-scan. This is the SAME path a
-    // typed edit takes; replace does not get its own.
+    // typed edit takes; replace does not get its own. But a replace IS find
+    // navigation (it walks to the next match), so it reveals, unlike typing.
+    editedSinceFindRef.current = false;
     bumpFindEpoch();
     return outcome;
   }, []);
@@ -957,6 +967,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
         if (find.query.text === '' && query.text !== '') {
           findAnchorRef.current = surfaceRef.current?.cursorPos() ?? 0;
         }
+        editedSinceFindRef.current = false;
         setFind((prev) => ({ ...prev, query }));
       }}
       onNext={goNext}
