@@ -17,6 +17,8 @@ import { findDecorationsPlugin } from '../find/pmSurface';
 import { focusDimPlugin } from '../writingmodes/pmFocus';
 import { linkClickPlugin, type LinkHandlers } from '../links/linkClickPlugin';
 import { pmHistoryEdgePlugin } from '../undo/pmHistoryEdge';
+import { codeWrapPlugin } from '../codewrap/codeWrapPlugin';
+import { codeBlockView } from '../codewrap/codeBlockView';
 import type { HistoryEdge } from '../undo/historyEdge';
 
 interface LiveViewProps {
@@ -103,14 +105,17 @@ export function LiveView({
           focusDimPlugin(),
           // ⌘-click follows a link. Changes nothing in the document.
           linkClickPlugin(() => linkHandlers.current),
+          // Per-block code wrapping. Display only — never a document step.
+          codeWrapPlugin(),
         ]
-      // Find, focus mode and links must work in a read-only view too, so
-      // their plugins are present here as well: an empty list means no
-      // decorations and no link following at all.
-      : [findDecorationsPlugin(), focusDimPlugin(), linkClickPlugin(() => linkHandlers.current)];
+      // Find, focus mode, links and code wrapping must work in a read-only
+      // view too, so their plugins are present here as well: an empty list
+      // means no decorations and no link following at all.
+      : [findDecorationsPlugin(), focusDimPlugin(), linkClickPlugin(() => linkHandlers.current), codeWrapPlugin()];
     const view = new EditorView(host.current, {
       state: EditorState.create({ doc, schema: liveSchema, plugins }),
       editable: () => editable,
+      nodeViews: { codeBlock: codeBlockView },
       handlePaste: (view, event) => {
         if (!docPath) return false;
         const items = event.clipboardData?.items;
