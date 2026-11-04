@@ -123,9 +123,13 @@ export function toggleCodeWrapAt(pos: number): Command {
   };
 }
 
-/** Flips the code block holding the caret; false (nothing to do) anywhere else. */
+/**
+ * Flips the code block holding the selection head; false (nothing to do)
+ * anywhere else. Uses the same `caretBlock` as `edtr-caret-in`, so ⌥Z always
+ * acts on the block whose label is showing.
+ */
 export const toggleCodeWrapAtCaret: Command = (state, dispatch) => {
-  const { $from } = state.selection;
-  if ($from.depth === 0 || !isCodeBlock($from.parent)) return false;
-  return toggleCodeWrapAt($from.before())(state, dispatch);
+  const pos = caretBlock(state);
+  if (pos === null) return false;
+  return toggleCodeWrapAt(pos)(state, dispatch);
 };
