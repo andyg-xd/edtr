@@ -128,7 +128,7 @@ pub fn run() {
             // setting changes is the window's call (Live view toggles a block,
             // not the setting), so put the stored value back first;
             // `set_code_wrap` moves the mark if the setting really changed.
-            if id == "toggle-wrap" {
+            if id == menu::WRAP_ID {
                 menu::set_wrap_check(
                     app,
                     settings::stored_code_wrap(&app.state::<settings::SettingsState>()),

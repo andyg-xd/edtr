@@ -89,6 +89,7 @@ function save(view: EditorView, baselineDoc: import('prosemirror-model').Node): 
 describe('flipping code blocks never touches the file', () => {
   it('toggling every block twice leaves the saved bytes identical, with nothing dirty and no undo step', async () => {
     const { view, baselineDoc } = await mount();
+    const docAtMount = view.state.doc;
     const positions = codeBlockPositions(view);
     expect(positions).toHaveLength(4);
     const initial = positions.map((p) => blockWraps(view.state, p));
@@ -103,6 +104,7 @@ describe('flipping code blocks never touches the file', () => {
       const expected = pass === 1 ? initial.map((w) => !w) : initial;
       expect(positions.map((p) => blockWraps(view.state, p)), `pass ${pass}`).toEqual(expected);
       expect(getDirtyBlockIds(view.state).size, `pass ${pass}: dirty blocks`).toBe(0);
+      expect(view.state.doc, `pass ${pass}: document identity`).toBe(docAtMount);
       expect(undoDepth(view.state), `pass ${pass}: undo steps`).toBe(0);
       expect(save(view, baselineDoc), `pass ${pass}: saved bytes`).toBe(SOURCE);
     }
@@ -111,7 +113,9 @@ describe('flipping code blocks never touches the file', () => {
   it('a real edit inside a code block DOES change the saved bytes (proves the test above is not vacuous)', async () => {
     const { view, baselineDoc } = await mount();
     const [fenced] = codeBlockPositions(view);
+    expect(undoDepth(view.state)).toBe(0);
     await act(async () => { view.dispatch(view.state.tr.insertText('X', fenced + 1)); });
+    expect(undoDepth(view.state)).toBeGreaterThan(0);
     expect(getDirtyBlockIds(view.state).size).toBeGreaterThan(0);
     const out = save(view, baselineDoc);
     expect(out).not.toBe(SOURCE);

@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client';
 import { act, createRef } from 'react';
 import type { EditorView as PMView } from 'prosemirror-view';
 import { TextSelection } from 'prosemirror-state';
+import { EditorView as CMEditorView } from '@codemirror/view';
+import { undoDepth as cmUndoDepth } from '@codemirror/commands';
 import { DocumentView, type DocumentViewHandle } from './DocumentView';
 import { DocumentSession } from '../files/documentSession';
 import { formatForPath } from '../files/fileTypes';
@@ -38,20 +40,24 @@ afterEach(async () => {
 const MD = 'Intro paragraph.\n\n```js\nconst x = 1;\n```\n';
 const HTML = '<!doctype html>\n<html><body><p>Intro</p><pre><code>const x = 1;</code></pre></body></html>\n';
 
+function element(codeWrap: boolean, ref: React.Ref<DocumentViewHandle>, session: DocumentSession, viewMode: ViewMode) {
+  return (
+    <DocumentView
+      ref={ref} doc={{ id: 'd', session, viewMode }} effectiveTheme="light" modes={MODES_OFF} codeWrap={codeWrap}
+      onSetWritingMode={() => {}} onExport={() => {}}
+      onDirtyChange={() => {}} onLiveAvailableChange={() => {}} onError={() => {}} onInfo={() => {}}
+    />
+  );
+}
+
 async function mount(path: string, text: string, viewMode: ViewMode) {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
   const ref = createRef<DocumentViewHandle>();
   const session = new DocumentSession({ path, format: formatForPath(path), meta: { eol: 'lf', hadBom: false }, text });
-  await act(async () => root!.render(
-    <DocumentView
-      ref={ref} doc={{ id: 'd', session, viewMode }} effectiveTheme="light" modes={MODES_OFF}
-      onSetWritingMode={() => {}} onExport={() => {}}
-      onDirtyChange={() => {}} onLiveAvailableChange={() => {}} onError={() => {}} onInfo={() => {}}
-    />,
-  ));
-  return { ref, session };
+  await act(async () => root!.render(element(true, ref, session, viewMode)));
+  return { ref, session, rerender: (codeWrap: boolean) => act(async () => root!.render(element(codeWrap, ref, session, viewMode))) };
 }
 
 const pm = () => spy.pm as PMView;
@@ -102,5 +108,24 @@ describe('wrapCommand', () => {
   it('Code view: reports code', async () => {
     const { ref } = await mount('/tmp/t.md', MD, 'code');
     expect(ref.current!.wrapCommand()).toBe('code');
+  });
+});
+
+describe('codeWrap reaches the Code view', () => {
+  it('follows the prop without remounting the editor or touching its history', async () => {
+    const { session, rerender } = await mount('/tmp/t.md', MD, 'code');
+    await rerender(false);
+    const content = () => container!.querySelector('.cm-content')!;
+    expect(content().classList.contains('cm-lineWrapping')).toBe(false);
+    const editor = CMEditorView.findFromDOM(container!.querySelector('.cm-editor') as HTMLElement)!;
+    const text = editor.state.doc.toString();
+    const depth = cmUndoDepth(editor.state);
+
+    await rerender(true);
+    expect(content().classList.contains('cm-lineWrapping')).toBe(true);
+    expect(CMEditorView.findFromDOM(container!.querySelector('.cm-editor') as HTMLElement)).toBe(editor);
+    expect(editor.state.doc.toString()).toBe(text);
+    expect(cmUndoDepth(editor.state)).toBe(depth);
+    expect(session.text).toBe(MD);
   });
 });

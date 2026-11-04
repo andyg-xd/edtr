@@ -107,6 +107,13 @@ pub fn set_mode_checks<R: Runtime>(app: &AppHandle<R>, modes: MenuModes) {
     if let Ok(mut cached) = app.state::<MenuModeState>().0.lock() {
         *cached = modes;
     }
+    set_check(app, "toggle-typewriter", modes.typewriter);
+    set_check(app, "toggle-focus", modes.focus);
+}
+
+/// Point the check item with `id` at `checked`; a menu or item that is missing
+/// is ignored (see [`set_mode_checks`]).
+fn set_check<R: Runtime>(app: &AppHandle<R>, id: &str, checked: bool) {
     let Some(menu) = app.menu() else { return };
     let Ok(items) = menu.items() else { return };
     for kind in items {
@@ -114,10 +121,8 @@ pub fn set_mode_checks<R: Runtime>(app: &AppHandle<R>, modes: MenuModes) {
         let Ok(children) = submenu.items() else { continue };
         for child in children {
             let Some(check) = child.as_check_menuitem() else { continue };
-            match check.id().0.as_str() {
-                "toggle-typewriter" => { let _ = check.set_checked(modes.typewriter); }
-                "toggle-focus" => { let _ = check.set_checked(modes.focus); }
-                _ => {}
+            if check.id().0.as_str() == id {
+                let _ = check.set_checked(checked);
             }
         }
     }
@@ -135,23 +140,12 @@ pub fn sync_view_menu(app: AppHandle, typewriter: bool, focus: bool) {
 /// opens the newest release in the browser, where the version can be compared
 /// with the one in About Edtr. Intercepted in `lib.rs`, so it needs no window.
 pub const CHECK_UPDATES_ID: &str = "check-updates";
+pub const WRAP_ID: &str = "toggle-wrap";
 pub const RELEASES_URL: &str = "https://github.com/andyg-xd/edtr/releases/latest";
 
-/// Point the View menu's Wrap Lines checkmark at `checked`. Same tree walk as
-/// [`set_mode_checks`], and ignores a missing item for the same reason.
+/// Point the View menu's Wrap Lines checkmark at `checked`.
 pub fn set_wrap_check<R: Runtime>(app: &AppHandle<R>, checked: bool) {
-    let Some(menu) = app.menu() else { return };
-    let Ok(items) = menu.items() else { return };
-    for kind in items {
-        let Some(submenu) = kind.as_submenu() else { continue };
-        let Ok(children) = submenu.items() else { continue };
-        for child in children {
-            let Some(check) = child.as_check_menuitem() else { continue };
-            if check.id().0.as_str() == "toggle-wrap" {
-                let _ = check.set_checked(checked);
-            }
-        }
-    }
+    set_check(app, WRAP_ID, checked);
 }
 
 /// Map a custom menu item's id to the `menu://` event the frontend listens for.
@@ -176,7 +170,7 @@ pub fn menu_event_name(id: &str) -> Option<&'static str> {
         // 6c-ii they were intercepted in lib.rs and never reached here at all.
         "toggle-typewriter" => "menu://toggle-typewriter",
         "toggle-focus" => "menu://toggle-focus",
-        "toggle-wrap" => "menu://toggle-wrap",
+        WRAP_ID => "menu://toggle-wrap",
         "undo" => "menu://undo",
         "redo" => "menu://redo",
         _ => return None,
@@ -344,7 +338,7 @@ pub fn build_menu<R: Runtime>(
     // Unlike the two modes above this one is a persisted app-wide setting, so
     // the mark is drawn from `SettingsState`, not the per-window cache.
     let wrap = CheckMenuItem::with_id(
-        app, "toggle-wrap", "Wrap Lines", true, code_wrap, Some("Alt+Z"),
+        app, WRAP_ID, "Wrap Lines", true, code_wrap, Some("Alt+Z"),
     )?;
     let view_menu = SubmenuBuilder::new(app, "View")
         .item(&wrap)

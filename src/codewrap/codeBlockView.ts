@@ -25,7 +25,6 @@ export const codeBlockView: NodeViewConstructor = (initial, view, getPos, decora
   button.type = 'button';
   button.className = 'code-wrap-toggle';
   button.setAttribute('contenteditable', 'false');
-  button.setAttribute('aria-label', 'Wrap long lines in this code block');
   // The caret stays where it was; a press on the label is not a click in the text.
   button.addEventListener('mousedown', (e) => e.preventDefault());
   button.addEventListener('click', () => {
@@ -42,7 +41,6 @@ export const codeBlockView: NodeViewConstructor = (initial, view, getPos, decora
   const label = (decos: readonly Decoration[]) => {
     const wrap = wrapFrom(decos, node);
     button.textContent = wrap ? 'Wrap' : 'No wrap';
-    button.setAttribute('aria-pressed', String(wrap));
   };
   label(decorations);
 

@@ -66,7 +66,8 @@ describe('code block label in Markdown Live', () => {
     expect(button.tagName).toBe('BUTTON');
     expect(button.getAttribute('type')).toBe('button');
     expect(button.getAttribute('contenteditable')).toBe('false');
-    expect(button.getAttribute('aria-label')).toBe('Wrap long lines in this code block');
+    expect(button.hasAttribute('aria-label')).toBe(false);
+    expect(button.hasAttribute('aria-pressed')).toBe(false);
     const pre = js.querySelector(':scope > pre')!;
     expect(pre.getAttribute('data-lang')).toBe('js');
     expect(pre.querySelector(':scope > code')?.textContent).toBe('const x = 1;');
@@ -76,10 +77,9 @@ describe('code block label in Markdown Live', () => {
   it('reads Wrap on an ordinary block and No wrap on a diagram', async () => {
     const { blocks: [js, diagram] } = await mountMarkdown();
     expect(toggleOf(js).textContent).toBe('Wrap');
-    expect(toggleOf(js).getAttribute('aria-pressed')).toBe('true');
+    expect(toggleOf(js).hasAttribute('aria-label')).toBe(false);
     expect(js.classList.contains('edtr-wrap')).toBe(true);
     expect(toggleOf(diagram).textContent).toBe('No wrap');
-    expect(toggleOf(diagram).getAttribute('aria-pressed')).toBe('false');
     expect(diagram.classList.contains('edtr-nowrap')).toBe(true);
   });
 
@@ -97,7 +97,6 @@ describe('code block label in Markdown Live', () => {
     expect(js.classList.contains('edtr-nowrap')).toBe(true);
     expect(js.classList.contains('edtr-wrap')).toBe(false);
     expect(toggleOf(js).textContent).toBe('No wrap');
-    expect(toggleOf(js).getAttribute('aria-pressed')).toBe('false');
     expect(view.state.selection.eq(before)).toBe(true);
 
     await act(async () => { toggleOf(js).click(); });
