@@ -14,13 +14,22 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 /// `deny_unknown_fields`), so a file written by 6c-ii still parses and its
 /// stored `theme` still loads. The two stale keys simply sit there until the
 /// next write drops them.
+///
+/// `code_wrap` (the Code view's line wrapping) is stored as `codeWrap` and
+/// defaults to on, so a 1.0.1 file that predates it loads with wrapping on.
 pub struct Settings {
     pub theme: String,
+    #[serde(rename = "codeWrap", default = "default_code_wrap")]
+    pub code_wrap: bool,
+}
+
+fn default_code_wrap() -> bool {
+    true
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { theme: "system".to_string() }
+        Settings { theme: "system".to_string(), code_wrap: default_code_wrap() }
     }
 }
 
@@ -30,13 +39,19 @@ pub fn is_valid_theme(mode: &str) -> bool {
     VALID_THEMES.contains(&mode)
 }
 
-/// A copy of `current` with a new theme and **both modes preserved**.
+/// A copy of `current` with a new theme and every other field (`code_wrap`)
+/// preserved.
 ///
 /// Exists because building `Settings { theme }` fresh — which is what this
 /// file did before 6c-ii — silently cleared every other field the struct
 /// gained. Pure, so the preservation is provable without a Tauri app handle.
 pub fn with_theme(current: &Settings, theme: String) -> Settings {
     Settings { theme, ..current.clone() }
+}
+
+/// A copy of `current` with a new Code view wrap setting and the theme preserved.
+pub fn with_code_wrap(current: &Settings, enabled: bool) -> Settings {
+    Settings { code_wrap: enabled, ..current.clone() }
 }
 
 /// Read settings from an exact file path. Missing / corrupt / invalid-theme → None
@@ -157,6 +172,17 @@ pub fn set_theme<R: Runtime>(
     Ok(())
 }
 
+/// Persist whether the Code view wraps lines + broadcast settings://changed,
+/// only when the value actually changed.
+#[tauri::command]
+pub fn set_code_wrap<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<SettingsState>,
+    enabled: bool,
+) -> Result<(), String> {
+    apply_if_changed(&app, &state, |current| Ok(with_code_wrap(current, enabled)))?;
+    Ok(())
+}
 
 #[cfg(test)]
 mod store_tests {
@@ -183,7 +209,7 @@ mod store_tests {
         std::fs::write(&path, r#"{"theme":"dark"}"#).unwrap();
         assert_eq!(
             read_settings(&path),
-            Some(Settings { theme: "dark".into() })
+            Some(Settings { theme: "dark".into(), code_wrap: true })
         );
     }
 
@@ -221,7 +247,7 @@ mod store_tests {
     fn write_then_read_roundtrips() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
-        let s = Settings { theme: "light".into() };
+        let s = Settings { theme: "light".into(), code_wrap: true };
         write_settings(&path, &s).unwrap();
         assert_eq!(read_settings(&path), Some(s));
     }
@@ -254,8 +280,47 @@ mod store_tests {
         // and named for the general property rather than for the modes,
         // because the trap returns the moment any second field is added --
         // which is exactly when nobody would think to re-derive it.
-        let current = Settings { theme: "dark".into() };
+        let current = Settings { theme: "dark".into(), code_wrap: true };
         let merged = with_theme(&current, "light".into());
         assert_eq!(merged.theme, "light");
+    }
+
+    #[test]
+    fn default_code_wrap_is_on() {
+        assert!(Settings::default().code_wrap);
+    }
+
+    #[test]
+    fn a_1_0_1_settings_file_loads_with_wrap_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"theme":"dark"}"#).unwrap();
+        assert_eq!(
+            read_settings(&path),
+            Some(Settings { theme: "dark".into(), code_wrap: true })
+        );
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn code_wrap_round_trips_as_codeWrap() {
+        let s = Settings { theme: "light".into(), code_wrap: false };
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains(r#""codeWrap":false"#), "{json}");
+        assert_eq!(serde_json::from_str::<Settings>(&json).unwrap(), s);
+    }
+
+    #[test]
+    fn with_code_wrap_preserves_theme() {
+        let current = Settings { theme: "dark".into(), code_wrap: true };
+        let merged = with_code_wrap(&current, false);
+        assert_eq!(merged, Settings { theme: "dark".into(), code_wrap: false });
+    }
+
+    #[test]
+    fn with_theme_preserves_code_wrap() {
+        let current = Settings { theme: "dark".into(), code_wrap: false };
+        let merged = with_theme(&current, "light".into());
+        assert_eq!(merged, Settings { theme: "light".into(), code_wrap: false });
     }
 }

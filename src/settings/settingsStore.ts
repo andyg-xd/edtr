@@ -11,6 +11,7 @@ import type { ThemeMode } from './theme';
  */
 export interface StoredSettings {
   theme: ThemeMode;
+  codeWrap: boolean;
 }
 
 /** Read persisted settings from the durable Tauri store; null if none saved yet
@@ -23,6 +24,12 @@ export async function loadSettings(): Promise<StoredSettings | null> {
  * windows (only if the value changed). */
 export async function saveTheme(mode: ThemeMode): Promise<void> {
   await invoke('set_theme', { mode });
+}
+
+/** Persist whether the Code view wraps lines; Rust broadcasts settings://changed
+ * to all windows (only if the value changed). */
+export async function saveCodeWrap(enabled: boolean): Promise<void> {
+  await invoke('set_code_wrap', { enabled });
 }
 
 /** Subscribe (window-scoped) to cross-window settings changes. */

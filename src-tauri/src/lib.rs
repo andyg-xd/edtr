@@ -205,6 +205,7 @@ pub fn run() {
             watcher::watcher_available,
             settings::get_settings,
             settings::set_theme,
+            settings::set_code_wrap,
             menu::sync_view_menu,
             export::print_html,
             sidebar_geometry::set_sidebar_window_growth
