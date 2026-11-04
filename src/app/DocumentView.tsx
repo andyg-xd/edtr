@@ -52,6 +52,7 @@ import { classifyLink } from '../links/linkTarget';
 import { isOpenable } from '../links/linkHint';
 import { useLinkHint } from '../links/useLinkHint';
 import type { HistoryEdge } from '../undo/historyEdge';
+import { toggleCodeWrapAtCaret } from '../codewrap/codeWrapPlugin';
 import { ReplaceAllGuard } from './ReplaceAllGuard';
 import { codeTypewriter } from '../writingmodes/codeTypewriter';
 import { pmTypewriter } from '../writingmodes/pmTypewriter';
@@ -94,6 +95,12 @@ export interface DocumentViewHandle {
   revealOutlineEntry: (entry: OutlineEntry) => void;
   /** Edit → Undo / Redo: the showing editor's own step, else the whole-view step. */
   historyStep: (direction: 'undo' | 'redo') => void;
+  /**
+   * ⌥Z: in Live view it acts on the code block holding the caret (Markdown
+   * only; HTML Live has none) and returns 'live'. Otherwise nothing is done
+   * and 'code' tells the caller to flip the app-wide Code view setting.
+   */
+  wrapCommand: () => 'live' | 'code';
 }
 
 /**
@@ -943,6 +950,13 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
         codeView.focus();
       }
     },
+    wrapCommand() {
+      if (!showLive) return 'code';
+      if (session.format === 'markdown' && liveView && !liveView.isDestroyed) {
+        toggleCodeWrapAtCaret(liveView.state, liveView.dispatch);
+      }
+      return 'live';
+    },
     flushToSource, openFind, openReplace, findNext: goNext, findPrev: goPrev,
     // `showLive`/`liveView`/`codeView` are dependencies because
     // `revealOutlineEntry` CLOSES OVER them (B2, 2026-08-26). Leaving them out
@@ -954,7 +968,7 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
     // The four surface memos above (`surface`, `typewriter`, `focus`,
     // `countSurface`) all declare exactly these three. This handle is the only
     // consumer that did not.
-  }), [flushToSource, openFind, openReplace, goNext, goPrev, showLive, liveView, codeView, handleHistoryEdge]);
+  }), [flushToSource, openFind, openReplace, goNext, goPrev, showLive, liveView, codeView, handleHistoryEdge, session.format]);
 
   const findBar = findOpen && surface ? (
     <FindBar

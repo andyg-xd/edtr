@@ -566,7 +566,7 @@ export function EditorWindow() {
     // window's mode, and the checkmark follows from the resulting state.
     onToggleTypewriter: () => toggleWritingMode('typewriter'),
     onToggleFocus: () => toggleWritingMode('focus'),
-    onToggleWrap: () => toggleCodeWrap(),
+    onToggleWrap: () => { if (viewRef.current?.wrapCommand() !== 'live') toggleCodeWrap(); },
     onUndo: () => runMenuHistory('undo', viewRef.current),
     onRedo: () => runMenuHistory('redo', viewRef.current),
   });
