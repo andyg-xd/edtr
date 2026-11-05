@@ -5,18 +5,21 @@ import { act, forwardRef, useEffect, useImperativeHandle } from 'react';
 import type { MenuHandlers } from './menuCommands';
 import { DocumentSession } from '../files/documentSession';
 
-// The routing under test: ⌥⌘Z reaches the app-wide wrap setting unless the
-// showing document view claims it. The view and the setting are stubbed so
-// only EditorWindow's decision is measured.
+// The routing under test: ⌥⌘Z flips this window's Code view wrapping unless
+// the showing document view claims it. The view and the wrap hook are stubbed
+// so only EditorWindow's decision is measured.
 const h = vi.hoisted(() => ({
   handlers: null as unknown as MenuHandlers,
   toggleCodeWrap: vi.fn(),
+  syncWrapMenu: vi.fn(),
   claim: 'code' as 'live' | 'code',
   seed: null as unknown,
 }));
 
 vi.mock('./MenuBridge', () => ({ useMenuAndCloseGuard: (handlers: MenuHandlers) => { h.handlers = handlers; } }));
-vi.mock('../settings/useCodeWrap', () => ({ useCodeWrap: () => ({ codeWrap: true, toggleCodeWrap: h.toggleCodeWrap }) }));
+vi.mock('../settings/useCodeWrap', () => ({
+  useCodeWrap: () => ({ codeWrap: true, toggleCodeWrap: h.toggleCodeWrap, syncWrapMenu: h.syncWrapMenu }),
+}));
 vi.mock('../settings/useWindowWritingModes', () => ({
   useWindowWritingModes: () => ({ modes: { typewriter: false, focus: false }, setMode: () => {}, toggleMode: () => {} }),
 }));
@@ -76,7 +79,7 @@ async function mount(withDoc: boolean) {
   await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
 }
 
-beforeEach(() => { h.toggleCodeWrap.mockClear(); h.claim = 'code'; });
+beforeEach(() => { h.toggleCodeWrap.mockClear(); h.syncWrapMenu.mockClear(); h.claim = 'code'; });
 afterEach(async () => {
   if (root) { await act(async () => root!.unmount()); root = null; }
   container?.remove();
@@ -84,14 +87,14 @@ afterEach(async () => {
 });
 
 describe('View → Wrap Lines routing', () => {
-  it('flips the app-wide setting when no document is open', async () => {
+  it('flips this window\'s wrapping when no document is open', async () => {
     await mount(false);
     expect(container!.querySelector('[data-testid="doc-view"]')).toBeNull();
     h.handlers.onToggleWrap();
     expect(h.toggleCodeWrap).toHaveBeenCalledTimes(1);
   });
 
-  it('flips the app-wide setting in Code view', async () => {
+  it('flips this window\'s wrapping in Code view', async () => {
     await mount(true);
     expect(container!.querySelector('[data-testid="doc-view"]')).not.toBeNull();
     h.claim = 'code';
@@ -99,10 +102,17 @@ describe('View → Wrap Lines routing', () => {
     expect(h.toggleCodeWrap).toHaveBeenCalledTimes(1);
   });
 
-  it('leaves the app-wide setting alone in Live view', async () => {
+  it('leaves this window\'s wrapping alone in Live view', async () => {
     await mount(true);
     h.claim = 'live';
     h.handlers.onToggleWrap();
     expect(h.toggleCodeWrap).not.toHaveBeenCalled();
+  });
+
+  it('re-reports the unchanged wrapping in Live view, because macOS already moved the checkmark', async () => {
+    await mount(true);
+    h.claim = 'live';
+    h.handlers.onToggleWrap();
+    expect(h.syncWrapMenu).toHaveBeenCalledTimes(1);
   });
 });

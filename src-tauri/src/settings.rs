@@ -17,6 +17,8 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 ///
 /// `code_wrap` (the Code view's line wrapping) is stored as `codeWrap` and
 /// defaults to on, so a 1.0.1 file that predates it loads with wrapping on.
+/// Wrapping is per-window; this is the last choice made in any window, which
+/// is what a new window starts with.
 pub struct Settings {
     pub theme: String,
     #[serde(rename = "codeWrap", default = "default_code_wrap")]
@@ -106,7 +108,7 @@ pub fn get_settings(state: State<SettingsState>) -> Option<Settings> {
 /// caller that only needs a follow-up action on a real change doesn't have to
 /// run that follow-up unconditionally on every no-op call. (6c-ii-b removed
 /// the one caller that used this -- `set_writing_mode`'s menu rebuild -- so
-/// the return value is currently unused by `set_theme`; the signal is kept
+/// the return value is currently unused by every setter; the signal is kept
 /// because the emit-if-changed behaviour it reports on is what stops a
 /// cross-window adoption echoing into a loop.)
 ///
@@ -182,17 +184,17 @@ pub fn stored_code_wrap(state: &SettingsState) -> bool {
         .unwrap_or_else(default_code_wrap)
 }
 
-/// Persist whether the Code view wraps lines + broadcast settings://changed,
-/// only when the value actually changed.
+/// Persist the last Code view wrapping choice, the state a new window starts
+/// in, only when the value actually changed. The windows already open keep
+/// their own wrapping, and the View menu mark follows the focused window's
+/// report (`menu::sync_view_menu`), not this value.
 #[tauri::command]
 pub fn set_code_wrap<R: Runtime>(
     app: AppHandle<R>,
     state: State<SettingsState>,
     enabled: bool,
 ) -> Result<(), String> {
-    if apply_if_changed(&app, &state, |current| Ok(with_code_wrap(current, enabled)))? {
-        crate::menu::set_wrap_check(&app, enabled);
-    }
+    apply_if_changed(&app, &state, |current| Ok(with_code_wrap(current, enabled)))?;
     Ok(())
 }
 

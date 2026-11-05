@@ -98,7 +98,7 @@ export interface DocumentViewHandle {
   /**
    * ⌥⌘Z: in Live view it acts on the code block holding the caret (Markdown
    * only; HTML Live has none) and returns 'live'. Otherwise nothing is done
-   * and 'code' tells the caller to flip the app-wide Code view setting.
+   * and 'code' tells the caller to flip this window's Code view wrapping.
    */
   wrapCommand: () => 'live' | 'code';
 }

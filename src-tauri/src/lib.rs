@@ -29,7 +29,7 @@ pub fn run() {
         .manage(recents::RecentsState::default())
         .manage(settings::SettingsState::default())
         .manage(menu::MenuModeState::default())
-        .menu(|handle| menu::build_menu(handle, &[], menu::MenuModes::default(), true))
+        .menu(|handle| menu::build_menu(handle, &[], menu::MenuModes::default()))
         .setup(|app| {
             // Before any window exists, so the first inspector opened already
             // sees it (see devtools.rs for why this is a preference).
@@ -42,6 +42,12 @@ pub fn run() {
             let loaded_settings = settings::load(handle);
             if let Ok(mut g) = app.state::<settings::SettingsState>().0.lock() {
                 *g = loaded_settings;
+            }
+            // Until a window reports, Wrap Lines shows the state the first
+            // window will open in: the last choice made.
+            let last_wrap = settings::stored_code_wrap(&app.state::<settings::SettingsState>());
+            if let Ok(mut shown) = app.state::<menu::MenuModeState>().0.lock() {
+                shown.wrap = last_wrap;
             }
             menu::rebuild(handle); // swap in the menu populated with loaded recents
             match watcher::init(app.handle()) {
@@ -124,15 +130,13 @@ pub fn run() {
                 return;
             }
             let Some(event_name) = menu::menu_event_name(id.as_str()) else { return };
-            // macOS flips a check item's mark itself on click. Whether the
-            // setting changes is the window's call (Live view toggles a block,
-            // not the setting), so put the stored value back first;
-            // `set_code_wrap` moves the mark if the setting really changed.
+            // macOS flips a check item's mark itself on click. Whether wrapping
+            // changes is the window's call (Live view toggles a block instead),
+            // so put the mark back to that window's last report; the window
+            // reports again once it has handled the command. With no window to
+            // deliver to, the mark stays put rather than showing a flip.
             if id == menu::WRAP_ID {
-                menu::set_wrap_check(
-                    app,
-                    settings::stored_code_wrap(&app.state::<settings::SettingsState>()),
-                );
+                menu::redraw_wrap_check(app);
             }
             // Delivery is by LABEL, never a broadcast: `emit_to(<label>, …)`
             // fires only that window's window-scoped listener (see MenuBridge).

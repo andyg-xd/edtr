@@ -76,9 +76,9 @@ export function EditorWindow() {
       setInfoNotice('Your theme choice could not be saved. It will apply until you quit Edtr.');
     }, []),
   );
-  const { codeWrap, toggleCodeWrap } = useCodeWrap(
+  const { codeWrap, toggleCodeWrap, syncWrapMenu } = useCodeWrap(
     useCallback(() => {
-      setInfoNotice('Your line-wrapping choice could not be saved. It will apply until you quit Edtr.');
+      setInfoNotice('Your line-wrapping choice could not be saved. It applies to this window, but new windows will not start with it.');
     }, []),
   );
   const { modes: writingModes, setMode: setWritingMode, toggleMode: toggleWritingMode } = useWindowWritingModes();
@@ -566,7 +566,13 @@ export function EditorWindow() {
     // window's mode, and the checkmark follows from the resulting state.
     onToggleTypewriter: () => toggleWritingMode('typewriter'),
     onToggleFocus: () => toggleWritingMode('focus'),
-    onToggleWrap: () => { if (viewRef.current?.wrapCommand() !== 'live') toggleCodeWrap(); },
+    // In Live view the command changes a code block, not this window's
+    // wrapping, but macOS flipped the menu's mark on the click, so the
+    // unchanged state is reported again.
+    onToggleWrap: () => {
+      if (viewRef.current?.wrapCommand() === 'live') syncWrapMenu();
+      else toggleCodeWrap();
+    },
     onUndo: () => runMenuHistory('undo', viewRef.current),
     onRedo: () => runMenuHistory('redo', viewRef.current),
   });

@@ -69,8 +69,8 @@ fn build_recent_submenu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry])
     builder.separator().item(&clear).build()
 }
 
-/// What the View menu's two checkmarks currently SHOW: the focused window's
-/// writing modes, as that window last reported them.
+/// What the View menu's checkmarks currently SHOW: the focused window's
+/// writing modes and Code view wrapping, as that window last reported them.
 ///
 /// This is a display cache, **not** the source of truth. Under 6c-ii-b's D-A
 /// the modes are per-window React state that never persists; Rust holds this
@@ -84,31 +84,63 @@ fn build_recent_submenu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry])
 /// correct while the state was app-wide and is wrong now: with per-window
 /// state there is no single value to own, so ownership moves to the window and
 /// Rust keeps only what it must draw.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+///
+/// `wrap` is per-window too. The stored `codeWrap` setting is only the state a
+/// new window starts in, so it seeds this cache at launch and nothing more.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MenuModes {
     pub typewriter: bool,
     pub focus: bool,
+    pub wrap: bool,
+}
+
+impl Default for MenuModes {
+    fn default() -> Self {
+        MenuModes { typewriter: false, focus: false, wrap: true }
+    }
+}
+
+impl MenuModes {
+    /// These marks with a window's report applied. A window reports its
+    /// writing modes and its wrapping from separate places, so a field left
+    /// `None` keeps what is shown.
+    pub fn with_report(self, typewriter: Option<bool>, focus: Option<bool>, wrap: Option<bool>) -> Self {
+        MenuModes {
+            typewriter: typewriter.unwrap_or(self.typewriter),
+            focus: focus.unwrap_or(self.focus),
+            wrap: wrap.unwrap_or(self.wrap),
+        }
+    }
 }
 
 /// The live display cache behind [`MenuModes`], managed in app state.
 #[derive(Default)]
 pub struct MenuModeState(pub std::sync::Mutex<MenuModes>);
 
-/// Point the View menu's checkmarks at `modes`, and remember them so a later
-/// [`rebuild`] redraws the same thing.
+/// Apply a window's report to the View menu's checkmarks, and remember the
+/// result so a later [`rebuild`] redraws the same thing.
 ///
 /// Walks the menu tree rather than using `Menu::get`, which only searches
-/// direct children — these two items live inside the View submenu, and that
+/// direct children — these items live inside the View submenu, and that
 /// submenu is built without an id of its own, so there is nothing to look it
 /// up by. A missing item is ignored rather than an error: the only way it can
 /// happen is a build that no longer has a View menu, and failing a mode toggle
 /// is not worth propagating over.
-pub fn set_mode_checks<R: Runtime>(app: &AppHandle<R>, modes: MenuModes) {
-    if let Ok(mut cached) = app.state::<MenuModeState>().0.lock() {
-        *cached = modes;
-    }
+pub fn set_mode_checks<R: Runtime>(
+    app: &AppHandle<R>,
+    typewriter: Option<bool>,
+    focus: Option<bool>,
+    wrap: Option<bool>,
+) {
+    let state = app.state::<MenuModeState>();
+    let modes = {
+        let Ok(mut cached) = state.0.lock() else { return };
+        *cached = cached.with_report(typewriter, focus, wrap);
+        *cached
+    };
     set_check(app, "toggle-typewriter", modes.typewriter);
     set_check(app, "toggle-focus", modes.focus);
+    set_check(app, WRAP_ID, modes.wrap);
 }
 
 /// Point the check item with `id` at `checked`; a menu or item that is missing
@@ -128,12 +160,13 @@ fn set_check<R: Runtime>(app: &AppHandle<R>, id: &str, checked: bool) {
     }
 }
 
-/// Frontend → Rust: the focused window reporting its own modes so the menu can
-/// draw them. Called when a window's modes change AND when it gains focus,
-/// since the menu shows whichever window is in front.
+/// Frontend → Rust: the focused window reporting its own state so the menu can
+/// draw it. Called when that state changes AND when the window gains focus,
+/// since the menu shows whichever window is in front. The writing modes and
+/// wrapping are reported separately, so each argument may be left out.
 #[tauri::command]
-pub fn sync_view_menu(app: AppHandle, typewriter: bool, focus: bool) {
-    set_mode_checks(&app, MenuModes { typewriter, focus });
+pub fn sync_view_menu(app: AppHandle, typewriter: Option<bool>, focus: Option<bool>, wrap: Option<bool>) {
+    set_mode_checks(&app, typewriter, focus, wrap);
 }
 
 /// Edtr never checks for updates itself (no network access); this item only
@@ -145,9 +178,10 @@ pub const WRAP_ID: &str = "toggle-wrap";
 pub const WRAP_ACCELERATOR: &str = "Alt+Cmd+Z";
 pub const RELEASES_URL: &str = "https://github.com/andyg-xd/edtr/releases/latest";
 
-/// Point the View menu's Wrap Lines checkmark at `checked`.
-pub fn set_wrap_check<R: Runtime>(app: &AppHandle<R>, checked: bool) {
-    set_check(app, WRAP_ID, checked);
+/// Put the Wrap Lines checkmark back to the focused window's last report.
+pub fn redraw_wrap_check<R: Runtime>(app: &AppHandle<R>) {
+    let wrap = app.state::<MenuModeState>().0.lock().map(|m| m.wrap).unwrap_or(true);
+    set_check(app, WRAP_ID, wrap);
 }
 
 /// Map a custom menu item's id to the `menu://` event the frontend listens for.
@@ -258,7 +292,6 @@ pub fn build_menu<R: Runtime>(
     app: &AppHandle<R>,
     recents: &[RecentEntry],
     modes: MenuModes,
-    code_wrap: bool,
 ) -> tauri::Result<Menu<R>> {
     let quit = MenuItem::with_id(app, "quit", "Quit Edtr", true, Some("Cmd+Q"))?;
     let check_updates = MenuItem::with_id(app, CHECK_UPDATES_ID, "Check for Updates…", true, None::<&str>)?;
@@ -337,10 +370,10 @@ pub fn build_menu<R: Runtime>(
     let focus = CheckMenuItem::with_id(
         app, "toggle-focus", "Focus Mode", true, modes.focus, None::<&str>,
     )?;
-    // Unlike the two modes above this one is a persisted app-wide setting, so
-    // the mark is drawn from `SettingsState`, not the per-window cache.
+    // Per-window like the two modes above: the mark shows the focused
+    // window's Code view wrapping.
     let wrap = CheckMenuItem::with_id(
-        app, WRAP_ID, "Wrap Lines", true, code_wrap, Some(WRAP_ACCELERATOR),
+        app, WRAP_ID, "Wrap Lines", true, modes.wrap, Some(WRAP_ACCELERATOR),
     )?;
     let view_menu = SubmenuBuilder::new(app, "View")
         .item(&wrap)
@@ -379,8 +412,7 @@ pub fn rebuild<R: Runtime>(app: &AppHandle<R>) {
             .lock()
             .map(|m| *m)
             .unwrap_or_default();
-        let code_wrap = crate::settings::stored_code_wrap(&app2.state::<crate::settings::SettingsState>());
-        if let Ok(menu) = build_menu(&app2, &recents, modes, code_wrap) {
+        if let Ok(menu) = build_menu(&app2, &recents, modes) {
             let _ = app2.set_menu(menu);
         }
     });
@@ -540,6 +572,33 @@ mod view_menu_tests {
         let modes = MenuModes::default();
         assert!(!modes.typewriter);
         assert!(!modes.focus);
+    }
+
+    #[test]
+    fn the_menu_mode_cache_starts_with_wrap_on() {
+        // Wrapping is on by default, so before any window reports, Wrap Lines
+        // is drawn checked.
+        assert!(MenuModes::default().wrap);
+    }
+
+    #[test]
+    fn a_wrap_report_moves_only_the_wrap_mark() {
+        // The wrap state and the writing modes are reported by separate parts
+        // of a window, so each report must leave the other's marks alone.
+        let shown = MenuModes { typewriter: true, focus: true, wrap: true };
+        assert_eq!(
+            shown.with_report(None, None, Some(false)),
+            MenuModes { typewriter: true, focus: true, wrap: false },
+        );
+    }
+
+    #[test]
+    fn a_writing_mode_report_leaves_the_wrap_mark_alone() {
+        let shown = MenuModes { typewriter: false, focus: false, wrap: false };
+        assert_eq!(
+            shown.with_report(Some(true), Some(false), None),
+            MenuModes { typewriter: true, focus: false, wrap: false },
+        );
     }
 }
 
