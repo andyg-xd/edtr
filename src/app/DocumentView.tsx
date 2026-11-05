@@ -96,7 +96,7 @@ export interface DocumentViewHandle {
   /** Edit → Undo / Redo: the showing editor's own step, else the whole-view step. */
   historyStep: (direction: 'undo' | 'redo') => void;
   /**
-   * ⌥Z: in Live view it acts on the code block holding the caret (Markdown
+   * ⌥⌘Z: in Live view it acts on the code block holding the caret (Markdown
    * only; HTML Live has none) and returns 'live'. Otherwise nothing is done
    * and 'code' tells the caller to flip the app-wide Code view setting.
    */

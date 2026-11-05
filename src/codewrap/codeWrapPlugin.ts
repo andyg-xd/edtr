@@ -125,7 +125,7 @@ export function toggleCodeWrapAt(pos: number): Command {
 
 /**
  * Flips the code block holding the selection head; false (nothing to do)
- * anywhere else. Uses the same `caretBlock` as `edtr-caret-in`, so ⌥Z always
+ * anywhere else. Uses the same `caretBlock` as `edtr-caret-in`, so ⌥⌘Z always
  * acts on the block whose label is showing.
  */
 export const toggleCodeWrapAtCaret: Command = (state, dispatch) => {

@@ -173,14 +173,14 @@ describe('codeWrapPlugin', () => {
     const flipped = (before: EditorState, after: EditorState) =>
       codeBlocks(before.doc).filter((p) => blockWraps(before, p) !== blockWraps(after, p));
 
-    // Paragraph → code: the head is in the code block, so it shows its label and ⌥Z flips it.
+    // Paragraph → code: the head is in the code block, so it shows its label and ⌥⌘Z flips it.
     const intoCode = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 2, js + 3)));
     expect(caretIn(intoCode)).toEqual([js]);
     const a = run(intoCode, toggleCodeWrapAtCaret);
     expect(a.ok).toBe(true);
     expect(flipped(intoCode, a.next)).toEqual(caretIn(intoCode));
 
-    // Code → paragraph: the head is in the paragraph, so no label shows and ⌥Z flips nothing.
+    // Code → paragraph: the head is in the paragraph, so no label shows and ⌥⌘Z flips nothing.
     const outOfCode = state.apply(state.tr.setSelection(TextSelection.create(state.doc, js + 3, 2)));
     expect(caretIn(outOfCode)).toEqual([]);
     const b = run(outOfCode, toggleCodeWrapAtCaret);

@@ -44,7 +44,7 @@ export interface MenuHandlers {
   onToggleTypewriter: () => void;
   /** View → Focus Mode — flip THIS window's focus mode (6c-ii-b, D-A). */
   onToggleFocus: () => void;
-  /** View → Wrap Lines (⌥Z). */
+  /** View → Wrap Lines (⌥⌘Z). */
   onToggleWrap: () => void;
   /** Edit → Undo (⌘Z) — see `runMenuHistory`. */
   onUndo: () => void;

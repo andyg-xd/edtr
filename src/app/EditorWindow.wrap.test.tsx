@@ -5,7 +5,7 @@ import { act, forwardRef, useEffect, useImperativeHandle } from 'react';
 import type { MenuHandlers } from './menuCommands';
 import { DocumentSession } from '../files/documentSession';
 
-// The routing under test: ⌥Z reaches the app-wide wrap setting unless the
+// The routing under test: ⌥⌘Z reaches the app-wide wrap setting unless the
 // showing document view claims it. The view and the setting are stubbed so
 // only EditorWindow's decision is measured.
 const h = vi.hoisted(() => ({

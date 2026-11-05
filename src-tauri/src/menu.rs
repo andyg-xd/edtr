@@ -141,6 +141,8 @@ pub fn sync_view_menu(app: AppHandle, typewriter: bool, focus: bool) {
 /// with the one in About Edtr. Intercepted in `lib.rs`, so it needs no window.
 pub const CHECK_UPDATES_ID: &str = "check-updates";
 pub const WRAP_ID: &str = "toggle-wrap";
+/// Needs ⌘: macOS hands an ⌥-only key equivalent to text input (it types Ω) before the menu sees it.
+pub const WRAP_ACCELERATOR: &str = "Alt+Cmd+Z";
 pub const RELEASES_URL: &str = "https://github.com/andyg-xd/edtr/releases/latest";
 
 /// Point the View menu's Wrap Lines checkmark at `checked`.
@@ -338,7 +340,7 @@ pub fn build_menu<R: Runtime>(
     // Unlike the two modes above this one is a persisted app-wide setting, so
     // the mark is drawn from `SettingsState`, not the per-window cache.
     let wrap = CheckMenuItem::with_id(
-        app, WRAP_ID, "Wrap Lines", true, code_wrap, Some("Alt+Z"),
+        app, WRAP_ID, "Wrap Lines", true, code_wrap, Some(WRAP_ACCELERATOR),
     )?;
     let view_menu = SubmenuBuilder::new(app, "View")
         .item(&wrap)
@@ -538,6 +540,16 @@ mod view_menu_tests {
         let modes = MenuModes::default();
         assert!(!modes.typewriter);
         assert!(!modes.focus);
+    }
+}
+
+#[cfg(test)]
+mod wrap_accelerator_tests {
+    use super::WRAP_ACCELERATOR;
+
+    #[test]
+    fn wrap_lines_uses_option_command_z() {
+        assert_eq!(WRAP_ACCELERATOR, "Alt+Cmd+Z");
     }
 }
 
