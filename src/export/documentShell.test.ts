@@ -33,9 +33,10 @@ describe('documentShell', () => {
 
 describe('EXPORT_STYLES', () => {
   it('is light and does not depend on Edtr\'s bundled fonts', () => {
-    // The file is opened on machines that do not have them (D5).
+    // The file is opened on machines that do not have them (D5). The only
+    // custom property it may read is the one the export sets on each diagram.
     expect(EXPORT_STYLES).not.toContain('Source Sans');
-    expect(EXPORT_STYLES).not.toContain('var(--');
+    expect(EXPORT_STYLES.match(/var\(--[\w-]+/g)).toEqual(['var(--diagram-cols']);
     expect(EXPORT_STYLES).toContain('@page');
   });
 });

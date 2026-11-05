@@ -85,7 +85,19 @@ describe('pmToHtml', () => {
 
   it('marks a text diagram so it keeps its lines unwrapped', () => {
     const out = html('```\n┌──┐\n└──┘\n```\n');
-    expect(out).toContain('<pre class="md-code md-diagram">');
+    expect(out).toContain('<pre class="md-code md-diagram"');
+  });
+
+  it('gives a text diagram its width in columns, counted in code points', () => {
+    // The middle line is 4 code points but 6 UTF-16 units: `.length` would say 6.
+    const out = html('```\n┌──┐\n│𝑥𝑥│\n└─┘\n```\n');
+    expect(out).toContain('<pre class="md-code md-diagram" style="--diagram-cols: 4;"><code>');
+  });
+
+  it('gives an ordinary code block no column count', () => {
+    const out = html('```\n// ────\nlet a;\n```\n');
+    expect(out).toContain('<pre class="md-code"><code>');
+    expect(out).not.toContain('--diagram-cols');
   });
 
   it('renders a horizontal rule', () => {

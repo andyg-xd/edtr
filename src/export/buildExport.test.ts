@@ -126,4 +126,14 @@ describe('buildExport — the print copy runs nothing', () => {
     expect(html).toContain('onerror="steal()"');
     expect(html).toContain('href="javascript:steal()"');
   });
+
+  it('keeps a diagram\'s column count on the print copy, so the print rule can size it', async () => {
+    const r = toLive('```\n┌──┐\n└──┘\n```\n', null);
+    if (!r.ok) throw new Error('fixture failed');
+    const { html } = await buildExport(
+      { format: 'markdown', doc: r.doc, source: '', title: 'D', resolve: () => null },
+      { inert: true },
+    );
+    expect(html).toContain('<pre class="md-code md-diagram" style="--diagram-cols: 4;">');
+  });
 });

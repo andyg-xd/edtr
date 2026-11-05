@@ -4,6 +4,8 @@
  * Deliberately self-contained and literal: NO `var(--…)` tokens and NO
  * bundled fonts. Edtr's tokens describe Edtr's canvas and its themes; this
  * file is opened in someone else's browser, on a machine that has neither.
+ * The one custom property read here, `--diagram-cols`, is not a token: the
+ * export writes it onto each diagram block itself.
  * Always light, because a dark PDF is unusable on paper.
  */
 export const EXPORT_STYLES = `
@@ -40,5 +42,11 @@ hr { border: 0; border-top: 1px solid #d4d4d4; margin: 2em 0; }
   body { padding: 0; max-width: none; }
   h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
   pre, blockquote, table, img { break-inside: avoid; page-break-inside: avoid; }
+  /* Paper cannot scroll, so a diagram wider than the page prints smaller
+     instead. The block is its own size container, making 100cqi the width its
+     text actually has. 0.64em per column is ui-monospace's measured 0.618em
+     advance plus a margin; 0.88em is the normal size from \`pre code\`. */
+  pre.md-code.md-diagram { container-type: inline-size; }
+  pre.md-code.md-diagram code { font-size: min(0.88em, 100cqi / (var(--diagram-cols, 1) * 0.64)); }
 }
 `.trim();

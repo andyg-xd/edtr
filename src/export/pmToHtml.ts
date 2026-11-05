@@ -27,18 +27,29 @@ export function pmToHtml(doc: PMNode): string {
 
 /**
  * The schema's own serializer, except that a code block carries the class the
- * export stylesheet wraps it by (a text diagram is marked to stay unwrapped).
+ * export stylesheet wraps it by (a text diagram is marked to stay unwrapped,
+ * and carries its width so a print too narrow for it can shrink it to fit).
  * `data-lang` is emitted exactly as the editor does.
  */
 function exportSerializer(): DOMSerializer {
   const base = DOMSerializer.fromSchema(liveSchema);
   return new DOMSerializer({
     ...base.nodes,
-    codeBlock: (node) => ['pre', {
-      ...(node.attrs.lang ? { 'data-lang': node.attrs.lang } : {}),
-      class: isTextDiagram(node.textContent) ? 'md-code md-diagram' : 'md-code',
-    }, ['code', 0]],
+    codeBlock: (node) => {
+      const text = node.textContent;
+      const diagram = isTextDiagram(text);
+      return ['pre', {
+        ...(node.attrs.lang ? { 'data-lang': node.attrs.lang } : {}),
+        class: diagram ? 'md-code md-diagram' : 'md-code',
+        ...(diagram ? { style: `--diagram-cols:${widestLine(text)}` } : {}),
+      }, ['code', 0]];
+    },
   }, base.marks);
+}
+
+/** The longest line's length in code points: its width in monospace columns. */
+function widestLine(text: string): number {
+  return text.split('\n').reduce((widest, line) => Math.max(widest, [...line].length), 0);
 }
 
 /** A copy of `doc` with every `displaySrc` cleared, so `toDOM` emits `src`. */
