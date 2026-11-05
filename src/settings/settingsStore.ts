@@ -26,8 +26,8 @@ export async function saveTheme(mode: ThemeMode): Promise<void> {
   await invoke('set_theme', { mode });
 }
 
-/** Persist whether the Code view wraps lines; Rust broadcasts settings://changed
- * to all windows (only if the value changed). */
+/** Persist the last Code view wrap choice, which new windows start with. Other
+ * windows that are already open do not follow it. */
 export async function saveCodeWrap(enabled: boolean): Promise<void> {
   await invoke('set_code_wrap', { enabled });
 }

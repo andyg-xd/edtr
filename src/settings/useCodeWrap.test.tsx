@@ -44,7 +44,8 @@ beforeEach(() => {
   vi.mocked(saveCodeWrap).mockClear().mockResolvedValue(undefined);
   vi.mocked(onSettingsChanged).mockResolvedValue(() => {});
   onPersistError = undefined;
-  invoke.mockClear();
+  invoke.mockReset();
+  invoke.mockResolvedValue(undefined);
   focusListener = null;
 });
 afterEach(() => {
@@ -143,6 +144,5 @@ describe('useCodeWrap', () => {
     const c = await render(<Probe />);
     await act(async () => toggle(c));
     expect(wrap(c)).toBe('false');
-    invoke.mockResolvedValue(undefined);
   });
 });
