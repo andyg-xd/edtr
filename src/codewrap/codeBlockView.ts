@@ -40,7 +40,7 @@ export const codeBlockView: NodeViewConstructor = (initial, view, getPos, decora
 
   const label = (decos: readonly Decoration[]) => {
     const wrap = wrapFrom(decos, node);
-    button.textContent = wrap ? 'Wrap' : 'No wrap';
+    button.textContent = wrap ? 'Unwrap Text' : 'Wrap Text';
   };
   label(decorations);
 

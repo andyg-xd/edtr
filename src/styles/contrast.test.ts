@@ -60,3 +60,20 @@ describe.each(['light', 'dark'] as const)('interaction states — %s theme', (th
     expect(ratio(t['--accent-hover'], t['--accent-fg'])).toBeGreaterThanOrEqual(4.5);
   });
 });
+
+describe.each(['light', 'dark'] as const)('code-block label — %s theme', (theme) => {
+  const t = block(theme);
+  it('declares its own tokens', () => {
+    for (const k of ['bg', 'border', 'fg', 'hover-bg', 'hover-border', 'hover-fg']) {
+      expect(t[`--code-toggle-${k}`], k).toMatch(/^#[0-9a-f]{6}$/i);
+    }
+  });
+  it('label text meets AA (4.5:1) at rest and on hover', () => {
+    expect(ratio(t['--code-toggle-fg'], t['--code-toggle-bg'])).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(t['--code-toggle-hover-fg'], t['--code-toggle-hover-bg'])).toBeGreaterThanOrEqual(4.5);
+  });
+  it('hover is perceptibly different from rest', () => {
+    const delta = Math.abs(lum(t['--code-toggle-bg']) - lum(t['--code-toggle-hover-bg'])) * 100;
+    expect(delta).toBeGreaterThan(0.6);
+  });
+});

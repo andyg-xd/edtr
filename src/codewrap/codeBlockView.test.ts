@@ -74,12 +74,12 @@ describe('code block label in Markdown Live', () => {
     expect(pre.contains(button)).toBe(false);
   });
 
-  it('reads Wrap on an ordinary block and No wrap on a diagram', async () => {
+  it('names the action: Unwrap Text on a wrapped block, Wrap Text on an unwrapped one', async () => {
     const { blocks: [js, diagram] } = await mountMarkdown();
-    expect(toggleOf(js).textContent).toBe('Wrap');
+    expect(toggleOf(js).textContent).toBe('Unwrap Text');
     expect(toggleOf(js).hasAttribute('aria-label')).toBe(false);
     expect(js.classList.contains('edtr-wrap')).toBe(true);
-    expect(toggleOf(diagram).textContent).toBe('No wrap');
+    expect(toggleOf(diagram).textContent).toBe('Wrap Text');
     expect(diagram.classList.contains('edtr-nowrap')).toBe(true);
   });
 
@@ -96,12 +96,12 @@ describe('code block label in Markdown Live', () => {
 
     expect(js.classList.contains('edtr-nowrap')).toBe(true);
     expect(js.classList.contains('edtr-wrap')).toBe(false);
-    expect(toggleOf(js).textContent).toBe('No wrap');
+    expect(toggleOf(js).textContent).toBe('Wrap Text');
     expect(view.state.selection.eq(before)).toBe(true);
 
     await act(async () => { toggleOf(js).click(); });
     expect(js.classList.contains('edtr-wrap')).toBe(true);
-    expect(toggleOf(js).textContent).toBe('Wrap');
+    expect(toggleOf(js).textContent).toBe('Unwrap Text');
     expect(onEdit).not.toHaveBeenCalled();
   });
 

@@ -61,6 +61,12 @@
   --info-fg: #3730a3;
   --code-bg: #f6f8fa;
   --code-border: #d0d7de;
+  --code-toggle-bg: #efe9f5;
+  --code-toggle-border: #ded2ea;
+  --code-toggle-fg: #5c3474;
+  --code-toggle-hover-bg: #e4daee;
+  --code-toggle-hover-border: #c9b6dc;
+  --code-toggle-hover-fg: #4a2a5e;
   --inline-code-bg: rgba(0, 0, 0, 0.06);
   --verbatim-border: #cccccc;
   --table-border: #d0d7de;
@@ -164,6 +170,12 @@
   --info-fg: #c2d1ff;
   --code-bg: #262626;
   --code-border: #3a3a3a;
+  --code-toggle-bg: #130f18;
+  --code-toggle-border: #4a3a58;
+  --code-toggle-fg: #e9e5ee;
+  --code-toggle-hover-bg: #261d30;
+  --code-toggle-hover-border: #6a5280;
+  --code-toggle-hover-fg: #ffffff;
   --inline-code-bg: rgba(255, 255, 255, 0.1);
   --verbatim-border: #4a4a4a;
   --table-border: #3a3a3a;
