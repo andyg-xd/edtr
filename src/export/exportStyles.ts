@@ -45,8 +45,14 @@ hr { border: 0; border-top: 1px solid #d4d4d4; margin: 2em 0; }
   /* Paper cannot scroll, so a diagram wider than the page prints smaller
      instead. The block is its own size container, making 100cqi the width its
      text actually has. 0.64em per column is ui-monospace's measured 0.618em
-     advance plus a margin; 0.88em is the normal size from \`pre code\`. */
+     advance plus a margin; 0.88em is the normal size from \`pre code\`.
+     As a block, the code's rows no longer sit on the pre's full-size line, so
+     they shrink with the text: 1.6em / 0.88 is the body's 1.6 line height
+     restated against the code's own size, unchanged when nothing shrinks. */
   pre.md-code.md-diagram { container-type: inline-size; }
-  pre.md-code.md-diagram code { font-size: min(0.88em, 100cqi / (var(--diagram-cols, 1) * 0.64)); }
+  pre.md-code.md-diagram code {
+    display: block; line-height: calc(1.6em / 0.88);
+    font-size: min(0.88em, 100cqi / (var(--diagram-cols, 1) * 0.64));
+  }
 }
 `.trim();
