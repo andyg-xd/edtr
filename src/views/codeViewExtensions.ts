@@ -16,6 +16,7 @@ import type { EditorFormat } from '../files/fileTypes';
 import { darkEditorTheme, darkHighlightStyle } from './codeTheme';
 import type { EffectiveTheme } from '../settings/theme';
 import { findHighlightField } from '../find/codeSurface';
+import { newlineAndCappedIndent } from './cappedIndent';
 import { focusDimExtension } from '../writingmodes/codeFocus';
 
 function languageExtension(format: EditorFormat): Extension {
@@ -107,7 +108,11 @@ export function buildCodeViewExtensions(
     // setting preventDefault on it would swallow a keypress that falls
     // through to the browser today. Copying upstream's flags verbatim is how
     // "keeps working exactly as it does today" is satisfied for both.
+    // Enter is ours, ahead of defaultKeymap's insertNewlineAndIndent: the
+    // language's smart indent, capped (cappedIndent.ts). Shift-Enter shares the
+    // upstream command, so it shares ours.
     keymap.of([
+      { key: 'Enter', run: newlineAndCappedIndent, shift: newlineAndCappedIndent },
       ...defaultKeymap,
       ...historyKeymap,
       { key: 'Mod-d', run: selectNextOccurrence, preventDefault: true },
