@@ -112,6 +112,12 @@ export function blockWraps(state: EditorState, pos: number): boolean {
   return overrides ? wraps(overrides, node, pos) : wrapsByDefault(node);
 }
 
+/** Whether the code block holding the selection head wraps, or null when the head is outside one. */
+export function caretBlockWraps(state: EditorState): boolean | null {
+  const pos = caretBlock(state);
+  return pos === null ? null : blockWraps(state, pos);
+}
+
 /** Flips the code block starting at `pos`. Meta only, kept out of the undo history. */
 export function toggleCodeWrapAt(pos: number): Command {
   return (state, dispatch) => {

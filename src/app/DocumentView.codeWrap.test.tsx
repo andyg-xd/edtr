@@ -40,10 +40,13 @@ afterEach(async () => {
 const MD = 'Intro paragraph.\n\n```js\nconst x = 1;\n```\n';
 const HTML = '<!doctype html>\n<html><body><p>Intro</p><pre><code>const x = 1;</code></pre></body></html>\n';
 
+const liveWrap = vi.fn();
+
 function element(codeWrap: boolean, ref: React.Ref<DocumentViewHandle>, session: DocumentSession, viewMode: ViewMode) {
   return (
     <DocumentView
       ref={ref} doc={{ id: 'd', session, viewMode }} effectiveTheme="light" modes={MODES_OFF} codeWrap={codeWrap}
+      onLiveWrapChange={liveWrap}
       onSetWritingMode={() => {}} onExport={() => {}}
       onDirtyChange={() => {}} onLiveAvailableChange={() => {}} onError={() => {}} onInfo={() => {}}
     />
@@ -56,8 +59,13 @@ async function mount(path: string, text: string, viewMode: ViewMode) {
   root = createRoot(container);
   const ref = createRef<DocumentViewHandle>();
   const session = new DocumentSession({ path, format: formatForPath(path), meta: { eol: 'lf', hadBom: false }, text });
+  liveWrap.mockClear();
   await act(async () => root!.render(element(true, ref, session, viewMode)));
-  return { ref, session, rerender: (codeWrap: boolean) => act(async () => root!.render(element(codeWrap, ref, session, viewMode))) };
+  return {
+    ref, session,
+    rerender: (codeWrap: boolean) => act(async () => root!.render(element(codeWrap, ref, session, viewMode))),
+    switchTo: (mode: ViewMode) => act(async () => root!.render(element(true, ref, session, mode))),
+  };
 }
 
 const pm = () => spy.pm as PMView;
@@ -127,5 +135,43 @@ describe('codeWrap reaches the Code view', () => {
     expect(editor.state.doc.toString()).toBe(text);
     expect(cmUndoDepth(editor.state)).toBe(depth);
     expect(session.text).toBe(MD);
+  });
+});
+
+describe('View menu report (onLiveWrapChange)', () => {
+  const last = () => liveWrap.mock.calls.at(-1)?.[0];
+  const caretTo = (pos: number) => act(async () => {
+    pm().dispatch(pm().state.tr.setSelection(TextSelection.create(pm().state.doc, pos)));
+  });
+
+  it('Markdown Live: follows the caret between a paragraph (greyed) and a code block, and a flip', async () => {
+    const { ref } = await mount('/tmp/t.md', MD, 'live');
+    const pos = codeBlockPos(pm());
+    await caretTo(2);
+    expect(last()).toEqual({ checked: false, enabled: false });
+    await caretTo(pos + 2);
+    expect(last()).toEqual({ checked: true, enabled: true });
+    // Synchronous: the window re-sends the menu right after the command returns.
+    ref.current!.wrapCommand();
+    expect(last()).toEqual({ checked: false, enabled: true });
+  });
+
+  it('HTML Live: greyed out, wherever the caret is', async () => {
+    await mount('/tmp/t.html', HTML, 'live');
+    expect(last()).toEqual({ checked: false, enabled: false });
+  });
+
+  it('Code view: withdraws the report so the window shows its own wrapping', async () => {
+    const { switchTo } = await mount('/tmp/t.md', MD, 'live');
+    expect(last()).not.toBeNull();
+    await switchTo('code');
+    expect(last()).toBeNull();
+  });
+
+  it('withdraws the report when the document goes away', async () => {
+    await mount('/tmp/t.md', MD, 'live');
+    await act(async () => root!.unmount());
+    root = null;
+    expect(last()).toBeNull();
   });
 });

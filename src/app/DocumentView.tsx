@@ -52,7 +52,8 @@ import { classifyLink } from '../links/linkTarget';
 import { isOpenable } from '../links/linkHint';
 import { useLinkHint } from '../links/useLinkHint';
 import type { HistoryEdge } from '../undo/historyEdge';
-import { toggleCodeWrapAtCaret } from '../codewrap/codeWrapPlugin';
+import { caretBlockWraps, toggleCodeWrapAtCaret } from '../codewrap/codeWrapPlugin';
+import type { LiveWrapReport } from '../settings/useCodeWrap';
 import { ReplaceAllGuard } from './ReplaceAllGuard';
 import { codeTypewriter } from '../writingmodes/codeTypewriter';
 import { pmTypewriter } from '../writingmodes/pmTypewriter';
@@ -118,6 +119,16 @@ function livePosition(view: EditorView | null): { line: number; column: number }
   return { line: $head.index(0) + 1, column: $head.parentOffset + 1 };
 }
 
+/**
+ * What the View menu's Wrap Lines item shows while a Live view is in front:
+ * whether the caret's code block wraps (Markdown), greyed out wherever a wrap
+ * command does nothing — the caret outside a code block, or HTML Live.
+ */
+function liveWrapReport(view: EditorView, format: string): LiveWrapReport {
+  const wraps = format === 'markdown' ? caretBlockWraps(view.state) : null;
+  return wraps === null ? { checked: false, enabled: false } : { checked: wraps, enabled: true };
+}
+
 interface DocumentViewProps {
   doc: OpenDoc;
   effectiveTheme: 'light' | 'dark';
@@ -145,10 +156,16 @@ interface DocumentViewProps {
    * not computed at all — `buildOutline` is a full document parse and it used
    * to run on every keystroke regardless of whether anyone could see it. */
   outlineVisible?: boolean;
+  /**
+   * What the View menu's Wrap Lines item should show while Live view is in
+   * front, on every Live transaction; `null` when Code view is back (or this
+   * document goes away) and the window's own wrapping applies again.
+   */
+  onLiveWrapChange?: (report: LiveWrapReport | null) => void;
 }
 
 export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(function DocumentView(
-  { doc, effectiveTheme, codeWrap = true, modes, onSetWritingMode, onExport, onDirtyChange, onLiveAvailableChange, onError, onInfo, onOutlineChange, outlineVisible = false }, ref,
+  { doc, effectiveTheme, codeWrap = true, modes, onSetWritingMode, onExport, onDirtyChange, onLiveAvailableChange, onError, onInfo, onOutlineChange, outlineVisible = false, onLiveWrapChange }, ref,
 ) {
   const session = doc.session;
   const viewMode = doc.viewMode;
@@ -570,10 +587,20 @@ export const DocumentView = forwardRef<DocumentViewHandle, DocumentViewProps>(fu
   // new one, per its own prop documentation ("Fires on every transaction ...
   // so a ribbon can re-render" — exactly the signal typewriter mode needs
   // too).
-  const handleLiveStateChange = useCallback(() => {
+  const liveWrapRef = useRef(onLiveWrapChange); liveWrapRef.current = onLiveWrapChange;
+  const handleLiveStateChange = useCallback((view: EditorView) => {
     bumpRibbon();
     if (modes.typewriter) typewriter?.holdCaret(HOLD_RATIO);
-  }, [modes.typewriter, typewriter]);
+    // Synchronous, so a wrap command's flip is reported before the window
+    // re-sends the menu on the command's return.
+    if (showLiveRef.current) liveWrapRef.current?.(liveWrapReport(view, session.format));
+  }, [modes.typewriter, typewriter, session.format]);
+
+  useEffect(() => {
+    if (!showLive || !liveView || liveView.isDestroyed) return;
+    liveWrapRef.current?.(liveWrapReport(liveView, session.format));
+    return () => liveWrapRef.current?.(null);
+  }, [showLive, liveView, session.format]);
 
   // Declared BEFORE the hold-caret effect below: on the same commit that
   // switches the mode on, effects run in declaration order, so the padding

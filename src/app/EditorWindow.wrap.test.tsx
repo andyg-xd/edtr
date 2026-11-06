@@ -12,19 +12,22 @@ const h = vi.hoisted(() => ({
   handlers: null as unknown as MenuHandlers,
   toggleCodeWrap: vi.fn(),
   syncWrapMenu: vi.fn(),
+  reportLiveWrap: vi.fn(),
+  docProps: null as null | Record<string, unknown>,
   claim: 'code' as 'live' | 'code',
   seed: null as unknown,
 }));
 
 vi.mock('./MenuBridge', () => ({ useMenuAndCloseGuard: (handlers: MenuHandlers) => { h.handlers = handlers; } }));
 vi.mock('../settings/useCodeWrap', () => ({
-  useCodeWrap: () => ({ codeWrap: true, toggleCodeWrap: h.toggleCodeWrap, syncWrapMenu: h.syncWrapMenu }),
+  useCodeWrap: () => ({ codeWrap: true, toggleCodeWrap: h.toggleCodeWrap, syncWrapMenu: h.syncWrapMenu, reportLiveWrap: h.reportLiveWrap }),
 }));
 vi.mock('../settings/useWindowWritingModes', () => ({
   useWindowWritingModes: () => ({ modes: { typewriter: false, focus: false }, setMode: () => {}, toggleMode: () => {} }),
 }));
 vi.mock('./DocumentView', () => ({
-  DocumentView: forwardRef(function DocumentViewStub(_props, ref) {
+  DocumentView: forwardRef(function DocumentViewStub(props: Record<string, unknown>, ref) {
+    h.docProps = props;
     useImperativeHandle(ref, () => ({ wrapCommand: () => h.claim }) as never);
     return <div data-testid="doc-view" />;
   }),
@@ -114,5 +117,12 @@ describe('View → Wrap Lines routing', () => {
     h.claim = 'live';
     h.handlers.onToggleWrap();
     expect(h.syncWrapMenu).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('View → Wrap Lines checkmark in Live view', () => {
+  it('hands the document view the hook\'s Live report, so the caret\'s code block drives the mark', async () => {
+    await mount(true);
+    expect(h.docProps?.onLiveWrapChange).toBe(h.reportLiveWrap);
   });
 });

@@ -76,7 +76,7 @@ export function EditorWindow() {
       setInfoNotice('Your theme choice could not be saved. It will apply until you quit Edtr.');
     }, []),
   );
-  const { codeWrap, toggleCodeWrap, syncWrapMenu } = useCodeWrap(
+  const { codeWrap, toggleCodeWrap, syncWrapMenu, reportLiveWrap } = useCodeWrap(
     useCallback(() => {
       setInfoNotice('Your line-wrapping choice could not be saved. It applies to this window, but new windows will not start with it.');
     }, []),
@@ -566,9 +566,9 @@ export function EditorWindow() {
     // window's mode, and the checkmark follows from the resulting state.
     onToggleTypewriter: () => toggleWritingMode('typewriter'),
     onToggleFocus: () => toggleWritingMode('focus'),
-    // In Live view the command changes a code block, not this window's
-    // wrapping, but macOS flipped the menu's mark on the click, so the
-    // unchanged state is reported again.
+    // In Live view the command flips the caret's code block, not this
+    // window's wrapping. The document has already reported the block's new
+    // state, but macOS flipped the menu's mark on the click, so it is sent again.
     onToggleWrap: () => {
       if (viewRef.current?.wrapCommand() === 'live') syncWrapMenu();
       else toggleCodeWrap();
@@ -746,6 +746,7 @@ export function EditorWindow() {
                 outlineVisible={sidebarOpen && sidebarMode === 'outline'}
                 effectiveTheme={themeEffective}
                 codeWrap={codeWrap}
+                onLiveWrapChange={reportLiveWrap}
                 modes={writingModes}
                 onSetWritingMode={setWritingMode}
                 onExport={handleExport}

@@ -87,16 +87,19 @@ fn build_recent_submenu<R: Runtime>(app: &AppHandle<R>, recents: &[RecentEntry])
 ///
 /// `wrap` is per-window too. The stored `codeWrap` setting is only the state a
 /// new window starts in, so it seeds this cache at launch and nothing more.
+/// In Live view the window reports the caret's code block instead, and
+/// `wrap_enabled` is false wherever a wrap command would do nothing there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MenuModes {
     pub typewriter: bool,
     pub focus: bool,
     pub wrap: bool,
+    pub wrap_enabled: bool,
 }
 
 impl Default for MenuModes {
     fn default() -> Self {
-        MenuModes { typewriter: false, focus: false, wrap: true }
+        MenuModes { typewriter: false, focus: false, wrap: true, wrap_enabled: true }
     }
 }
 
@@ -104,11 +107,18 @@ impl MenuModes {
     /// These marks with a window's report applied. A window reports its
     /// writing modes and its wrapping from separate places, so a field left
     /// `None` keeps what is shown.
-    pub fn with_report(self, typewriter: Option<bool>, focus: Option<bool>, wrap: Option<bool>) -> Self {
+    pub fn with_report(
+        self,
+        typewriter: Option<bool>,
+        focus: Option<bool>,
+        wrap: Option<bool>,
+        wrap_enabled: Option<bool>,
+    ) -> Self {
         MenuModes {
             typewriter: typewriter.unwrap_or(self.typewriter),
             focus: focus.unwrap_or(self.focus),
             wrap: wrap.unwrap_or(self.wrap),
+            wrap_enabled: wrap_enabled.unwrap_or(self.wrap_enabled),
         }
     }
 }
@@ -131,21 +141,31 @@ pub fn set_mode_checks<R: Runtime>(
     typewriter: Option<bool>,
     focus: Option<bool>,
     wrap: Option<bool>,
+    wrap_enabled: Option<bool>,
 ) {
     let state = app.state::<MenuModeState>();
     let modes = {
         let Ok(mut cached) = state.0.lock() else { return };
-        *cached = cached.with_report(typewriter, focus, wrap);
+        *cached = cached.with_report(typewriter, focus, wrap, wrap_enabled);
         *cached
     };
     set_check(app, "toggle-typewriter", modes.typewriter);
     set_check(app, "toggle-focus", modes.focus);
     set_check(app, WRAP_ID, modes.wrap);
+    with_check_item(app, WRAP_ID, |item| {
+        let _ = item.set_enabled(modes.wrap_enabled);
+    });
 }
 
 /// Point the check item with `id` at `checked`; a menu or item that is missing
 /// is ignored (see [`set_mode_checks`]).
 fn set_check<R: Runtime>(app: &AppHandle<R>, id: &str, checked: bool) {
+    with_check_item(app, id, |item| {
+        let _ = item.set_checked(checked);
+    });
+}
+
+fn with_check_item<R: Runtime>(app: &AppHandle<R>, id: &str, f: impl Fn(&CheckMenuItem<R>)) {
     let Some(menu) = app.menu() else { return };
     let Ok(items) = menu.items() else { return };
     for kind in items {
@@ -154,7 +174,7 @@ fn set_check<R: Runtime>(app: &AppHandle<R>, id: &str, checked: bool) {
         for child in children {
             let Some(check) = child.as_check_menuitem() else { continue };
             if check.id().0.as_str() == id {
-                let _ = check.set_checked(checked);
+                f(check);
             }
         }
     }
@@ -165,8 +185,14 @@ fn set_check<R: Runtime>(app: &AppHandle<R>, id: &str, checked: bool) {
 /// since the menu shows whichever window is in front. The writing modes and
 /// wrapping are reported separately, so each argument may be left out.
 #[tauri::command]
-pub fn sync_view_menu(app: AppHandle, typewriter: Option<bool>, focus: Option<bool>, wrap: Option<bool>) {
-    set_mode_checks(&app, typewriter, focus, wrap);
+pub fn sync_view_menu(
+    app: AppHandle,
+    typewriter: Option<bool>,
+    focus: Option<bool>,
+    wrap: Option<bool>,
+    wrap_enabled: Option<bool>,
+) {
+    set_mode_checks(&app, typewriter, focus, wrap, wrap_enabled);
 }
 
 /// Edtr never checks for updates itself (no network access); this item only
@@ -373,7 +399,7 @@ pub fn build_menu<R: Runtime>(
     // Per-window like the two modes above: the mark shows the focused
     // window's Code view wrapping.
     let wrap = CheckMenuItem::with_id(
-        app, WRAP_ID, "Wrap Lines", true, modes.wrap, Some(WRAP_ACCELERATOR),
+        app, WRAP_ID, "Wrap Lines", modes.wrap_enabled, modes.wrap, Some(WRAP_ACCELERATOR),
     )?;
     let view_menu = SubmenuBuilder::new(app, "View")
         .item(&wrap)
@@ -585,20 +611,37 @@ mod view_menu_tests {
     fn a_wrap_report_moves_only_the_wrap_mark() {
         // The wrap state and the writing modes are reported by separate parts
         // of a window, so each report must leave the other's marks alone.
-        let shown = MenuModes { typewriter: true, focus: true, wrap: true };
+        let shown = MenuModes { typewriter: true, focus: true, wrap: true, wrap_enabled: true };
         assert_eq!(
-            shown.with_report(None, None, Some(false)),
-            MenuModes { typewriter: true, focus: true, wrap: false },
+            shown.with_report(None, None, Some(false), None),
+            MenuModes { typewriter: true, focus: true, wrap: false, wrap_enabled: true },
         );
     }
 
     #[test]
     fn a_writing_mode_report_leaves_the_wrap_mark_alone() {
-        let shown = MenuModes { typewriter: false, focus: false, wrap: false };
+        let shown = MenuModes { typewriter: false, focus: false, wrap: false, wrap_enabled: false };
         assert_eq!(
-            shown.with_report(Some(true), Some(false), None),
-            MenuModes { typewriter: true, focus: false, wrap: false },
+            shown.with_report(Some(true), Some(false), None, None),
+            MenuModes { typewriter: true, focus: false, wrap: false, wrap_enabled: false },
         );
+    }
+
+    #[test]
+    fn wrap_lines_starts_enabled() {
+        // Code view, and a window with no document, can always wrap.
+        assert!(MenuModes::default().wrap_enabled);
+    }
+
+    #[test]
+    fn a_live_view_report_can_grey_out_wrap_lines() {
+        // Live view with the caret outside a code block, or HTML Live: the
+        // command does nothing there, so the item is disabled, not just unchecked.
+        let shown = MenuModes::default();
+        let greyed = shown.with_report(None, None, Some(false), Some(false));
+        assert!(!greyed.wrap_enabled);
+        assert_eq!(greyed.with_report(Some(true), None, None, None).wrap_enabled, false);
+        assert!(greyed.with_report(None, None, Some(true), Some(true)).wrap_enabled);
     }
 }
 

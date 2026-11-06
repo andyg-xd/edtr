@@ -6,7 +6,7 @@ import { buildLiveDoc } from '../views/liveModel';
 import { liveSchema } from '../views/liveSchema';
 import { dirtyTrackingPlugin, getDirtyBlockIds } from '../views/dirtyTracking';
 import {
-  blockWraps, codeWrapKey, codeWrapPlugin, toggleCodeWrapAt, toggleCodeWrapAtCaret,
+  blockWraps, caretBlockWraps, codeWrapKey, codeWrapPlugin, toggleCodeWrapAt, toggleCodeWrapAtCaret,
 } from './codeWrapPlugin';
 
 const SOURCE = [
@@ -163,6 +163,17 @@ describe('codeWrapPlugin', () => {
     const toggled = run(inCode, toggleCodeWrapAtCaret);
     expect(toggled.ok).toBe(true);
     expect(blockWraps(toggled.next, js)).toBe(false);
+  });
+
+  it('reports the caret block’s wrapping for the View menu, and null outside a code block', () => {
+    const state = stateFor(SOURCE);
+    const [js, diagram] = codeBlocks(state.doc);
+    const at = (s: EditorState, pos: number) => s.apply(s.tr.setSelection(TextSelection.create(s.doc, pos)));
+    expect(caretBlockWraps(at(state, 2))).toBeNull();
+    expect(caretBlockWraps(at(state, js + 3))).toBe(true);
+    expect(caretBlockWraps(at(state, diagram + 3))).toBe(false);
+    const flipped = run(at(state, js + 3), toggleCodeWrapAtCaret).next;
+    expect(caretBlockWraps(flipped)).toBe(false);
   });
 
   it('toggles the block showing its label when a selection spans blocks: the one holding the head', () => {

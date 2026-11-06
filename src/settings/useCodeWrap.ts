@@ -3,6 +3,12 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { loadSettings, saveCodeWrap } from './settingsStore';
 
+/** What the View menu's Wrap Lines item shows while a Live view is in front. */
+export interface LiveWrapReport {
+  checked: boolean;
+  enabled: boolean;
+}
+
 /**
  * Owns whether THIS window's Code view wraps long lines. Each window wraps on
  * its own: a window starts with the stored value, which is the last choice
@@ -15,6 +21,13 @@ import { loadSettings, saveCodeWrap } from './settingsStore';
  * whenever the window gains focus. `syncWrapMenu` reports an unchanged state,
  * for a wrap command that this window handled without changing it.
  *
+ * In Live view there is no Code view on screen, so the mark describes the
+ * code block holding the caret instead, and the item is greyed out where a
+ * wrap command does nothing. The document reports that through
+ * `reportLiveWrap`, and withdraws it with `null` when Code view is back. It is
+ * held in a ref, not state: it arrives on every Live transaction, and only a
+ * change is worth a message to the menu.
+ *
  * `onPersistError` is called when the DURABLE write fails. The toggle still
  * applies to this window, but new windows would not start with it, so the
  * failure is reported rather than swallowed. It is read through a ref so a
@@ -24,6 +37,7 @@ export function useCodeWrap(onPersistError?: (e: unknown) => void): {
   codeWrap: boolean;
   toggleCodeWrap: () => void;
   syncWrapMenu: () => void;
+  reportLiveWrap: (report: LiveWrapReport | null) => void;
 } {
   const [codeWrap, setCodeWrap] = useState(true);
 
@@ -40,11 +54,24 @@ export function useCodeWrap(onPersistError?: (e: unknown) => void): {
     return () => { disposed = true; };
   }, []);
 
+  const liveRef = useRef<LiveWrapReport | null>(null);
+
   const syncWrapMenu = useCallback(() => {
-    invoke('sync_view_menu', { wrap: codeWrap }).catch(() => {
+    const shown = liveRef.current ?? { checked: codeWrap, enabled: true };
+    invoke('sync_view_menu', { wrap: shown.checked, wrapEnabled: shown.enabled }).catch(() => {
       // A failed report leaves the checkmark stale; wrapping itself still works.
     });
   }, [codeWrap]);
+
+  const syncRef = useRef(syncWrapMenu);
+  syncRef.current = syncWrapMenu;
+
+  const reportLiveWrap = useCallback((report: LiveWrapReport | null) => {
+    const last = liveRef.current;
+    if (report?.checked === last?.checked && report?.enabled === last?.enabled) return;
+    liveRef.current = report;
+    syncRef.current();
+  }, []);
 
   useEffect(() => { syncWrapMenu(); }, [syncWrapMenu]);
 
@@ -64,5 +91,5 @@ export function useCodeWrap(onPersistError?: (e: unknown) => void): {
     void saveCodeWrap(next).catch((e) => persistErrorRef.current?.(e));
   }, [codeWrap]);
 
-  return { codeWrap, toggleCodeWrap, syncWrapMenu };
+  return { codeWrap, toggleCodeWrap, syncWrapMenu, reportLiveWrap };
 }
