@@ -66,6 +66,7 @@ Edtr is signed and checked by Apple, so it opens normally with no security warni
 | ⌘W | Close the window (Edtr asks first if there are unsaved changes) |
 | ⌘Z | Undo |
 | ⇧⌘Z | Redo |
+| ⌥⌘Z | Wrap long lines (in Live view, the code block the cursor is in) |
 | ⌘B | Bold |
 | ⌘I | Italic |
 | ⌘U | Underline (web pages only) |
